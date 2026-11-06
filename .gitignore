@@ -19,7 +19,7 @@ coverage.*
 profile.cov
 
 # Dependency directories (remove the comment below to include it)
-# vendor/
+vendor/
 
 # Go workspace file
 go.work
@@ -29,5 +29,19 @@ go.work.sum
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+
+# Frontend
+node_modules/
+web/dist/
+web/coverage/
+
+# Локальные окружения (шаблон .env.example остаётся в репозитории)
+.env.*
+!.env.example
+
+# Сборка и мусор
+/bin/
+*.log
+.DS_Store
