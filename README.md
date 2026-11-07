@@ -91,6 +91,7 @@ Go-проект использует один корневой модуль и �
 В PR указываем связанную задачу, например `Closes #2`.
 Правила веток, ревью, squash merge и Definition of Done описаны в
 [CONTRIBUTING.md](CONTRIBUTING.md).
+Состав команды и распределение ревью - в [docs/team.md](docs/team.md).
 
 ## Лицензия
 
