@@ -1,4 +1,18 @@
-# Общее владение до распределения направлений внутри команды.
-# Оба владельца имеют admin/write-доступ; достаточно approval одного из них.
-# Для изменений /api дополнительно требуется согласование фронтенда по SPEC §8.
+# Общие владельцы для файлов без более конкретного правила.
 * @afilistovich @kakocuk1
+
+# Последнее совпавшее правило заменяет предыдущее.
+# Общие владельцы повторены, чтобы автор PR мог получить независимое ревью.
+# Для одного правила достаточно approval любого одного владельца, кроме автора PR.
+
+/web/ @RepinDM @afilistovich @kakocuk1
+/web/public/ @RepinDM @zavdaria @afilistovich @kakocuk1
+
+# Для контрактов дополнительно проверяем согласования фронтенда
+# и владельца сервиса по SPEC §8.
+/api/ @RepinDM @afilistovich @kakocuk1
+
+/docs/qa/ @KateTesla13 @afilistovich @kakocuk1
+/.github/ISSUE_TEMPLATE/ @KateTesla13 @afilistovich @kakocuk1
+
+/docs/design/ @zavdaria @afilistovich @kakocuk1
