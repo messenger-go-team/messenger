@@ -1,0 +1,4 @@
+name: messenger-local
+
+include:
+  - deploy/docker-compose.yml
