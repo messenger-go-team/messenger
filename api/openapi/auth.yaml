@@ -248,6 +248,11 @@ paths:
       tags: [Internal]
       operationId: getUserByIdInternal
       summary: Получить пользователя по ID для внутреннего сервиса
+      servers:
+        - url: http://auth:8080
+          description: >-
+            Адрес auth-сервиса во внутренней сети Compose. Внешний Nginx этот
+            маршрут не публикует.
       description: >-
         Только для внутренних сервисов, включая history. Не публиковать этот
         маршрут через внешний Nginx. Предлагаемая авторизация — отдельный
