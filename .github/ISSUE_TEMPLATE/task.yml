@@ -1,0 +1,53 @@
+name: Задача
+description: Разработка, инфраструктура, дизайн или документация
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Что делать
+      description: Опишите проблему и ожидаемый результат.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Трогает
+      description: Каталоги, компоненты или настройки, которые потребуется изменить.
+    validations:
+      required: true
+
+  - type: input
+    id: dependencies
+    attributes:
+      label: Зависимости
+      placeholder: "#2, #4 или Нет"
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Критерии приёмки
+      description: Перечислите проверяемые условия завершения задачи.
+      placeholder: "- [ ] Ожидаемый результат"
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Источник
+      description: Ссылка на требование, документ или обсуждение и нужный раздел.
+      placeholder: "docs/SPEC.md §9, FR-AUTH-1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: size
+    attributes:
+      label: Размер
+      options:
+        - "S — до 2 часов"
+        - "M — до половины рабочего дня"
+        - "L — до одного рабочего дня"
+    validations:
+      required: true

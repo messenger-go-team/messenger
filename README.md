@@ -89,6 +89,8 @@ Go-проект использует один корневой модуль и �
 [GitHub Issues](https://github.com/messenger-go-team/messenger/issues).
 Изменения готовим в отдельной ветке и отправляем pull request в `main`.
 В PR указываем связанную задачу, например `Closes #2`.
+Правила веток, ревью, squash merge и Definition of Done описаны в
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Лицензия
 
