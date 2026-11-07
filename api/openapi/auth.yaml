@@ -1,0 +1,446 @@
+openapi: 3.1.0
+info:
+  title: Messenger Auth API
+  version: 0.1.0
+  description: >-
+    Контракт auth-сервиса. Внешние операции доступны клиенту через HTTPS.
+    Внутренняя операция получения пользователя предназначена только для
+    взаимодействия сервисов во внутренней сети.
+servers:
+  - url: /
+    description: Относительно внешнего домена; маршрутизацию выполняет Nginx.
+tags:
+  - name: Auth
+    description: Регистрация, вход и управление refresh-токеном.
+  - name: Profile
+    description: Профиль текущего пользователя.
+  - name: Users
+    description: Поиск пользователей.
+  - name: Contacts
+    description: Контакты текущего пользователя.
+  - name: Internal
+    description: Внутренние вызовы сервисов; не предназначены для браузера.
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: register
+      summary: Зарегистрировать пользователя
+      description: Username уникален; допустимы латинские буквы, цифры и подчёркивание.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              username: alice_1
+              password: correct-horse-battery
+      responses:
+        '201':
+          description: Пользователь создан. Токены выдаются отдельным запросом входа.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+              example:
+                id: 8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0
+                username: alice_1
+                created_at: '2026-11-07T12:00:00Z'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Войти по username и паролю
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              username: alice_1
+              password: correct-horse-battery
+      responses:
+        '200':
+          description: Пара access и refresh токенов создана.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshTokens
+      summary: Обновить и ротировать токены
+      description: >-
+        При успехе переданный refresh-токен становится недействительным;
+        в ответе возвращается новая пара токенов.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Токены обновлены; прежний refresh-токен отозван.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Отозвать refresh-токен
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '204':
+          description: Refresh-токен отозван.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /me:
+    get:
+      tags: [Profile]
+      operationId: getMe
+      summary: Получить профиль текущего пользователя
+      security:
+        - accessToken: []
+      responses:
+        '200':
+          description: Профиль текущего пользователя.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/search:
+    get:
+      tags: [Users]
+      operationId: searchUsers
+      summary: Найти пользователей по префиксу username
+      description: Возвращает не более 20 совпадений, начиная с заданного префикса.
+      security:
+        - accessToken: []
+      parameters:
+        - name: prefix
+          in: query
+          required: true
+          description: >-
+            Начало username. Правило сравнения регистра в SPEC не задано;
+            согласовать его с фронтендом до реализации.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 32
+          example: ali
+      responses:
+        '200':
+          description: Найденные пользователи (максимум 20).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [users]
+                properties:
+                  users:
+                    type: array
+                    maxItems: 20
+                    items:
+                      $ref: '#/components/schemas/UserSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /contacts:
+    get:
+      tags: [Contacts]
+      operationId: listContacts
+      summary: Получить контакты текущего пользователя
+      security:
+        - accessToken: []
+      responses:
+        '200':
+          description: Список контактов.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [contacts]
+                properties:
+                  contacts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /contacts/{contact_id}:
+    parameters:
+      - name: contact_id
+        in: path
+        required: true
+        description: UUID пользователя, которого добавляют в контакты или удаляют.
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [Contacts]
+      operationId: addContact
+      summary: Добавить пользователя в контакты
+      description: Идемпотентная операция; повторное добавление не создаёт дубликат.
+      security:
+        - accessToken: []
+      responses:
+        '204':
+          description: Контакт добавлен или уже существовал.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags: [Contacts]
+      operationId: removeContact
+      summary: Удалить пользователя из контактов
+      description: Идемпотентная операция; отсутствие контакта не считается ошибкой.
+      security:
+        - accessToken: []
+      responses:
+        '204':
+          description: Контакт удалён или уже отсутствовал.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /internal/users/{user_id}:
+    get:
+      tags: [Internal]
+      operationId: getUserByIdInternal
+      summary: Получить пользователя по ID для внутреннего сервиса
+      description: >-
+        Только для внутренних сервисов, включая history. Не публиковать этот
+        маршрут через внешний Nginx. Предлагаемая авторизация — отдельный
+        opaque bearer-секрет из переменной окружения AUTH_INTERNAL_TOKEN;
+        конкретный способ межсервисной авторизации требует подтверждения команды.
+      security:
+        - internalServiceToken: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Публичные поля пользователя, необходимые history.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    accessToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        Access JWT, подписанный HS256. Claims: sub (UUID пользователя), iat и
+        exp; срок действия около 15 минут. Секрет HS256 хранится в окружении
+        и должен быть не короче 32 байт. Проверка выполняется общим Go-пакетом.
+    internalServiceToken:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: Предлагаемый внутренний токен сервиса; см. описание операции.
+
+  schemas:
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+          pattern: '^[A-Za-z0-9_]{3,32}$'
+          example: alice_1
+        password:
+          type: string
+          minLength: 8
+          writeOnly: true
+          format: password
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+          pattern: '^[A-Za-z0-9_]{3,32}$'
+        password:
+          type: string
+          minLength: 8
+          writeOnly: true
+          format: password
+    RefreshRequest:
+      type: object
+      additionalProperties: false
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+          minLength: 1
+          writeOnly: true
+          description: Непрозрачный refresh-токен; не JWT.
+    TokenPair:
+      type: object
+      additionalProperties: false
+      required: [token_type, access_token, expires_in, refresh_token, refresh_expires_in]
+      properties:
+        token_type:
+          type: string
+          const: Bearer
+        access_token:
+          type: string
+          description: JWT с алгоритмом подписи HS256.
+        expires_in:
+          type: integer
+          const: 900
+          description: Срок действия access-токена в секундах (около 15 минут).
+        refresh_token:
+          type: string
+          description: Непрозрачный токен; при refresh заменяется новым.
+        refresh_expires_in:
+          type: integer
+          const: 2592000
+          description: Срок действия refresh-токена в секундах (около 30 дней).
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, username, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    UserSummary:
+      type: object
+      additionalProperties: false
+      required: [id, username]
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Машиночитаемый код ошибки.
+          example: validation_error
+        message:
+          type: string
+          description: Краткое описание ошибки для человека.
+        details:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [field, reason]
+            properties:
+              field:
+                type: string
+              reason:
+                type: string
+        request_id:
+          type: string
+          description: Идентификатор запроса для поиска в логах, если доступен.
+
+  responses:
+    Unauthorized:
+      description: Отсутствующий, недействительный или истёкший токен либо неверные учётные данные.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: invalid_credentials
+            message: Неверный username или пароль.
+    Conflict:
+      description: Username уже занят.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: username_taken
+            message: Username уже занят.
+    NotFound:
+      description: Пользователь не найден.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: user_not_found
+            message: Пользователь не найден.
+    ValidationError:
+      description: Запрос не проходит проверку полей.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: validation_error
+            message: Запрос содержит некорректные поля.
+            details:
+              - field: username
+                reason: Длина 3–32 символа; допустимы латинские буквы, цифры и подчёркивание.
