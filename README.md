@@ -87,9 +87,9 @@ docker compose ps
 на `127.0.0.1:16379`. Данные PostgreSQL хранятся в именованном volume.
 Команды подключения, остановки и сброса описаны в [deploy/README.md](deploy/README.md).
 
-Сейчас запускаются PostgreSQL и Redis. Каркас Go-сервисов добавляется в
-[T06](https://github.com/messenger-go-team/messenger/issues/6), веб-клиент -
-в [T17](https://github.com/messenger-go-team/messenger/issues/17).
+Compose пока запускает PostgreSQL и Redis. Шаблон Go-сервиса собирается
+командой `make build` и запускается отдельно: [инструкция](services/_template/README.md).
+Веб-клиент добавляется в [T17](https://github.com/messenger-go-team/messenger/issues/17).
 
 Файлы `.env` и `.env.*` с локальными настройками не коммитим.
 Шаблон `.env.example` содержит только примеры.
