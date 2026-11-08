@@ -27,7 +27,10 @@ paths:
       tags: [Auth]
       operationId: register
       summary: Зарегистрировать пользователя
-      description: Username уникален; допустимы латинские буквы, цифры и подчёркивание.
+      description: >-
+        Username уникален без учёта регистра; допустимы латинские буквы, цифры
+        и подчёркивание. Создание пользователя не создаёт сессию: для получения
+        access-токена клиент вызывает /auth/login.
       requestBody:
         required: true
         content:
@@ -39,7 +42,7 @@ paths:
               password: correct-horse-battery
       responses:
         '201':
-          description: Пользователь создан. Токены выдаются отдельным запросом входа.
+          description: Пользователь создан без автоматического входа.
           content:
             application/json:
               schema:
@@ -69,11 +72,16 @@ paths:
               password: correct-horse-battery
       responses:
         '200':
-          description: Пара access и refresh токенов создана.
+          description: >-
+            Access-токен возвращён в JSON; непрозрачный refresh-токен установлен
+            только в HttpOnly cookie и недоступен JavaScript-коду браузера.
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/RefreshTokenCookie'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TokenPair'
+                $ref: '#/components/schemas/AccessTokenResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '422':
@@ -85,44 +93,35 @@ paths:
       operationId: refreshTokens
       summary: Обновить и ротировать токены
       description: >-
-        При успехе переданный refresh-токен становится недействительным;
-        в ответе возвращается новая пара токенов.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RefreshRequest'
+        Refresh-токен читается из HttpOnly cookie. При успехе прежний токен
+        становится недействительным, а сервер устанавливает новый cookie.
       responses:
         '200':
-          description: Токены обновлены; прежний refresh-токен отозван.
+          description: Access-токен обновлён; refresh-токен ротирован в cookie.
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/RefreshTokenCookie'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TokenPair'
+                $ref: '#/components/schemas/AccessTokenResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '422':
-          $ref: '#/components/responses/ValidationError'
 
   /auth/logout:
     post:
       tags: [Auth]
       operationId: logout
       summary: Отозвать refresh-токен
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RefreshRequest'
+      description: Refresh-токен читается из HttpOnly cookie.
       responses:
         '204':
-          description: Refresh-токен отозван.
+          description: Refresh-токен отозван и cookie удалён.
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/ClearedRefreshTokenCookie'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '422':
-          $ref: '#/components/responses/ValidationError'
 
   /me:
     get:
@@ -146,20 +145,22 @@ paths:
       tags: [Users]
       operationId: searchUsers
       summary: Найти пользователей по префиксу username
-      description: Возвращает не более 20 совпадений, начиная с заданного префикса.
+      description: >-
+        Возвращает не более 20 совпадений, начиная с заданного префикса.
+        Сравнение регистронезависимое; в ответе сохраняется исходное написание
+        username.
       security:
         - accessToken: []
       parameters:
         - name: prefix
           in: query
           required: true
-          description: >-
-            Начало username. Правило сравнения регистра в SPEC не задано;
-            согласовать его с фронтендом до реализации.
+          description: Начало username; сравнение регистронезависимое.
           schema:
             type: string
             minLength: 1
             maxLength: 32
+            pattern: '^[A-Za-z0-9_]{1,32}$'
           example: ali
       responses:
         '200':
@@ -306,6 +307,9 @@ components:
           minLength: 3
           maxLength: 32
           pattern: '^[A-Za-z0-9_]{3,32}$'
+          description: >-
+            Уникален без учёта регистра. В ответах сохраняется написание,
+            переданное при регистрации.
           example: alice_1
         password:
           type: string
@@ -322,25 +326,16 @@ components:
           minLength: 3
           maxLength: 32
           pattern: '^[A-Za-z0-9_]{3,32}$'
+          description: Сравнивается без учёта регистра.
         password:
           type: string
           minLength: 8
           writeOnly: true
           format: password
-    RefreshRequest:
+    AccessTokenResponse:
       type: object
       additionalProperties: false
-      required: [refresh_token]
-      properties:
-        refresh_token:
-          type: string
-          minLength: 1
-          writeOnly: true
-          description: Непрозрачный refresh-токен; не JWT.
-    TokenPair:
-      type: object
-      additionalProperties: false
-      required: [token_type, access_token, expires_in, refresh_token, refresh_expires_in]
+      required: [token_type, access_token, expires_in]
       properties:
         token_type:
           type: string
@@ -352,13 +347,6 @@ components:
           type: integer
           const: 900
           description: Срок действия access-токена в секундах (около 15 минут).
-        refresh_token:
-          type: string
-          description: Непрозрачный токен; при refresh заменяется новым.
-        refresh_expires_in:
-          type: integer
-          const: 2592000
-          description: Срок действия refresh-токена в секундах (около 30 дней).
     User:
       type: object
       additionalProperties: false
@@ -408,6 +396,20 @@ components:
         request_id:
           type: string
           description: Идентификатор запроса для поиска в логах, если доступен.
+
+  headers:
+    RefreshTokenCookie:
+      description: >-
+        Непрозрачный refresh-токен с временем жизни около 30 дней. Браузер
+        отправляет cookie только на /auth; JavaScript-код не может его прочитать.
+      schema:
+        type: string
+        example: refresh_token=opaque-value; Max-Age=2592000; Path=/auth; HttpOnly; Secure; SameSite=Lax
+    ClearedRefreshTokenCookie:
+      description: Удаляет refresh cookie в браузере.
+      schema:
+        type: string
+        example: refresh_token=; Max-Age=0; Path=/auth; HttpOnly; Secure; SameSite=Lax
 
   responses:
     Unauthorized:
