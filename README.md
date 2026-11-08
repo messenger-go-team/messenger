@@ -60,22 +60,39 @@ git clone https://github.com/messenger-go-team/messenger.git
 cd messenger
 ```
 
-Сейчас в репозитории подготовлены документация и структура каталогов.
-Исполняемые сервисы, веб-клиент и Compose-конфигурация ещё не добавлены,
-поэтому запустить приложение пока нельзя.
+Для локального окружения нужны запущенный Docker Engine или Docker Desktop
+и Docker Compose 2.20.3+.
 
-Локальное окружение с PostgreSQL и Redis появится в
-[T05](https://github.com/messenger-go-team/messenger/issues/5),
-каркас Go-сервиса - в
-[T06](https://github.com/messenger-go-team/messenger/issues/6),
-а веб-клиент - в
-[T17](https://github.com/messenger-go-team/messenger/issues/17).
-Команды запуска и необходимые версии инструментов добавляются вместе
-с соответствующей реализацией. Цель по SPEC - запуск окружения одной
-командой `docker compose up`.
+При первом запуске создайте локальные настройки:
+
+```bash
+cp .env.example .env
+```
+
+Задайте в `.env` собственные локальные пароли PostgreSQL и Redis.
+Затем запускайте окружение из корня репозитория:
+
+```bash
+docker compose up
+```
+
+Для запуска в фоне и проверки готовности:
+
+```bash
+docker compose up -d --wait
+docker compose ps
+```
+
+По умолчанию PostgreSQL доступен на `127.0.0.1:15432`, Redis -
+на `127.0.0.1:16379`. Данные PostgreSQL хранятся в именованном volume.
+Команды подключения, остановки и сброса описаны в [deploy/README.md](deploy/README.md).
+
+Сейчас запускаются PostgreSQL и Redis. Каркас Go-сервисов добавляется в
+[T06](https://github.com/messenger-go-team/messenger/issues/6), веб-клиент -
+в [T17](https://github.com/messenger-go-team/messenger/issues/17).
 
 Файлы `.env` и `.env.*` с локальными настройками не коммитим.
-Шаблон `.env.example` можно хранить в репозитории с безопасными примерами.
+Шаблон `.env.example` содержит только примеры.
 
 ## Проверки Go
 
@@ -91,6 +108,7 @@ Go-проект использует один корневой модуль и �
 В PR указываем связанную задачу, например `Closes #2`.
 Правила веток, ревью, squash merge и Definition of Done описаны в
 [CONTRIBUTING.md](CONTRIBUTING.md).
+Состав команды и распределение ревью - в [docs/team.md](docs/team.md).
 
 ## Лицензия
 
