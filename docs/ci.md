@@ -51,11 +51,16 @@ Internal/metrics проверяется через обычный ./...: тес�
 Workflow .github/workflows/ci.yml запускается на каждый PR в main и push в main,
 без фильтрации путей. Setup Go читает версию из go.mod, actions закреплены по SHA.
 
-Два задания выполняются параллельно:
+Три задания выполняются параллельно:
 
 - **Go lint**: официальный golangci-lint action с v2.15.0 и аргументами
   ./... ./services/_template.
 - **Go test**: make test, включая race detector и явную проверку шаблона.
+- **Migration integration**: отдельный PostgreSQL 18 и тесты
+  `go test ./cmd/migrate -run TestMigrationsIntegration -count=1 -v`.
+  Тесты создают и удаляют собственные БД, проверяют применение, откат,
+  повторное применение и ограничения схемы. Для локального запуска нужен
+  `MIGRATE_TEST_DATABASE_URL`, подробнее в [services/README.md](../services/README.md#интеграционные-проверки-миграций).
 
 Timeout каждого задания - 5 минут. Кеш учитывает go.mod и go.sum.
 Новый push в ту же ветку PR отменяет устаревший прогон.
