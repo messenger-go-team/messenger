@@ -83,10 +83,50 @@ Access log содержит request_id, method, path и duration_ms. Загол�
 и body туда не записываются. Не добавляйте в прикладные логи пароли и токены.
 Стартовые/служебные записи вне HTTP-запроса не имеют request_id.
 
-Middleware передаёт исходный ResponseWriter, сохраняя возможность Upgrade
+RequestLogging передаёт writer в recovery с сохранением возможностей Upgrade
 для будущего chat. Корреляция исходящих REST/gRPC-вызовов добавляется в задачах
 соответствующих клиентов.
 
+
+## Panic recovery
+
+Стек обработчиков: requestLogging -> recoverPanic -> mux.
+Логгер с service/request_id создаётся до recovery. Последний запоминает
+X-Request-ID до вызова handler, поэтому JSON 500 и диагностическая запись
+используют один ID даже если handler успел изменить заголовок.
+
+При panic до начала ответа возвращается HTTP 500, application/json и
+совместимый с auth ApiError:
+
+~~~json
+{"code":"internal_error","message":"Внутренняя ошибка сервера.","request_id":"local-check-1"}
+~~~
+
+Подготовленные handler заголовки представления/фрейминга (например,
+Content-Length и Content-Encoding) удаляются перед этим JSON.
+Текст panic и stack trace остаются в серверной записи panic recovered,
+клиент их не получает.
+
+После финального WriteHeader, Write или Flush ответ уже нельзя заменить.
+Recovery логирует ошибку и передаёт http.ErrAbortHandler серверу для прерывания
+ответа, не дописывая JSON. Информационный 103 допускает последующий финальный
+500; 101 Switching Protocols считается началом ответа.
+
+При неожиданной panic после успешного Hijack recovery самостоятельно закрывает
+захваченное соединение: net/http им больше не владеет. Успешный Upgrade без
+panic оставляет соединение у handler. Сам http.ErrAbortHandler передаётся
+без дополнительного error-log/JSON, сохраняя стандартную семантику; владельцу
+hijacked-соединения в этом случае по-прежнему нужно управлять его закрытием.
+
+Обёртка отслеживает прямые Flusher/Hijacker и вызовы через ResponseController,
+включая прозрачные обёртки с Unwrap. Она не объявляет эти интерфейсы, если
+они недоступны. Остальные операции ResponseController делегируются через Unwrap.
+Не обходите tracking-обёртку прямой записью в нижележащий writer.
+
+Recovery работает в той же горутине, где вызывается ServeHTTP. Panic в отдельно
+запущенных горутинах и управление всем жизненным циклом WS в него не входят.
+В production-маршрутах нет специального endpoint для вызова panic; сценарии
+проверяются тестовыми handlers.
 ## Создание сервиса копированием
 
 Пример для auth, выполнять из корня только если services/auth ещё отсутствует:
@@ -126,3 +166,4 @@ make lint GOLANGCI_LINT=golangci-lint
 не подходит для проекта на Go 1.27.3. CI использует бинарник той же версии.
 Тесты покрывают конфиг, health/readiness, JSON-логи и request_id, занятой порт,
 завершение активного запроса и принудительное закрытие по deadline.
+Дополнительно проверяются JSON 500 и продолжение работы после panic, обрыв начатого ответа, ErrAbortHandler, прямые/ResponseController Flush и Hijack, закрытие соединения при panic после Hijack и сохранение успешного Upgrade.

@@ -39,6 +39,8 @@ make lint GOLANGCI_LINT=golangci-lint
 
 Шаблон содержит тесты конфигурации, health/readiness, JSON-логов и request_id,
 ошибки bind, завершения активного HTTP-запроса и shutdown deadline.
+Recovery проверяется на JSON 500, обрыв частичного ответа, ErrAbortHandler,
+Flush/Hijack через обычные интерфейсы и ResponseController и успешный Upgrade.
 Корневой doc.go остаётся документационным пакетом без собственных тестов.
 
 ## CI
