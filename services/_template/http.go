@@ -44,7 +44,7 @@ func requestLogging(logger *slog.Logger, next http.Handler) http.Handler {
 				"method", r.Method, "path", r.URL.Path,
 				"duration_ms", time.Since(start).Milliseconds())
 		}()
-		// Keep the original ResponseWriter, including support for future upgrades.
+		// Recovery tracks the response while preserving Flush and Hijack support.
 		next.ServeHTTP(w, r)
 	})
 }
@@ -61,7 +61,7 @@ func newHandler(ready *atomic.Bool, logger *slog.Logger) http.Handler {
 		}
 		writeHealth(w, r, http.StatusOK, "{\"status\":\"ready\"}\n")
 	})
-	return requestLogging(logger, mux)
+	return requestLogging(logger, recoverPanic(mux))
 }
 
 func writeHealth(w http.ResponseWriter, r *http.Request, status int, body string) {
