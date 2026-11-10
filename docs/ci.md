@@ -59,9 +59,32 @@ Timeout каждого задания - 5 минут. Кеш учитывает 
 Проверка сборки выбранного исполняемого сервиса выполняется локально через make build;
 Go test в CI также компилирует проверяемые пакеты.
 
+## Frontend CI
+
+Workflow `.github/workflows/frontend-ci.yml` запускается при каждом
+pull request в `main` и при push в `main`, без фильтрации путей.
+
+Задание **Frontend checks** выполняется на Ubuntu с Node.js 22.
+Зависимости устанавливаются через `npm ci` из `web/package-lock.json`.
+
+Проверки выполняются последовательно из каталога `web`:
+
+- `npm run format:check` — проверка форматирования Prettier.
+- `npm run lint` — проверка кода ESLint.
+- `npm run typecheck` — проверка типов TypeScript.
+- `npm run test` — запуск тестов Vitest.
+- `npm run build` — проверка production-сборки.
+
+Если любая команда завершается с ошибкой, задание Frontend checks
+не проходит. Новый push в ту же ветку PR отменяет устаревший запуск.
+
+**Frontend checks** — обязательная проверка для слияния в `main`
+наряду с **Go lint** и **Go test**.
+Требование обеспечивается настройками GitHub ruleset.
+
 ## Обязательные проверки перед merge
 
-Правила main требуют **Go lint** и **Go test** от GitHub Actions,
+Правила main требуют **Go lint**, **Go test** и **Frontend checks** от GitHub Actions,
 актуальную ветку и закрытые обсуждения. Настройки описаны в
 [repository-rules.md](repository-rules.md).
 Сам workflow запускает проверки; запрет merge задаётся ruleset.
