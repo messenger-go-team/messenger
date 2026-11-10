@@ -57,7 +57,7 @@
 - FR-CHAT-6: порядок сообщений внутри чата определяется монотонным номером seq, который назначает сервер.
 - FR-CHAT-7: офлайн-получатель увидит сообщение в истории при следующем входе.
 - FR-CHAT-8 (этап 6, после показа): групповые чаты: создание, добавление и удаление участников, выход из группы.
-- FR-CHAT-9 (этап 2): статусы delivered и read в личных чатах (по последнему доставленному и последнему прочитанному seq).
+- FR-CHAT-9 (этап 2): статусы delivered и read в личных чатах, видимые собеседнику (по последнему доставленному и последнему прочитанному seq). Приватное обновление своего last_read_seq в MVP определено в FR-HIST-5.
 - FR-CHAT-10 (этап 2): presence и индикатор набора текста.
 - FR-CHAT-11 (этап 6, после показа): статусы delivered и read в групповых чатах.
 - FR-CHAT-12 (этап 1): модель универсальная с первого дня: личный чат это чат с двумя участниками, права и рассылка событий определяются по chat\_members, а не по схеме «отправитель и получатель».
@@ -68,6 +68,7 @@
 - FR-HIST-2: история чата с курсорной пагинацией (before\_seq, after\_seq, limit до 100).
 - FR-HIST-3: читать историю и писать в чат могут только его участники, иначе 403.
 - FR-HIST-4 (этап 4): поиск по сообщениям своих чатов.
+- FR-HIST-5: текущий участник после показа сообщений в активном чате обновляет свой last_read_seq через REST. Курсор только увеличивается, seq выше last_seq чата отклоняется, повтор безопасен. Обычный GET истории курсор не меняет, уведомление собеседнику остаётся частью FR-CHAT-9 этапа 2.
 
 ### Веб-клиент (web)
 
@@ -145,7 +146,7 @@ Redis       pub/sub между инстансами chat, presence
 - refresh\_tokens: id, user\_id, token\_hash, expires\_at, revoked\_at.
 - contacts: user\_id, contact\_id, created\_at.
 - chats: id, type (personal или group), title, created\_at, last\_seq.
-- chat\_members: chat\_id, user\_id, role (owner или member), joined\_at, last\_delivered\_seq, last\_read\_seq.
+- chat\_members: chat\_id, user\_id, role (owner или member), joined\_at, last\_delivered\_seq, last\_read\_seq. В MVP last\_read\_seq обновляет только сам участник через REST после показа сообщений; это не рассылает статус собеседнику.
 - messages: id, chat\_id, seq, sender\_id, client\_msg\_id, body, created\_at. Уникальны пары (chat\_id, seq) и (chat\_id, sender\_id, client\_msg\_id). Индекс под выборку истории: (chat\_id, seq desc).
 
 Точная схема и миграции делаются в задачах этапа 0.
