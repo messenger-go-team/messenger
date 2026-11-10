@@ -114,12 +114,14 @@ paths:
         Читать историю может только участник чата; для не участника возвращается
         403. Результаты всегда идут по seq по возрастанию. Без курсора возвращается
         последняя страница. before_seq возвращает сообщения с seq строго меньше
-        курсора; after_seq — сообщения с seq строго больше. Передать оба курсора
+        курсора; after_seq возвращает сообщения с seq строго больше и начинает
+        страницу с самого раннего ещё не загруженного сообщения. Передать оба курсора
         одновременно нельзя. В ответе курсоры next_before_seq и next_after_seq
         равны seq первого и последнего сообщения страницы соответственно;
         если сообщений нет, оба значения null. has_more_after описывает
         состояние на момент формирования ответа: сообщения, сохранённые позже,
-        приходят через WebSocket или следующий запрос history.
+        приходят через WebSocket или следующий запрос history. GET истории не
+        меняет last_read_seq.
       security:
         - accessToken: []
       parameters:
@@ -179,6 +181,48 @@ paths:
                 next_after_seq: 12
                 has_more_before: true
                 has_more_after: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /chats/{chat_id}/read:
+    post:
+      tags: [Chats]
+      operationId: markChatRead
+      summary: Продвинуть собственный курсор прочтения
+      description: >-
+        Обновляет last_read_seq текущего участника после показа сообщений в
+        активном чате. Пользователь определяется по access JWT, право
+        проверяется по участию в чате. Курсор только увеличивается, поэтому
+        повторный запрос безопасен. Значение seq не может быть больше last_seq
+        чата. Операция не рассылает событие собеседнику: message.read остаётся
+        функцией этапа 2.
+      security:
+        - accessToken: []
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          description: UUID чата.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkChatReadRequest'
+            example:
+              seq: 12
+      responses:
+        '204':
+          description: Курсор обновлён или уже не меньше переданного seq.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -303,6 +347,17 @@ components:
           minimum: 0
           maximum: 9007199254740991
           description: Число сообщений других участников после last_read_seq текущего пользователя.
+    MarkChatReadRequest:
+      type: object
+      additionalProperties: false
+      required: [seq]
+      properties:
+        seq:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+          description: Последний показанный пользователю seq в активном чате.
     MessagePage:
       type: object
       additionalProperties: false
