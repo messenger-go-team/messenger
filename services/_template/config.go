@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/messenger-go-team/messenger/pkg/jwtauth"
 )
 
 type config struct {
@@ -14,6 +16,7 @@ type config struct {
 	HTTPAddr        string
 	LogLevel        slog.Level
 	ShutdownTimeout time.Duration
+	JWTVerifier     *jwtauth.Verifier
 }
 
 func loadConfig(lookup func(string) (string, bool)) (config, error) {
@@ -48,6 +51,10 @@ func loadConfig(lookup func(string) (string, bool)) (config, error) {
 	}
 	if cfg.ShutdownTimeout <= 0 {
 		return config{}, fmt.Errorf("SHUTDOWN_TIMEOUT must be positive")
+	}
+	cfg.JWTVerifier, err = jwtauth.New(value(jwtauth.SecretEnv, ""))
+	if err != nil {
+		return config{}, err
 	}
 	return cfg, nil
 }
