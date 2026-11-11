@@ -76,7 +76,14 @@ ASCII-имён не должны зависеть от locale базы данн�
 текущего владельца. Удаление отсутствующей пары, включая свой ID, безопасно
 и возвращает 204; попытку PUT самого себя auth отклоняет с 422 до вставки.
 Удаление контакта не затрагивает таблицы history. Детали экрана и сортировки
-согласуются отдельно в [#68](https://github.com/messenger-go-team/messenger/issues/68).
+согласованы в [#68](https://github.com/messenger-go-team/messenger/issues/68)
+и закреплены в SPEC и auth OpenAPI через
+[PR #72](https://github.com/messenger-go-team/messenger/pull/72).
+
+`GET /contacts` выбирает контакты текущего владельца и сортирует их по
+`username_normalized COLLATE "C" ASC` добавленного пользователя.
+В ответе возвращается исходное написание `username`. Это соответствует
+сортировке по возрастанию ASCII lower-case username в действующем контракте.
 
 ## Таблицы history
 
