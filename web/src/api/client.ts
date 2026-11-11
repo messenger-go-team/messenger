@@ -1,5 +1,6 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 
+/** Типизированная ошибка HTTP API с сохранением статуса и машинного кода backend. */
 export class ApiError extends Error {
   readonly status: number
   readonly code: string
@@ -13,6 +14,11 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Выполняет запрос к настроенному API и преобразует контрактную ошибку в `ApiError`.
+ * `credentials: include` нужен для HttpOnly refresh cookie и намеренно имеет приоритет над options.
+ * Для успешного 204 возвращает `undefined`; generic `T` описывает ожидаемую схему, но не валидирует JSON runtime.
+ */
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
@@ -21,6 +27,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   })
 
   if (!response.ok) {
+    // Ошибка может прийти без JSON (например, от proxy), поэтому сохраняем безопасный fallback.
     const errorBody: unknown = await response.json().catch(() => null)
 
     if (

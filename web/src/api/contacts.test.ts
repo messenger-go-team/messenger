@@ -3,10 +3,12 @@ import { addContact, getContacts, login, register, removeContact } from './auth'
 
 const aliceId = '00000000-0000-4000-8000-000000000001'
 
+/** Получает access token стандартного fixture-пользователя для contact-сценариев. */
 async function token() {
   return (await login({ username: 'alice_1', password: 'correct-horse-battery' })).access_token
 }
 
+/** Вызывает handler напрямую, чтобы дополнительно проверить статус и пустое тело 204. */
 async function deleteContact(contactId: string, accessToken: string) {
   return fetch(`/contacts/${contactId}`, {
     method: 'DELETE',
@@ -14,6 +16,7 @@ async function deleteContact(contactId: string, accessToken: string) {
   })
 }
 
+// Удаление контакта идемпотентно: существование связи не раскрывается через HTTP status.
 it('deletes an existing contact with an empty 204 response', async () => {
   const access = await token()
   await addContact(aliceId, access)
@@ -52,6 +55,7 @@ it('rejects invalid UUID', async () => {
   await expect(removeContact('invalid', await token())).rejects.toMatchObject({ status: 422 })
 })
 
+// Владельцем операции является `sub` JWT; изменение одного набора не затрагивает другой.
 it('isolates deletion by authenticated owner', async () => {
   const alice = await token()
   await register({ username: 'bob_1', password: 'test-password' })

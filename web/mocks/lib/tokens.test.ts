@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createAccessToken, verifyAccessToken } from './tokens'
 
+// JWT tests проверяют happy path и отказ при нарушении структуры или подписи token.
 describe('Mock JWT tokens', () => {
   it('creates a valid access token', async () => {
     const userId = '00000000-0000-4000-8000-000000000001'

@@ -16,6 +16,7 @@ import { http, HttpResponse } from 'msw'
 import { server } from '../../mocks/server'
 
 describe('Auth API', () => {
+  // Login проверяется как публичный client-контракт и как источник криптографически валидного JWT.
   it('returns an access token for valid credentials', async () => {
     const response = await login({
       username: 'alice_1',
@@ -68,6 +69,7 @@ describe('Auth API', () => {
     ).rejects.toBeInstanceOf(ApiError)
   })
 
+  // Registration не должна возвращать password или автоматически создавать login session.
   it('registers a new user without exposing the password', async () => {
     const user = await register({
       username: 'Dima_26',
@@ -127,6 +129,7 @@ describe('Auth API', () => {
     expect(response.access_token).toEqual(expect.any(String))
   })
 
+  // `/me` связывает `sub` JWT с актуальной записью пользователя и выдаёт только public profile.
   it('returns the current user for a valid access token', async () => {
     const { access_token } = await login({
       username: 'alice_1',
@@ -157,6 +160,7 @@ describe('Auth API', () => {
     })
   })
 
+  // Refresh rotation одноразово потребляет старый token и выпускает новую session cookie.
   it('rejects a reused refresh token', async () => {
     const refreshToken = createRefreshSession('00000000-0000-4000-8000-000000000001')
 
@@ -255,6 +259,7 @@ describe('Auth API', () => {
     })
   })
 
+  // Logout одновременно отзывает серверную session и очищает HttpOnly cookie в ответе.
   it('logs out and clears the refresh cookie', async () => {
     const refreshToken = createRefreshSession('00000000-0000-4000-8000-000000000001')
 
@@ -320,6 +325,7 @@ describe('Auth API', () => {
     })
   })
 
+  // Временные MSW handlers изолированно проверяют thin client для ответов без cookie-эмуляции jsdom.
   it('requests a new access token using the refresh endpoint', async () => {
     server.use(
       http.post('/auth/refresh', () => {
@@ -352,6 +358,7 @@ describe('Auth API', () => {
     expect(result).toBeUndefined()
   })
 
+  // User search проверяет case-insensitive prefix, ограничения формата и максимум 20 результатов.
   it('searches users by prefix regardless of case', async () => {
     const { access_token } = await login({
       username: 'alice_1',
@@ -422,6 +429,7 @@ describe('Auth API', () => {
     expect(result.users.every((user) => user.username.startsWith('testuser_'))).toBe(true)
   })
 
+  // Contact API проверяет изолированный список владельца и идемпотентное добавление.
   it('returns an empty contacts list for a new user', async () => {
     const { access_token } = await login({
       username: 'alice_1',
@@ -511,6 +519,7 @@ describe('Auth API', () => {
   })
 })
 
+// Дополнительные свойства отклоняются из-за `additionalProperties: false` в OpenAPI.
 it('rejects additional login properties per OpenAPI', async () => {
   const response = await fetch('/auth/login', {
     method: 'POST',

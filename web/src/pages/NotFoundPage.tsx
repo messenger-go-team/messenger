@@ -1,3 +1,4 @@
+/** Fallback-страница для маршрутов, отсутствующих в `AppRouter`. */
 export function NotFoundPage() {
   return (
     <main className="flex min-h-screen items-center justify-center">

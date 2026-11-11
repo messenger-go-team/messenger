@@ -5,6 +5,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+// HttpOnly refresh cookie должна отправляться независимо от переданного RequestInit.
 it('always includes credentials in API requests', async () => {
   const fetchSpy = vi
     .spyOn(globalThis, 'fetch')
@@ -24,6 +25,7 @@ it('always includes credentials in API requests', async () => {
   )
 })
 
+// Headers конструируется стандартным API, поэтому поддерживаются все варианты HeadersInit.
 it.each<HeadersInit>([
   { Authorization: 'Bearer test' },
   new Headers({ Authorization: 'Bearer test' }),
@@ -34,6 +36,7 @@ it.each<HeadersInit>([
   expect(new Headers(spy.mock.calls[0]?.[1]?.headers).get('Authorization')).toBe('Bearer test')
 })
 
+// Не контрактный ответ proxy всё равно преобразуется в предсказуемый ApiError.
 it('reports non-JSON API errors', async () => {
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('Unavailable', { status: 503 }))
   await expect(apiRequest('/me')).rejects.toMatchObject({ status: 503, code: 'unknown_error' })

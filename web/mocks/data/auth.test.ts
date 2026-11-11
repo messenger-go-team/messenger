@@ -13,6 +13,7 @@ import {
 
 const USER_ID = '00000000-0000-4000-8000-000000000001'
 
+// Refresh tests фиксируют одноразовость token и обязательную очистку session state.
 describe('Mock refresh sessions', () => {
   afterEach(() => {
     resetAuthData()
@@ -64,11 +65,13 @@ describe('Mock refresh sessions', () => {
     ])
   })
 })
+
+// Contact store должен быть идемпотентным и изолировать наборы разных владельцев.
 describe('Contacts storage', () => {
   const aliceId = '00000000-0000-4000-8000-000000000001'
 
   const bob = {
-    id: '00000000-0000-4000-8000-000000000002',
+    id: '00000000-0000-4000-8000-000000000010',
     username: 'bob_1',
     password: 'test-password',
     created_at: '2026-11-01T10:00:00Z',

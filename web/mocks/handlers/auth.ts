@@ -13,6 +13,7 @@ import {
 } from '../data/auth'
 import { createAccessToken, verifyAccessToken } from '../lib/tokens'
 
+/** Извлекает refresh token из Cookie header, сохраняя символы `=` внутри значения. */
 function getRefreshToken(cookieHeader: string | null): string | null {
   if (!cookieHeader) {
     return null
@@ -31,8 +32,12 @@ function getRefreshToken(cookieHeader: string | null): string | null {
   return null
 }
 
+/**
+ * MSW handlers для Auth, поиска пользователей и контактов.
+ * Они повторяют HTTP-контракт, а mutable state и операции над ним находятся в `mocks/data/auth`.
+ */
 export const authHandlers = [
-  // POST /auth/register
+  // Регистрация валидирует exact object, чтобы дополнительные поля не расходились с OpenAPI.
   http.post('/auth/register', async ({ request }) => {
     let body: unknown
 
@@ -89,7 +94,7 @@ export const authHandlers = [
     )
   }),
 
-  // POST /auth/login
+  // Login выдаёт короткоживущий JWT, а refresh token оставляет в защищённой cookie.
   http.post('/auth/login', async ({ request }) => {
     let body: unknown
 
@@ -156,7 +161,7 @@ export const authHandlers = [
     )
   }),
 
-  // POST /auth/refresh
+  // Refresh-сессия одноразовая: consume удаляет старую запись до выпуска новой пары token.
   http.post('/auth/refresh', async ({ request }) => {
     const refreshToken = getRefreshToken(request.headers.get('cookie'))
 
@@ -233,7 +238,7 @@ export const authHandlers = [
     })
   }),
 
-  // GET /me
+  // `/me` дополнительно проверяет, что `sub` JWT всё ещё существует в mock user store.
   http.get('/me', async ({ request }) => {
     const authorization = request.headers.get('Authorization')
 
@@ -408,6 +413,7 @@ export const authHandlers = [
       )
     }
 
+    // Владельцем набора всегда является пользователь из JWT, а не параметр запроса.
     addContact(userId, contactId)
 
     return new HttpResponse(null, { status: 204 })
@@ -453,6 +459,7 @@ export const authHandlers = [
       )
     }
 
+    // Удаление отсутствующей записи остаётся идемпотентным и возвращает тот же 204.
     removeContact(userId, contactId)
 
     return new HttpResponse(null, { status: 204 })

@@ -1,4 +1,5 @@
 import { setupServer } from 'msw/node'
-import { authHandlers } from './handlers/auth'
+import { handlers } from './handlers'
 
-export const server = setupServer(...authHandlers)
+/** Node MSW server для Vitest, использующий те же handlers, что и browser worker. */
+export const server = setupServer(...handlers)

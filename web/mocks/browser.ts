@@ -1,4 +1,5 @@
 import { setupWorker } from 'msw/browser'
-import { authHandlers } from './handlers/auth'
+import { handlers } from './handlers'
 
-export const worker = setupWorker(...authHandlers)
+/** Browser MSW worker; запускается только при `VITE_API_MOCK=true`. */
+export const worker = setupWorker(...handlers)
