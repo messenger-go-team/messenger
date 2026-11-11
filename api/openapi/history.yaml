@@ -1,0 +1,439 @@
+openapi: 3.1.0
+info:
+  title: Messenger History API
+  version: 0.1.0
+  description: >-
+    Контракт history-сервиса для личных чатов и истории сообщений.
+    Пользователь определяется по access JWT; права на чат проверяются
+    по участию пользователя в chat_members.
+servers:
+  - url: /
+    description: Относительно внешнего домена; маршрутизацию выполняет Nginx.
+tags:
+  - name: Chats
+    description: Создание личного чата и список чатов текущего пользователя.
+  - name: Messages
+    description: История сообщений с курсорной пагинацией.
+
+paths:
+  /chats/personal:
+    post:
+      tags: [Chats]
+      operationId: createPersonalChat
+      summary: Создать личный чат или получить существующий
+      description: >-
+        Текущий пользователь определяется из access JWT. Между двумя
+        пользователями существует не более одного личного чата. Если чат
+        уже есть, возвращается он же со статусом 200; иначе создаётся новый
+        чат со статусом 201.
+      security:
+        - accessToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePersonalChatRequest'
+            example:
+              user_id: 8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0
+      responses:
+        '200':
+          description: Личный чат между пользователями уже существовал.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Chat'
+        '201':
+          description: Личный чат создан.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Chat'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /chats:
+    get:
+      tags: [Chats]
+      operationId: listChats
+      summary: Получить список чатов текущего пользователя
+      description: >-
+        Возвращает только чаты, в которых текущий пользователь состоит
+        участником. unread_count — число сообщений других участников после
+        последнего прочитанного seq текущего пользователя. Чаты сортируются
+        по времени последнего сообщения по убыванию; чаты без сообщений идут
+        после чатов с сообщениями. При одинаковом времени порядок фиксируется
+        по UUID чата по возрастанию.
+      security:
+        - accessToken: []
+      responses:
+        '200':
+          description: Список чатов пользователя.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [chats]
+                properties:
+                  chats:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChatListItem'
+              example:
+                chats:
+                  - id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
+                    type: personal
+                    created_at: '2026-11-07T11:00:00Z'
+                    members:
+                      - id: 23968cc7-c30c-47b0-a741-6b81249aa5e7
+                        username: alice_1
+                      - id: 8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0
+                        username: bob_2
+                    last_message:
+                      id: 6df63854-0a0a-43cb-b4d4-2fbc97ed7eb3
+                      chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
+                      seq: 12
+                      sender_id: 8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0
+                      body: Привет!
+                      created_at: '2026-11-07T12:00:00Z'
+                    unread_count: 1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /chats/{chat_id}/messages:
+    get:
+      tags: [Messages]
+      operationId: getMessageHistory
+      summary: Получить историю сообщений чата
+      description: >-
+        Читать историю может только участник чата; для не участника возвращается
+        403. Результаты всегда идут по seq по возрастанию. Без курсора возвращается
+        последняя страница. before_seq возвращает сообщения с seq строго меньше
+        курсора; after_seq возвращает сообщения с seq строго больше и начинает
+        страницу с самого раннего ещё не загруженного сообщения. Передать оба курсора
+        одновременно нельзя. В ответе курсоры next_before_seq и next_after_seq
+        равны seq первого и последнего сообщения страницы соответственно;
+        если сообщений нет, оба значения null. has_more_after описывает
+        состояние на момент формирования ответа: сообщения, сохранённые позже,
+        приходят через WebSocket или следующий запрос history. GET истории не
+        меняет last_read_seq.
+      security:
+        - accessToken: []
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          description: UUID чата.
+          schema:
+            type: string
+            format: uuid
+        - name: before_seq
+          in: query
+          required: false
+          description: Вернуть более старые сообщения (seq строго меньше значения).
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 9007199254740991
+          example: 100
+        - name: after_seq
+          in: query
+          required: false
+          description: Вернуть более новые сообщения (seq строго больше значения).
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            maximum: 9007199254740991
+          example: 0
+        - name: limit
+          in: query
+          required: false
+          description: Количество сообщений на странице; по умолчанию 50.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          example: 50
+      responses:
+        '200':
+          description: Страница истории чата.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagePage'
+              example:
+                messages:
+                  - id: 6df63854-0a0a-43cb-b4d4-2fbc97ed7eb3
+                    chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
+                    seq: 12
+                    sender_id: 8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0
+                    body: Привет!
+                    created_at: '2026-11-07T12:00:00Z'
+                next_before_seq: 12
+                next_after_seq: 12
+                has_more_before: true
+                has_more_after: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /chats/{chat_id}/read:
+    post:
+      tags: [Chats]
+      operationId: markChatRead
+      summary: Продвинуть собственный курсор прочтения
+      description: >-
+        Обновляет last_read_seq текущего участника после показа сообщений в
+        активном чате. Пользователь определяется по access JWT, право
+        проверяется по участию в чате. Курсор только увеличивается, поэтому
+        повторный запрос безопасен. Значение seq не может быть больше last_seq
+        чата. Операция не рассылает событие собеседнику: message.read остаётся
+        функцией этапа 2.
+      security:
+        - accessToken: []
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          description: UUID чата.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkChatReadRequest'
+            example:
+              seq: 12
+      responses:
+        '204':
+          description: Курсор обновлён или уже не меньше переданного seq.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+components:
+  securitySchemes:
+    accessToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        Access JWT с подписью HS256; claims sub (UUID пользователя), iat и exp;
+        срок действия около 15 минут. Проверка выполняется общим Go-пакетом.
+
+  schemas:
+    CreatePersonalChatRequest:
+      type: object
+      additionalProperties: false
+      required: [user_id]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: >-
+            ID второго пользователя из auth-сервиса. Не может совпадать с ID
+            текущего пользователя.
+    UserSummary:
+      type: object
+      additionalProperties: false
+      required: [id, username]
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+    Message:
+      type: object
+      additionalProperties: false
+      required: [id, chat_id, seq, sender_id, body, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        chat_id:
+          type: string
+          format: uuid
+        seq:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+          description: >-
+            Монотонный номер сообщения внутри чата. Ограничен
+            Number.MAX_SAFE_INTEGER для безопасной обработки в JavaScript.
+        sender_id:
+          type: string
+          format: uuid
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        created_at:
+          type: string
+          format: date-time
+    Chat:
+      type: object
+      additionalProperties: false
+      required: [id, type, created_at, members, last_seq]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          const: personal
+        created_at:
+          type: string
+          format: date-time
+        members:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/UserSummary'
+        last_seq:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+    ChatListItem:
+      type: object
+      additionalProperties: false
+      required: [id, type, created_at, members, last_message, unread_count]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          const: personal
+        created_at:
+          type: string
+          format: date-time
+        members:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/UserSummary'
+        last_message:
+          oneOf:
+            - $ref: '#/components/schemas/Message'
+            - type: 'null'
+        unread_count:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+          description: Число сообщений других участников после last_read_seq текущего пользователя.
+    MarkChatReadRequest:
+      type: object
+      additionalProperties: false
+      required: [seq]
+      properties:
+        seq:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+          description: Последний показанный пользователю seq в активном чате.
+    MessagePage:
+      type: object
+      additionalProperties: false
+      required: [messages, next_before_seq, next_after_seq, has_more_before, has_more_after]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+        next_before_seq:
+          type:
+            - integer
+            - 'null'
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        next_after_seq:
+          type:
+            - integer
+            - 'null'
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        has_more_before:
+          type: boolean
+        has_more_after:
+          type: boolean
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Машиночитаемый код ошибки.
+        message:
+          type: string
+          description: Краткое описание ошибки для человека.
+        request_id:
+          type: string
+          description: Идентификатор запроса для поиска в логах, если доступен.
+
+  responses:
+    Unauthorized:
+      description: Access-токен отсутствует, истёк или недействителен.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: unauthorized
+            message: Требуется действующий access-токен.
+    Forbidden:
+      description: Текущий пользователь не состоит в чате.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: chat_membership_required
+            message: Читать историю чата могут только его участники.
+    NotFound:
+      description: Чат или пользователь не найден.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: not_found
+            message: Запрошенный чат или пользователь не найден.
+    ValidationError:
+      description: Параметры запроса некорректны или несовместимы.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: invalid_pagination
+            message: Передайте только один из параметров before_seq и after_seq.

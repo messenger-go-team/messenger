@@ -41,6 +41,9 @@ make lint GOLANGCI_LINT=golangci-lint
 ошибки bind, завершения активного HTTP-запроса и shutdown deadline.
 Recovery проверяется на JSON 500, обрыв частичного ответа, ErrAbortHandler,
 Flush/Hijack через обычные интерфейсы и ResponseController и успешный Upgrade.
+Internal/metrics проверяется через обычный ./...: тесты разбирают Prometheus
+экспозицию, проверяют Go/process-семейства и независимость registry.
+Маршрут /metrics проверяется также в тестах шаблона вместе с health/readiness.
 Корневой doc.go остаётся документационным пакетом без собственных тестов.
 
 ## CI
@@ -54,7 +57,7 @@ Workflow .github/workflows/ci.yml запускается на каждый PR в
   ./... ./services/_template.
 - **Go test**: make test, включая race detector и явную проверку шаблона.
 
-Timeout каждого задания - 5 минут. Кеш учитывает go.mod и go.sum, когда появится.
+Timeout каждого задания - 5 минут. Кеш учитывает go.mod и go.sum.
 Новый push в ту же ветку PR отменяет устаревший прогон.
 Проверка сборки выбранного исполняемого сервиса выполняется локально через make build;
 Go test в CI также компилирует проверяемые пакеты.

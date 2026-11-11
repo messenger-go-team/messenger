@@ -176,6 +176,17 @@ paths:
                     maxItems: 20
                     items:
                       $ref: '#/components/schemas/UserSummary'
+              examples:
+                found:
+                  summary: Совпадение по префиксу ali без учёта регистра
+                  value:
+                    users:
+                      - id: 23968cc7-c30c-47b0-a741-6b81249aa5e7
+                        username: Alice_1
+                empty:
+                  summary: Совпадений нет
+                  value:
+                    users: []
         '401':
           $ref: '#/components/responses/Unauthorized'
         '422':
@@ -186,6 +197,11 @@ paths:
       tags: [Contacts]
       operationId: listContacts
       summary: Получить контакты текущего пользователя
+      description: >-
+        Возвращает весь односторонний список пользователя из access JWT,
+        без пагинации. Сортировка по возрастанию ASCII lower-case username;
+        в ответе сохраняется исходное написание. Принадлежность к контактам
+        определяется по id, отдельное поле is_contact не требуется.
       security:
         - accessToken: []
       responses:
@@ -201,6 +217,19 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/UserSummary'
+              examples:
+                contacts:
+                  summary: Контакты отсортированы без учёта регистра
+                  value:
+                    contacts:
+                      - id: 23968cc7-c30c-47b0-a741-6b81249aa5e7
+                        username: Alice_1
+                      - id: 8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0
+                        username: bob_2
+                empty:
+                  summary: Список контактов пуст
+                  value:
+                    contacts: []
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -217,7 +246,11 @@ paths:
       tags: [Contacts]
       operationId: addContact
       summary: Добавить пользователя в контакты
-      description: Идемпотентная операция; повторное добавление не создаёт дубликат.
+      description: >-
+        Добавляет контакт только в список пользователя из access JWT;
+        обратная запись не создаётся. Повторное добавление не создаёт дубликат.
+        Несуществующий пользователь даёт 404, собственный contact_id или
+        некорректный UUID дают 422. Контакты не определяют права на чат.
       security:
         - accessToken: []
       responses:
@@ -233,7 +266,10 @@ paths:
       tags: [Contacts]
       operationId: removeContact
       summary: Удалить пользователя из контактов
-      description: Идемпотентная операция; отсутствие контакта не считается ошибкой.
+      description: >-
+        Удаляет контакт только из списка пользователя из access JWT.
+        Отсутствие записи, включая собственный contact_id, возвращает 204;
+        некорректный UUID даёт 422. Чат, история и chat_members не изменяются.
       security:
         - accessToken: []
       responses:
