@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { SignJWT } from 'jose'
 import { ApiError, apiRequest } from './client'
 import {
   login,
@@ -14,6 +15,50 @@ import { verifyAccessToken } from '../../mocks/lib/tokens'
 import { createRefreshSession } from '../../mocks/data/auth'
 import { http, HttpResponse } from 'msw'
 import { server } from '../../mocks/server'
+
+const ALICE_ID = '00000000-0000-4000-8000-000000000001'
+const MOCK_JWT_SECRET = 'messenger-mock-jwt-secret-for-development-only'
+
+interface TestAccessTokenOptions {
+  includeIssuedAt?: boolean
+  expiresAt?: number | null
+}
+
+/** Подписывает JWT тестовым mock key, позволяя удалить обязательные claims для regression tests. */
+async function createTestAccessToken({
+  includeIssuedAt = true,
+  expiresAt = Math.floor(Date.now() / 1000) + 900,
+}: TestAccessTokenOptions = {}): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(MOCK_JWT_SECRET),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  let token = new SignJWT({}).setProtectedHeader({ alg: 'HS256', typ: 'JWT' }).setSubject(ALICE_ID)
+
+  if (includeIssuedAt) {
+    token = token.setIssuedAt()
+  }
+
+  if (expiresAt !== null) {
+    token = token.setExpirationTime(expiresAt)
+  }
+
+  return token.sign(key)
+}
+
+/** Извлекает opaque token из Set-Cookie для Node-тестов, не эмулирующих browser cookie store. */
+function getRefreshTokenFromResponse(response: Response): string {
+  const refreshToken = response.headers.get('set-cookie')?.match(/refresh_token=([^;]+)/)?.[1]
+
+  if (!refreshToken) {
+    throw new Error('Expected refresh_token in Set-Cookie')
+  }
+
+  return refreshToken
+}
 
 describe('Auth API', () => {
   // Login проверяется как публичный client-контракт и как источник криптографически валидного JWT.
@@ -58,6 +103,31 @@ describe('Auth API', () => {
       status: 422,
       code: 'validation_error',
     })
+  })
+
+  it.each([
+    ['four emoji', 'short_emoji', '😀😀😀😀'],
+    ['seven Unicode code points', 'short_unicode', 'абвгдеж'],
+  ])(
+    'rejects %s as a short password during registration and login',
+    async (_name, username, password) => {
+      await expect(register({ username, password })).rejects.toMatchObject({
+        status: 422,
+        code: 'validation_error',
+      })
+      await expect(login({ username, password })).rejects.toMatchObject({
+        status: 422,
+        code: 'validation_error',
+      })
+    },
+  )
+
+  it.each([
+    ['eight Unicode code points', 'unicode_8', '😀😀😀😀😀😀😀😀'],
+    ['eight ASCII characters', 'ascii_8', '12345678'],
+  ])('accepts %s as the password length boundary', async (_name, username, password) => {
+    await expect(register({ username, password })).resolves.toMatchObject({ username })
+    await expect(login({ username, password })).resolves.toMatchObject({ token_type: 'Bearer' })
   })
 
   it('throws an ApiError for failed requests', async () => {
@@ -148,6 +218,26 @@ describe('Auth API', () => {
 
   it('returns 401 for an invalid access token', async () => {
     await expect(getMe('invalid-token')).rejects.toMatchObject({
+      status: 401,
+      code: 'unauthorized',
+    })
+  })
+
+  it.each([
+    ['exp', { expiresAt: null }],
+    ['iat', { includeIssuedAt: false }],
+    ['exp and iat', { includeIssuedAt: false, expiresAt: null }],
+  ])('returns 401 for a signed JWT without %s claims', async (_name, options) => {
+    await expect(getMe(await createTestAccessToken(options))).rejects.toMatchObject({
+      status: 401,
+      code: 'unauthorized',
+    })
+  })
+
+  it('returns 401 for an expired signed JWT', async () => {
+    const expiresAt = Math.floor(Date.now() / 1000) - 1
+
+    await expect(getMe(await createTestAccessToken({ expiresAt }))).rejects.toMatchObject({
       status: 401,
       code: 'unauthorized',
     })
@@ -323,6 +413,43 @@ describe('Auth API', () => {
       code: 'unauthorized',
       message: 'Invalid or missing refresh token',
     })
+  })
+
+  it('keeps login, refresh rotation, and logout in one valid session chain', async () => {
+    const loginResponse = await fetch('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: 'alice_1',
+        password: 'correct-horse-battery',
+      }),
+    })
+    const initialRefreshToken = getRefreshTokenFromResponse(loginResponse)
+
+    const refreshResponse = await fetch('/auth/refresh', {
+      method: 'POST',
+      headers: { Cookie: `refresh_token=${initialRefreshToken}` },
+    })
+    const rotatedRefreshToken = getRefreshTokenFromResponse(refreshResponse)
+
+    expect(loginResponse.status).toBe(200)
+    expect(refreshResponse.status).toBe(200)
+    expect(rotatedRefreshToken).not.toBe(initialRefreshToken)
+
+    const logoutResponse = await fetch('/auth/logout', {
+      method: 'POST',
+      headers: { Cookie: `refresh_token=${rotatedRefreshToken}` },
+    })
+
+    expect(logoutResponse.status).toBe(204)
+    expect(await logoutResponse.text()).toBe('')
+
+    const revokedResponse = await fetch('/auth/refresh', {
+      method: 'POST',
+      headers: { Cookie: `refresh_token=${rotatedRefreshToken}` },
+    })
+
+    expect(revokedResponse.status).toBe(401)
   })
 
   // Временные MSW handlers изолированно проверяют thin client для ответов без cookie-эмуляции jsdom.

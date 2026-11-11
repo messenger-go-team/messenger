@@ -176,10 +176,11 @@ credentials, если origin отличается. Все запросы отп�
 после каждого сценария. JWT подписывается публичным тестовым ключом и непригоден
 для серверной авторизации.
 
-MSW не является настоящим сервером: сохранение HttpOnly cookie из синтетического
-Set-Cookie ограничено браузером и jsdom. Автоматический refresh/logout может
-не работать как с backend; тесты сессий явно передают cookie. Refresh-токен
-не хранится в localStorage. WebSocket не входит в эти моки.
+MSW не является настоящим сервером: browser worker сохраняет синтетическую
+HttpOnly refresh cookie во внутреннем cookie store и передаёт её handlers через
+resolver `cookies`. В Node/jsdom этот store отсутствует, поэтому тесты сессий
+явно передают Cookie header. Refresh-токен не хранится в localStorage.
+WebSocket не входит в эти моки.
 
 History поддерживает курсорную пагинацию `before_seq` или `after_seq`, лимит от 1
 до 100 и выдаёт сообщения по `seq` по возрастанию. Получение истории не отмечает

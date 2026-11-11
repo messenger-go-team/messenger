@@ -35,6 +35,8 @@ export async function verifyAccessToken(token: string): Promise<string | null> {
 
     const { payload } = await jwtVerify(token, key, {
       algorithms: ['HS256'],
+      requiredClaims: ['sub', 'iat', 'exp'],
+      maxTokenAge: ACCESS_TOKEN_TTL,
     })
 
     return typeof payload.sub === 'string' ? payload.sub : null

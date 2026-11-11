@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { decodeJwt } from 'jose'
 import { createAccessToken, verifyAccessToken } from './tokens'
 
 // JWT tests проверяют happy path и отказ при нарушении структуры или подписи token.
@@ -11,6 +12,11 @@ describe('Mock JWT tokens', () => {
 
     expect(token.split('.')).toHaveLength(3)
     expect(verifiedUserId).toBe(userId)
+    expect(decodeJwt(token)).toMatchObject({
+      sub: userId,
+      iat: expect.any(Number),
+      exp: expect.any(Number),
+    })
   })
 
   it('rejects an invalid token', async () => {

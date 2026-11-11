@@ -11,25 +11,14 @@ import {
   addContact,
   removeContact,
 } from '../data/auth'
+import { resolveRefreshToken } from '../lib/cookies'
 import { createAccessToken, verifyAccessToken } from '../lib/tokens'
 
-/** Извлекает refresh token из Cookie header, сохраняя символы `=` внутри значения. */
-function getRefreshToken(cookieHeader: string | null): string | null {
-  if (!cookieHeader) {
-    return null
-  }
+const MIN_PASSWORD_LENGTH = 8
 
-  const cookies = cookieHeader.split(';')
-
-  for (const cookie of cookies) {
-    const [name, ...value] = cookie.trim().split('=')
-
-    if (name === 'refresh_token') {
-      return value.join('=') || null
-    }
-  }
-
-  return null
+/** Проверяет OpenAPI `minLength` в Unicode code points, а не в UTF-16 code units. */
+function isValidPassword(password: unknown): password is string {
+  return typeof password === 'string' && Array.from(password).length >= MIN_PASSWORD_LENGTH
 }
 
 /**
@@ -59,8 +48,7 @@ export const authHandlers = [
       typeof body.username !== 'string' ||
       !/^[A-Za-z0-9_]{3,32}$/.test(body.username) ||
       !('password' in body) ||
-      typeof body.password !== 'string' ||
-      body.password.length < 8
+      !isValidPassword(body.password)
     ) {
       return HttpResponse.json(
         { code: 'validation_error', message: 'Invalid registration data' },
@@ -119,8 +107,7 @@ export const authHandlers = [
       typeof body.username !== 'string' ||
       !/^[A-Za-z0-9_]{3,32}$/.test(body.username) ||
       !('password' in body) ||
-      typeof body.password !== 'string' ||
-      body.password.length < 8
+      !isValidPassword(body.password)
     ) {
       return HttpResponse.json(
         {
@@ -162,8 +149,8 @@ export const authHandlers = [
   }),
 
   // Refresh-сессия одноразовая: consume удаляет старую запись до выпуска новой пары token.
-  http.post('/auth/refresh', async ({ request }) => {
-    const refreshToken = getRefreshToken(request.headers.get('cookie'))
+  http.post('/auth/refresh', async ({ request, cookies }) => {
+    const refreshToken = resolveRefreshToken(cookies, request.headers.get('cookie'))
 
     if (!refreshToken) {
       return HttpResponse.json(
@@ -217,8 +204,8 @@ export const authHandlers = [
     )
   }),
 
-  http.post('/auth/logout', ({ request }) => {
-    const refreshToken = getRefreshToken(request.headers.get('cookie'))
+  http.post('/auth/logout', ({ request, cookies }) => {
+    const refreshToken = resolveRefreshToken(cookies, request.headers.get('cookie'))
 
     if (!refreshToken || !revokeRefreshSession(refreshToken)) {
       return HttpResponse.json(
