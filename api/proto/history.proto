@@ -26,6 +26,7 @@ message SaveMessageRequest {
   // Required client-generated UUID v4, unchanged across retries.
   string client_msg_id = 3;
   // UTF-8 plain text: 1..4096 code points, not only Unicode White_Space.
+  // History rejects U+0000 with INVALID_ARGUMENT before storage.
   // Preserve exactly: no trimming or Unicode normalization.
   string body = 4;
 }

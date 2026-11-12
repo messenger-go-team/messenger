@@ -31,6 +31,7 @@ type SaveMessageRequest struct {
 	// Required client-generated UUID v4, unchanged across retries.
 	ClientMsgId string `protobuf:"bytes,3,opt,name=client_msg_id,json=clientMsgId,proto3" json:"client_msg_id,omitempty"`
 	// UTF-8 plain text: 1..4096 code points, not only Unicode White_Space.
+	// History rejects U+0000 with INVALID_ARGUMENT before storage.
 	// Preserve exactly: no trimming or Unicode normalization.
 	Body          string `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
 	unknownFields protoimpl.UnknownFields
