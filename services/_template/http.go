@@ -52,6 +52,12 @@ func requestLogging(logger *slog.Logger, next http.Handler) http.Handler {
 }
 
 func newHandler(ready *atomic.Bool, logger *slog.Logger) http.Handler {
+	return newServiceHandler(ready, logger, http.NotFoundHandler())
+}
+
+// Public infrastructure routes bypass application authentication. Services mount
+// their protected application mux through jwtauth.Middleware before passing it here.
+func newServiceHandler(ready *atomic.Bool, logger *slog.Logger, application http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /metrics", metrics.NewHandler())
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +70,12 @@ func newHandler(ready *atomic.Bool, logger *slog.Logger) http.Handler {
 		}
 		writeHealth(w, r, http.StatusOK, "{\"status\":\"ready\"}\n")
 	})
-	return requestLogging(logger, recoverPanic(mux))
+	router := http.NewServeMux()
+	for _, path := range []string{"/healthz", "/readyz", "/metrics"} {
+		router.Handle(path, mux)
+	}
+	router.Handle("/", application)
+	return requestLogging(logger, recoverPanic(router))
 }
 
 func writeHealth(w http.ResponseWriter, r *http.Request, status int, body string) {
