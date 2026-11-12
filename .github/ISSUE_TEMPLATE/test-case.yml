@@ -1,0 +1,95 @@
+name: Тест-кейс
+description: Сценарий проверки с предусловиями, шагами и ожидаемым результатом
+title: "[Test]: "
+labels: ["qa", "test"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Один кейс — одна проверяемая цель. Секреты в тестовых данных не публикуйте.
+        Фактический результат заполняется после прогона; до него оставьте «Not run».
+  - type: input
+    id: case_id
+    attributes:
+      label: ID тест-кейса
+      placeholder: "AUTH-01 или CHAT-01"
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Источник и связанная задача
+      placeholder: "FR-AUTH-3, docs/SPEC.md §4, #48"
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Этап
+      options: ["0 — подготовка", "1 — MVP", "2 — статусы и smoke", "3 — надёжность и нагрузка", "4 — опциональные функции", "5 — финальная регрессия", "6 — группы после показа"]
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Приоритет проверки
+      options: ["P0 — критический путь и сохранность данных", "P1 — основные и негативные проверки", "P2 — дополнительные проверки"]
+    validations:
+      required: true
+  - type: dropdown
+    id: method
+    attributes:
+      label: Способ проверки
+      options: ["Вручную", "Unit", "Integration", "API по OpenAPI", "WebSocket", "Playwright smoke", "k6"]
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Окружение
+      description: Нужный стенд, браузер/ОС или API/WS-клиент, настройки и зависимости.
+    validations:
+      required: true
+  - type: textarea
+    id: preconditions
+    attributes:
+      label: Предусловия и тестовые данные
+      description: Начальное состояние, аккаунты и права, необходимые записи без паролей/токенов.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Шаги
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ожидаемый результат
+      description: Укажите результат каждого значимого шага, ограничения и итоговое состояние.
+    validations:
+      required: true
+  - type: textarea
+    id: cleanup
+    attributes:
+      label: Восстановление данных после проверки
+      description: Если очистка не требуется, укажите это; не используйте production для сброса данных.
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: Статус последнего прогона
+      default: 0
+      options: ["Not run", "Passed", "Failed", "Blocked"]
+    validations:
+      required: true
+  - type: textarea
+    id: execution
+    attributes:
+      label: Результат прогона и связанные дефекты
+      description: После выполнения укажите дату, SHA, фактическую среду, результат, ссылки на баги и доказательства. Для Blocked — причину.

@@ -1,0 +1,94 @@
+name: Баг-репорт
+description: Воспроизводимое отклонение от требований
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Один дефект — один issue. Проверьте дубликаты.
+        Не прикладывайте пароли, токены и персональные данные.
+        Severity описывает ущерб, а не срочность исправления.
+        После создания назначьте ровно одну label severity:* по выбранному уровню.
+        Выбор в форме сам по себе label не добавляет; окончательный уровень подтверждается на triage.
+  - type: input
+    id: source
+    attributes:
+      label: Требование или тест-кейс
+      placeholder: "FR-CHAT-5, docs/SPEC.md §4, ссылка на кейс или задачу"
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - "Critical — обход прав, утечка данных, потеря подтверждённых сообщений"
+        - "High — основной путь недоступен без обхода, дубли или нарушение порядка"
+        - "Medium — функциональная ошибка с обходным путём"
+        - "Low — визуальная или текстовая проблема без нарушения основной функции"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Окружение
+      description: Стенд, ОС, браузер и его версия; для API/WS — клиент и конфигурация.
+      placeholder: "Staging, Windows 11, Chrome <версия>, ширина 360 CSS px"
+    validations:
+      required: true
+  - type: input
+    id: build
+    attributes:
+      label: Сборка
+      description: Commit SHA или версия сборки; если неизвестна, укажите это явно.
+    validations:
+      required: true
+  - type: textarea
+    id: preconditions
+    attributes:
+      label: Предусловия и тестовые данные
+      description: Пользователи, роли, чат, состояние сети и необходимые настройки без секретов.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Шаги воспроизведения
+      placeholder: |
+        1. Войти пользователем A.
+        2. Открыть личный чат с B.
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ожидаемый результат
+      description: Проверяемое поведение согласно указанному требованию.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Фактический результат
+      description: Что произошло; текст ошибки, код ответа или событие WS.
+    validations:
+      required: true
+  - type: input
+    id: reproducibility
+    attributes:
+      label: Воспроизводимость
+      placeholder: "5 из 5 попыток; впервые замечено после ..."
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Вложения и диагностика
+      description: Скриншоты, видео, очищенные логи, request_id, время события с часовым поясом.
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Влияние и обходной путь
+      description: Кому мешает дефект и можно ли продолжить работу.
