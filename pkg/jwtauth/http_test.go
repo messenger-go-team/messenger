@@ -69,6 +69,7 @@ func TestMiddlewareRejectsAmbiguousOrMissingCredentials(t *testing.T) {
 				t.Fatal("invalid credentials must not reach handler")
 			})).ServeHTTP(w, r)
 			if w.Code != http.StatusUnauthorized || w.Header().Get("WWW-Authenticate") != "Bearer" ||
+				w.Header().Get("Cache-Control") != "no-store" ||
 				w.Header().Get("Content-Type") != "application/json" ||
 				!strings.Contains(w.Body.String(), `"code":"unauthorized"`) || strings.Contains(w.Body.String(), raw) {
 				t.Fatalf("unexpected unauthorized response: %d %s", w.Code, w.Body.String())

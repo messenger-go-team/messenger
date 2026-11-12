@@ -151,7 +151,11 @@ func parseNumericDate(value json.RawMessage) (*jwt.NumericDate, error) {
 	if fraction.Sign() > 0 {
 		nanos.Add(nanos, big.NewInt(1))
 	}
-	return &jwt.NumericDate{Time: time.Unix(seconds.Int64(), nanos.Int64())}, nil
+	date := time.Unix(seconds.Int64(), nanos.Int64()).UTC()
+	if date.Year() < 1 || date.Year() > 9999 {
+		return nil, ErrInvalidToken
+	}
+	return &jwt.NumericDate{Time: date}, nil
 }
 
 // Validate complements the library's signature, exp, iat and optional nbf checks.
@@ -171,7 +175,9 @@ func (v *Verifier) Verify(raw string) (Identity, error) {
 	if v == nil || v.parser == nil || len(v.key) < 32 || strings.ContainsFunc(raw, unicode.IsSpace) {
 		return Identity{}, ErrInvalidToken
 	}
-	parts := strings.Split(raw, ".")
+	// A fourth part proves the token malformed. Do not allocate a slice entry
+	// for every separator in an unauthenticated input.
+	parts := strings.SplitN(raw, ".", 4)
 	if len(parts) != 3 {
 		return Identity{}, ErrInvalidToken
 	}

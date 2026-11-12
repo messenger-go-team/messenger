@@ -22,7 +22,7 @@ func signLiteralToken(header, payload string) string {
 	return unsigned + "." + encode(mac.Sum(nil))
 }
 
-func fixedVerifier(t *testing.T, now time.Time) *Verifier {
+func fixedVerifier(t testing.TB, now time.Time) *Verifier {
 	t.Helper()
 	v, err := New(testSecret)
 	if err != nil {
@@ -195,13 +195,15 @@ func TestNumericDatePrecisionAndLimits(t *testing.T) {
 		{"-0.0000000001", time.Unix(0, 0)},
 		{"0e1000", time.Unix(0, 0)},
 		{"1e-1000", time.Unix(0, 1)},
+		{"-62135596800", time.Unix(-62135596800, 0)},
+		{"253402300799.999999999", time.Unix(253402300799, 999999999)},
 	} {
 		got, err := parseNumericDate([]byte(tc.value))
 		if err != nil || !got.Equal(tc.want) {
 			t.Fatalf("parseNumericDate(%s) = %v, %v", tc.value, got, err)
 		}
 	}
-	for _, value := range []string{`"1"`, `null`, `true`, `[]`, `1e1001`, `0e999999999999999999999`, `1e-1001`, `253402300800`, `-62135596801`, strings.Repeat("1", 129)} {
+	for _, value := range []string{`"1"`, `null`, `true`, `[]`, `1e1001`, `0e999999999999999999999`, `1e-1001`, `253402300800`, `-62135596801`, `-62135596800.1`, `253402300799.9999999999`, strings.Repeat("1", 129)} {
 		if _, err := parseNumericDate([]byte(value)); !errors.Is(err, ErrInvalidToken) {
 			t.Fatalf("accepted invalid date %s", value)
 		}
