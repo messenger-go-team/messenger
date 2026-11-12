@@ -1,6 +1,6 @@
 GO ?= go
 SERVICE ?= _template
-MIGRATE_SERVICE ?= all
+MIGRATE_SERVICE ?=
 MIGRATE_STEPS ?= 1
 # Keep this version aligned with .github/workflows/ci.yml.
 GOLANGCI_LINT ?= $(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0

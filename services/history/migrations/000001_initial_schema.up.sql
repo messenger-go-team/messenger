@@ -1,6 +1,6 @@
 BEGIN;
 
-CREATE SCHEMA IF NOT EXISTS history;
+CREATE SCHEMA history;
 
 CREATE TABLE history.chats (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

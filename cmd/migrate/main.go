@@ -12,8 +12,10 @@ import (
 	"path/filepath"
 
 	"github.com/golang-migrate/migrate/v4"
+	migratedb "github.com/golang-migrate/migrate/v4/database"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/golang-migrate/migrate/v4/source"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
@@ -28,11 +30,11 @@ var services = []string{"auth", "history"}
 
 func main() {
 	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
-		fmt.Fprintln(os.Stderr, "load .env:", err)
+		fmt.Fprintln(os.Stderr, "could not load .env")
 		os.Exit(1)
 	}
 
-	service := flag.String("service", "all", "service migrations to run: auth, history or all")
+	service := flag.String("service", "", "service migrations: auth, history or all (required for down)")
 	direction := flag.String("direction", directionUp, "migration direction: up, down or version")
 	steps := flag.Int("steps", 1, "number of migration steps for direction=down")
 	flag.Parse()
@@ -44,6 +46,12 @@ func main() {
 }
 
 func run(service, direction string, steps int) error {
+	if service == "" {
+		if direction == directionDown {
+			return errors.New("down requires explicit service: auth, history or all")
+		}
+		service = "all"
+	}
 	targets, err := selectedServices(service)
 	if err != nil {
 		return err
@@ -58,6 +66,15 @@ func run(service, direction string, steps int) error {
 	config, err := databaseConfigFromEnv()
 	if err != nil {
 		return err
+	}
+	// Check every target before all starts deleting data. Each actual down also
+	// repeats the check under the same advisory lock used to execute its steps.
+	if direction == directionDown {
+		for _, target := range targets {
+			if err := migrateService(target, "check-down", steps, config); err != nil {
+				return err
+			}
+		}
 	}
 	for _, target := range targets {
 		if err := migrateService(target, direction, steps, config); err != nil {
@@ -128,6 +145,11 @@ func migrateService(service, direction string, steps int, config databaseConfig)
 	if err != nil {
 		return fmt.Errorf("resolve %s migrations path: %w", service, err)
 	}
+	sourceDriver, err := iofs.New(os.DirFS(migrationsPath), ".")
+	if err != nil {
+		return fmt.Errorf("load %s migrations: %w", service, err)
+	}
+	defer func() { resultErr = errors.Join(resultErr, sourceDriver.Close()) }()
 
 	database, err := sql.Open("postgres", config.url())
 	if err != nil {
@@ -138,13 +160,25 @@ func migrateService(service, direction string, steps int, config databaseConfig)
 	}()
 
 	driver, err := postgres.WithInstance(database, &postgres.Config{
+		SchemaName:      "public",
 		MigrationsTable: service + "_schema_migrations",
 	})
 	if err != nil {
 		return fmt.Errorf("create %s migration driver: %w", service, err)
 	}
 
-	migration, err := migrate.NewWithDatabaseInstance("file://"+filepath.ToSlash(migrationsPath), service, driver)
+	migrationDriver := migratedb.Driver(driver)
+	if direction == directionDown || direction == "check-down" {
+		migrationDriver = &checkedDownDriver{Driver: driver, source: sourceDriver, steps: steps}
+	}
+	if direction == "check-down" {
+		defer func() { resultErr = errors.Join(resultErr, driver.Close()) }()
+		if err := migrationDriver.Lock(); err != nil {
+			return fmt.Errorf("check %s rollback: %w", service, err)
+		}
+		return migrationDriver.Unlock()
+	}
+	migration, err := migrate.NewWithInstance("iofs", sourceDriver, service, migrationDriver)
 	if err != nil {
 		return errors.Join(fmt.Errorf("load %s migrations: %w", service, err), driver.Close())
 	}
@@ -159,8 +193,8 @@ func migrateService(service, direction string, steps int, config databaseConfig)
 	case directionDown:
 		err = migration.Steps(-steps)
 	case directionVersion:
-		version, dirty, versionErr := migration.Version()
-		if errors.Is(versionErr, migrate.ErrNilVersion) {
+		version, dirty, versionErr := driver.Version()
+		if versionErr == nil && version == migratedb.NilVersion && !dirty {
 			fmt.Printf("%s: no migrations applied\n", service)
 			return nil
 		}
@@ -178,5 +212,57 @@ func migrateService(service, direction string, steps int, config databaseConfig)
 		return fmt.Errorf("apply %s migrations %s: %w", service, direction, err)
 	}
 	fmt.Printf("%s: %s complete\n", service, direction)
+	return nil
+}
+
+// Preflight and execution share the PostgreSQL advisory lock. A concurrent
+// migrator cannot change the version between counting steps and applying them.
+type checkedDownDriver struct {
+	migratedb.Driver
+	source source.Driver
+	steps  int
+}
+
+func (d *checkedDownDriver) Lock() error {
+	if err := d.Driver.Lock(); err != nil {
+		return err
+	}
+	if err := d.check(); err != nil {
+		return errors.Join(err, d.Unlock())
+	}
+	return nil
+}
+
+func (d *checkedDownDriver) check() error {
+	version, dirty, err := d.Version()
+	if err != nil {
+		return err
+	}
+	if dirty {
+		return migrate.ErrDirty{Version: version}
+	}
+	if d.steps < 1 {
+		return errors.New("steps must be greater than zero")
+	}
+	for remaining := d.steps; remaining > 0; remaining-- {
+		if version < 0 {
+			return errors.New("not enough applied migrations for requested down steps")
+		}
+		body, _, err := d.source.ReadDown(uint(version))
+		if err != nil {
+			return fmt.Errorf("read rollback migration %d: %w", version, err)
+		}
+		if err := body.Close(); err != nil {
+			return err
+		}
+		previous, err := d.source.Prev(uint(version))
+		if errors.Is(err, os.ErrNotExist) {
+			version = migratedb.NilVersion
+		} else if err != nil {
+			return err
+		} else {
+			version = int(previous)
+		}
+	}
 	return nil
 }

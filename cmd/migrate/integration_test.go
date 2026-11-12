@@ -5,14 +5,34 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/lib/pq"
 )
+
+func captureMigrationOutput(t *testing.T, call func() error) (string, error) {
+	t.Helper()
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := os.Stdout
+	os.Stdout = writer
+	defer func() { os.Stdout = original; _ = reader.Close(); _ = writer.Close() }()
+	callErr := call()
+	_ = writer.Close()
+	output, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(output), callErr
+}
 
 // These tests create and remove their own databases, never application tables in
 // the database named by MIGRATE_TEST_DATABASE_URL. The connecting role needs CREATEDB.
@@ -206,5 +226,117 @@ WHERE c.user_id = '00000000-0000-4000-8000-000000000001'`).Scan(&usernames); err
 		}
 		assertMigrationTestInt(t, db, "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'history'", 5)
 		assertMigrationTestInt(t, db, "SELECT count(*) FROM history_schema_migrations WHERE dirty", 1)
+		output, err := captureMigrationOutput(t, func() error { return migrateService("history", directionVersion, 1, config) })
+		if err != nil || !strings.Contains(output, "version=-1 dirty=true") {
+			t.Fatalf("version after failed rollback = %q, %v", output, err)
+		}
+	})
+
+	t.Run("search path does not change migration journal", func(t *testing.T) {
+		config, db := newMigrationTestDatabase(t)
+		execMigrationTestSQL(t, db, "CREATE SCHEMA alternate")
+		for _, service := range services {
+			execMigrationTestSQL(t, db, "ALTER DATABASE "+pq.QuoteIdentifier(config.name)+" SET search_path TO public")
+			if err := migrateService(service, directionUp, 1, config); err != nil {
+				t.Fatal(err)
+			}
+			execMigrationTestSQL(t, db, "ALTER DATABASE "+pq.QuoteIdentifier(config.name)+" SET search_path TO alternate, public")
+			output, err := captureMigrationOutput(t, func() error { return migrateService(service, directionVersion, 1, config) })
+			if err != nil || !strings.Contains(output, "version=1 dirty=false") {
+				t.Fatalf("version = %q, %v", output, err)
+			}
+			output, err = captureMigrationOutput(t, func() error { return migrateService(service, directionUp, 1, config) })
+			if err != nil || !strings.Contains(output, "no changes") {
+				t.Fatalf("repeat up = %q, %v", output, err)
+			}
+		}
+		assertMigrationTestInt(t, db, "SELECT count(*) FROM information_schema.tables WHERE table_schema='alternate'", 0)
+	})
+
+	t.Run("too many rollback steps preserve data and version", func(t *testing.T) {
+		config, db := newMigrationTestDatabase(t)
+		for _, service := range services {
+			if err := migrateService(service, directionUp, 1, config); err != nil {
+				t.Fatal(err)
+			}
+		}
+		execMigrationTestSQL(t, db, "INSERT INTO auth.users(username, username_normalized, password_hash) VALUES ('alice', 'alice', 'hash')")
+		for _, service := range services {
+			if err := migrateService(service, directionDown, 2, config); err == nil {
+				t.Fatal("too many steps must fail")
+			}
+			assertMigrationTestInt(t, db, "SELECT count(*) FROM public."+service+"_schema_migrations WHERE version=1 AND NOT dirty", 1)
+		}
+		assertMigrationTestInt(t, db, "SELECT count(*) FROM auth.users", 1)
+		// all must preflight history before deleting the valid auth target.
+		execMigrationTestSQL(t, db, "UPDATE public.history_schema_migrations SET dirty=true")
+		t.Setenv("POSTGRES_HOST", config.host)
+		t.Setenv("POSTGRES_PORT", config.port)
+		t.Setenv("POSTGRES_DB", config.name)
+		t.Setenv("POSTGRES_USER", config.user)
+		t.Setenv("POSTGRES_PASSWORD", config.password)
+		t.Setenv("POSTGRES_SSLMODE", config.sslMode)
+		if err := run("all", directionDown, 1); err == nil {
+			t.Fatal("all must reject dirty history in preflight")
+		}
+		assertMigrationTestInt(t, db, "SELECT count(*) FROM auth.users", 1)
+		assertMigrationTestInt(t, db, "SELECT count(*) FROM public.auth_schema_migrations WHERE version=1 AND NOT dirty", 1)
+	})
+
+	t.Run("concurrent rollback serializes validation and execution", func(t *testing.T) {
+		config, db := newMigrationTestDatabase(t)
+		if err := migrateService("auth", directionUp, 1, config); err != nil {
+			t.Fatal(err)
+		}
+		start := make(chan struct{})
+		results := make(chan error, 2)
+		for range 2 {
+			go func() { <-start; results <- migrateService("auth", directionDown, 1, config) }()
+		}
+		close(start)
+		first, second := <-results, <-results
+		if (first == nil) == (second == nil) {
+			t.Fatalf("want one successful down and one preflight rejection: %v, %v", first, second)
+		}
+		assertMigrationTestInt(t, db, "SELECT count(*) FROM public.auth_schema_migrations", 0)
+		assertMigrationTestInt(t, db, "SELECT count(*) FROM pg_namespace WHERE nspname='auth'", 0)
+	})
+
+	t.Run("existing schemas remain owned by their creator", func(t *testing.T) {
+		config, db := newMigrationTestDatabase(t)
+		for _, service := range services {
+			execMigrationTestSQL(t, db, "CREATE SCHEMA "+service+"; COMMENT ON SCHEMA "+service+" IS 'pre-existing-marker'")
+			if err := migrateService(service, directionUp, 1, config); err == nil {
+				t.Fatal("up must reject existing schema")
+			}
+			assertMigrationTestInt(t, db, "SELECT count(*) FROM pg_namespace WHERE nspname='"+service+"' AND obj_description(oid,'pg_namespace')='pre-existing-marker'", 1)
+			assertMigrationTestInt(t, db, "SELECT count(*) FROM information_schema.tables WHERE table_schema='"+service+"'", 0)
+			if err := migrateService(service, directionDown, 1, config); err == nil {
+				t.Fatal("dirty schema cannot be rolled back")
+			}
+		}
+	})
+
+	t.Run("migration path contains URL metacharacters", func(t *testing.T) {
+		config, _ := newMigrationTestDatabase(t)
+		root, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir := filepath.Join(t.TempDir(), "project # review % space")
+		if err := os.Mkdir(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(root, "services"), filepath.Join(dir, "services")); err != nil {
+			t.Fatal(err)
+		}
+		t.Chdir(dir)
+		for _, service := range services {
+			for _, direction := range []string{directionUp, directionVersion, directionDown} {
+				if err := migrateService(service, direction, 1, config); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
 	})
 }

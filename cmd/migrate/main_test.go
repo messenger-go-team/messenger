@@ -1,9 +1,41 @@
 package main
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestCLIProcess(t *testing.T) {
+	if os.Getenv("MIGRATE_CLI_TEST_HELPER") != "1" {
+		return
+	}
+	os.Args = append([]string{"migrate"}, strings.Fields(os.Getenv("MIGRATE_CLI_TEST_ARGS"))...)
+	main()
+}
+
+func TestCLIRejectsUnsafeInput(t *testing.T) {
+	for _, tc := range []struct{ name, dotenv, args, want string }{
+		{"broken dotenv", "BROKEN!VAR=x\nPOSTGRES_PASSWORD=fake-secret-marker\n", "", "could not load .env"},
+		{"implicit down", "", "-direction=down", "down requires explicit service"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(tc.dotenv), 0600); err != nil {
+				t.Fatal(err)
+			}
+			command := exec.Command(os.Args[0], "-test.run=^TestCLIProcess$")
+			command.Dir = dir
+			command.Env = append(os.Environ(), "MIGRATE_CLI_TEST_HELPER=1", "MIGRATE_CLI_TEST_ARGS="+tc.args)
+			output, err := command.CombinedOutput()
+			if err == nil || !strings.Contains(string(output), tc.want) || strings.Contains(string(output), "fake-secret-marker") {
+				t.Fatalf("CLI output = %q, error = %v", output, err)
+			}
+		})
+	}
+}
 
 func TestSelectedServices(t *testing.T) {
 	t.Parallel()

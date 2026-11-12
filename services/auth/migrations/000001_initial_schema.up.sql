@@ -1,6 +1,6 @@
 BEGIN;
 
-CREATE SCHEMA IF NOT EXISTS auth;
+CREATE SCHEMA auth;
 
 CREATE TABLE auth.users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
