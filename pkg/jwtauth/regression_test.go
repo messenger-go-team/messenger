@@ -137,6 +137,55 @@ func TestRejectCriticalExtensionsAndWhitespace(t *testing.T) {
 	}
 }
 
+func TestRejectB64Header(t *testing.T) {
+	v := fixedVerifier(t, time.Unix(2000000000, 0))
+	payload := fmt.Sprintf(`{"sub":%q,"iat":1999999999,"exp":2000000100}`, testUserID)
+	for _, value := range []string{`false`, `true`, `null`, `"false"`, `0`, `[]`, `{}`} {
+		t.Run(value, func(t *testing.T) {
+			header := fmt.Sprintf(`{"alg":"HS256","b64":%s}`, value)
+			identity, err := v.Verify(signLiteralToken(header, payload))
+			if !errors.Is(err, ErrInvalidToken) || identity != (Identity{}) {
+				t.Fatalf("Verify = %+v, %v; want rejection", identity, err)
+			}
+		})
+	}
+}
+
+func TestJWTUTF8(t *testing.T) {
+	v := fixedVerifier(t, time.Unix(2000000000, 0))
+	for _, segment := range []string{"header", "claims"} {
+		for _, tc := range []struct {
+			name, value string
+			valid       bool
+		}{
+			{"invalid byte", string([]byte{0xff}), false},
+			{"truncated sequence", string([]byte{0xe2, 0x82}), false},
+			{"overlong encoding", string([]byte{0xc0, 0xaf}), false},
+			{"encoded surrogate", string([]byte{0xed, 0xa0, 0x80}), false},
+			{"valid unicode", "Привет", true},
+			{"replacement character", "\ufffd", true},
+		} {
+			t.Run(segment+"/"+tc.name, func(t *testing.T) {
+				header := `{"alg":"HS256"}`
+				payload := fmt.Sprintf(`{"sub":%q,"iat":1999999999,"exp":2000000100}`, testUserID)
+				if segment == "header" {
+					header = `{"alg":"HS256","extra":"` + tc.value + `"}`
+				} else {
+					payload = strings.TrimSuffix(payload, "}") + `,"extra":"` + tc.value + `"}`
+				}
+				identity, err := v.Verify(signLiteralToken(header, payload))
+				if tc.valid {
+					if err != nil || identity.UserID != testUserID {
+						t.Fatalf("Verify = %+v, %v", identity, err)
+					}
+				} else if !errors.Is(err, ErrInvalidToken) || identity != (Identity{}) {
+					t.Fatalf("Verify = %+v, %v; want rejection", identity, err)
+				}
+			})
+		}
+	}
+}
+
 func TestNumericDatePrecisionAndLimits(t *testing.T) {
 	for _, tc := range []struct {
 		value string

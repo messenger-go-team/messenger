@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -170,12 +171,27 @@ func (v *Verifier) Verify(raw string) (Identity, error) {
 	if v == nil || v.parser == nil || len(v.key) < 32 || strings.ContainsFunc(raw, unicode.IsSpace) {
 		return Identity{}, ErrInvalidToken
 	}
+	parts := strings.Split(raw, ".")
+	if len(parts) != 3 {
+		return Identity{}, ErrInvalidToken
+	}
+	// encoding/json replaces invalid UTF-8 with U+FFFD. Reject the original
+	// bytes before the JWT parser decodes either JSON segment.
+	for _, segment := range parts[:2] {
+		decoded, err := v.parser.DecodeSegment(segment)
+		if err != nil || !utf8.Valid(decoded) {
+			return Identity{}, ErrInvalidToken
+		}
+	}
 	claims := &accessClaims{}
 	token, err := v.parser.ParseWithClaims(raw, claims, func(token *jwt.Token) (any, error) {
 		if token.Method != jwt.SigningMethodHS256 {
 			return nil, ErrInvalidToken
 		}
 		if _, present := token.Header["crit"]; present {
+			return nil, ErrInvalidToken
+		}
+		if _, present := token.Header["b64"]; present {
 			return nil, ErrInvalidToken
 		}
 		return v.key, nil
