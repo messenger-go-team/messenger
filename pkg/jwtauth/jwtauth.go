@@ -3,13 +3,18 @@
 package jwtauth
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"math/big"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -64,23 +69,88 @@ type accessClaims struct {
 	jwt.RegisteredClaims
 }
 
-// NumericDate accepts quoted numbers in the dependency. The JWT contract uses
-// JSON numbers, so reject strings/null/other types before decoding the claims.
+// Read exact claim names and reject duplicates, including escaped spellings.
 func (c *accessClaims) UnmarshalJSON(data []byte) error {
-	var dates struct {
-		Exp json.RawMessage `json:"exp"`
-		Iat json.RawMessage `json:"iat"`
-		Nbf json.RawMessage `json:"nbf"`
-	}
-	if err := json.Unmarshal(data, &dates); err != nil {
+	d := json.NewDecoder(bytes.NewReader(data))
+	start, err := d.Token()
+	if err != nil || start != json.Delim('{') {
 		return ErrInvalidToken
 	}
-	for _, value := range []json.RawMessage{dates.Exp, dates.Iat, dates.Nbf} {
-		if len(value) > 0 && value[0] != '-' && (value[0] < '0' || value[0] > '9') {
+	*c = accessClaims{}
+	seen := make(map[string]bool)
+	for d.More() {
+		key, err := d.Token()
+		if err != nil {
 			return ErrInvalidToken
 		}
+		name, ok := key.(string)
+		if !ok || seen[name] {
+			return ErrInvalidToken
+		}
+		seen[name] = true
+		var value json.RawMessage
+		if err := d.Decode(&value); err != nil {
+			return ErrInvalidToken
+		}
+		switch name {
+		case "sub":
+			if err := json.Unmarshal(value, &c.Subject); err != nil {
+				return ErrInvalidToken
+			}
+		case "iat", "exp", "nbf":
+			date, err := parseNumericDate(value)
+			if err != nil {
+				return err
+			}
+			switch name {
+			case "iat":
+				c.IssuedAt = date
+			case "exp":
+				c.ExpiresAt = date
+			case "nbf":
+				c.NotBefore = date
+			}
+		}
 	}
-	return json.Unmarshal(data, &c.RegisteredClaims)
+	if _, err := d.Token(); err != nil {
+		return ErrInvalidToken
+	}
+	if _, err := d.Token(); err != io.EOF {
+		return ErrInvalidToken
+	}
+	return nil
+}
+
+// Convert decimal seconds exactly, without float64 or global TimePrecision.
+// Round up to the next nanosecond: comparisons at time.Time resolution then
+// preserve now < exp and now >= nbf/iat even for sub-nanosecond fractions.
+func parseNumericDate(value json.RawMessage) (*jwt.NumericDate, error) {
+	if len(value) == 0 || (value[0] != '-' && (value[0] < '0' || value[0] > '9')) || len(value) > 128 {
+		return nil, ErrInvalidToken
+	}
+	// Bound exponents before big.Rat allocates powers of ten.
+	if index := bytes.IndexAny(value, "eE"); index >= 0 {
+		exponent, err := strconv.Atoi(string(value[index+1:]))
+		if err != nil || exponent < -1000 || exponent > 1000 {
+			return nil, ErrInvalidToken
+		}
+	}
+	r, ok := new(big.Rat).SetString(string(value))
+	if !ok {
+		return nil, ErrInvalidToken
+	}
+	seconds, remainder := new(big.Int), new(big.Int)
+	seconds.QuoRem(r.Num(), r.Denom(), remainder)
+	if !seconds.IsInt64() || seconds.Int64() < -62135596800 || seconds.Int64() > 253402300799 {
+		return nil, ErrInvalidToken
+	}
+	remainder.Mul(remainder, big.NewInt(1e9))
+	nanos, fraction := new(big.Int), new(big.Int)
+	nanos.QuoRem(remainder, r.Denom(), fraction)
+	if fraction.Sign() > 0 {
+		nanos.Add(nanos, big.NewInt(1))
+	}
+	return &jwt.NumericDate{Time: time.Unix(seconds.Int64(), nanos.Int64())}, nil
 }
 
 // Validate complements the library's signature, exp, iat and optional nbf checks.
@@ -97,12 +167,15 @@ func (c accessClaims) Validate() error {
 // Verify checks a compact JWT and returns a canonical lower-case user UUID.
 // Expiry is strict (no leeway). It does not accept a "Bearer " prefix.
 func (v *Verifier) Verify(raw string) (Identity, error) {
-	if v == nil || v.parser == nil || len(v.key) < 32 {
+	if v == nil || v.parser == nil || len(v.key) < 32 || strings.ContainsFunc(raw, unicode.IsSpace) {
 		return Identity{}, ErrInvalidToken
 	}
 	claims := &accessClaims{}
 	token, err := v.parser.ParseWithClaims(raw, claims, func(token *jwt.Token) (any, error) {
 		if token.Method != jwt.SigningMethodHS256 {
+			return nil, ErrInvalidToken
+		}
+		if _, present := token.Header["crit"]; present {
 			return nil, ErrInvalidToken
 		}
 		return v.key, nil
