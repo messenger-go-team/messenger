@@ -5,11 +5,14 @@
 | [afilistovich](https://github.com/afilistovich) | Бэкенд, владелец проекта | Admin |
 | [kakocuk1](https://github.com/kakocuk1) | Бэкенд | Admin |
 | [RepinDM](https://github.com/RepinDM) | Фронтенд | Write |
-| [KateTesla13](https://github.com/KateTesla13) | QA | Write |
+| [make-smart-products](https://github.com/make-smart-products) | QA | Write |
 | [zavdaria](https://github.com/zavdaria) | Дизайнер | Write |
 
 Права GitHub назначаются в настройках репозитория. Изменение этой таблицы
 или CODEOWNERS само по себе не выдаёт доступ.
+
+Права редактирования GitHub Project назначаются отдельно от доступа
+к репозиторию.
 
 ## Владельцы файлов
 
@@ -20,7 +23,7 @@
 | `web/` | RepinDM | afilistovich, kakocuk1 |
 | `web/public/` | RepinDM, zavdaria | afilistovich, kakocuk1 |
 | `api/` | RepinDM и владелец соответствующего бэкенд-сервиса | afilistovich, kakocuk1 |
-| `docs/qa/`, `.github/ISSUE_TEMPLATE/` | KateTesla13 | afilistovich, kakocuk1 |
+| `docs/qa/`, `.github/ISSUE_TEMPLATE/` | make-smart-products | afilistovich, kakocuk1 |
 | `docs/design/` | zavdaria | afilistovich, kakocuk1 |
 | Остальные файлы, включая Go-сервисы, deploy и workflows | afilistovich, kakocuk1 | afilistovich, kakocuk1 |
 

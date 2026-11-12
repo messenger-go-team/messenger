@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"sync/atomic"
 	"time"
+
+	"github.com/messenger-go-team/messenger/internal/metrics"
 )
 
 type requestLoggerKey struct{}
@@ -51,6 +53,7 @@ func requestLogging(logger *slog.Logger, next http.Handler) http.Handler {
 
 func newHandler(ready *atomic.Bool, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", metrics.NewHandler())
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeHealth(w, r, http.StatusOK, "{\"status\":\"ok\"}\n")
 	})
