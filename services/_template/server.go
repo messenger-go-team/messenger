@@ -17,7 +17,11 @@ func run(ctx context.Context, cfg config, logger *slog.Logger) error {
 		return fmt.Errorf("listen HTTP: %w", err)
 	}
 	var ready atomic.Bool
-	server := newHTTPServer(cfg, newHandler(&ready, logger), logger)
+	// Business routes are added to this mux when the template is copied. Keep
+	// authentication outside it; health/readiness/metrics remain public internally.
+	application := http.NewServeMux()
+	handler := newServiceHandler(&ready, logger, cfg.JWTVerifier.Middleware(application))
+	server := newHTTPServer(cfg, handler, logger)
 	return serve(ctx, server, listener, &ready, cfg.ShutdownTimeout, logger)
 }
 
