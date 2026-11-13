@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/lib/pq"
 )
 
 func TestCLIProcess(t *testing.T) {
@@ -32,6 +34,34 @@ func TestCLIRejectsUnsafeInput(t *testing.T) {
 			output, err := command.CombinedOutput()
 			if err == nil || !strings.Contains(string(output), tc.want) || strings.Contains(string(output), "fake-secret-marker") {
 				t.Fatalf("CLI output = %q, error = %v", output, err)
+			}
+		})
+	}
+}
+
+func TestCLIConnectionParametersDoNotLeakPassword(t *testing.T) {
+	for _, tc := range []struct{ name, variable, value string }{
+		{"invalid port", "POSTGRES_PORT", "not-a-port"},
+		{"port too high", "POSTGRES_PORT", "65536"},
+		{"zero port", "POSTGRES_PORT", "0"},
+		{"negative port", "POSTGRES_PORT", "-1"},
+		{"host contains space", "POSTGRES_HOST", "bad host"},
+		{"host contains tab", "POSTGRES_HOST", "bad\thost"},
+		{"host contains URL delimiter", "POSTGRES_HOST", "bad#host"},
+		{"invalid IPv6", "POSTGRES_HOST", "bad:host"},
+		{"invalid sslmode", "POSTGRES_SSLMODE", "unsupported"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.MkdirAll(filepath.Join(dir, "services", "auth", "migrations"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			command := exec.Command(os.Args[0], "-test.run=^TestCLIProcess$")
+			command.Dir = dir
+			command.Env = append(os.Environ(), "MIGRATE_CLI_TEST_HELPER=1", "MIGRATE_CLI_TEST_ARGS=-service=auth -direction=version", "POSTGRES_HOST=127.0.0.1", "POSTGRES_PORT=1", "POSTGRES_DB=postgres", "POSTGRES_USER=postgres", "POSTGRES_PASSWORD=fake-secret-marker", "POSTGRES_SSLMODE=disable", tc.variable+"="+tc.value)
+			output, err := command.CombinedOutput()
+			if err == nil || !strings.Contains(string(output), tc.variable) || strings.Contains(string(output), "fake-secret-marker") || strings.Contains(string(output), "postgres://") {
+				t.Fatalf("unsafe or missing diagnostic: output=%q error=%v", output, err)
 			}
 		})
 	}
@@ -95,5 +125,21 @@ func TestDatabaseURL(t *testing.T) {
 	}
 	if !strings.Contains(got, "sslmode=disable") {
 		t.Fatalf("url() = %q, missing sslmode", got)
+	}
+}
+
+func TestValidConnectionParameters(t *testing.T) {
+	for _, host := range []string{"localhost", "postgres-service", "postgres_service", "127.0.0.1", "::1", "2001:db8::1", "fe80::1%eth0"} {
+		for _, port := range []string{"1", "5432", "65535"} {
+			for _, mode := range []string{"disable", "require", "verify-ca", "verify-full"} {
+				config := databaseConfig{host: host, port: port, name: "messenger", user: "user@example", password: "pa:ss/@word", sslMode: mode}
+				if err := config.validate(); err != nil {
+					t.Fatalf("valid host=%s port=%s mode=%s: %v", host, port, mode, err)
+				}
+				if _, err := pq.NewConnector(config.url()); err != nil {
+					t.Fatalf("valid connection URL for host=%s: %v", host, err)
+				}
+			}
+		}
 	}
 }

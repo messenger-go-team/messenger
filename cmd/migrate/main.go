@@ -7,9 +7,12 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
 	migratedb "github.com/golang-migrate/migrate/v4/database"
@@ -17,7 +20,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/source"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/joho/godotenv"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 const (
@@ -114,10 +117,42 @@ func databaseConfigFromEnv() (databaseConfig, error) {
 		password: os.Getenv("POSTGRES_PASSWORD"),
 		sslMode:  envOrDefault("POSTGRES_SSLMODE", "disable"),
 	}
-	if config.password == "" {
-		return databaseConfig{}, errors.New("POSTGRES_PASSWORD must be set")
+	if err := config.validate(); err != nil {
+		return databaseConfig{}, err
 	}
 	return config, nil
+}
+
+// Validate without quoting values: connection parameters may themselves contain
+// credentials. In particular, lib/pq URL errors can include the complete DSN.
+func (c databaseConfig) validate() error {
+	if c.password == "" {
+		return errors.New("POSTGRES_PASSWORD must be set")
+	}
+	port, err := strconv.ParseUint(c.port, 10, 16)
+	if err != nil || port == 0 || strings.IndexFunc(c.port, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+		return errors.New("POSTGRES_PORT must be an integer in 1..65535")
+	}
+	if strings.Contains(c.host, ":") {
+		if _, err := netip.ParseAddr(c.host); err != nil {
+			return errors.New("POSTGRES_HOST must be a hostname or unbracketed IP address")
+		}
+	} else if c.host == "" || strings.IndexFunc(c.host, func(r rune) bool {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '-', r == '_':
+			return false
+		default:
+			return true
+		}
+	}) >= 0 {
+		return errors.New("POSTGRES_HOST must be a hostname or unbracketed IP address")
+	}
+	switch c.sslMode {
+	case "disable", "require", "verify-ca", "verify-full":
+	default:
+		return errors.New("POSTGRES_SSLMODE must be disable, require, verify-ca or verify-full")
+	}
+	return nil
 }
 
 func envOrDefault(name, fallback string) string {
@@ -141,6 +176,9 @@ func (c databaseConfig) url() string {
 }
 
 func migrateService(service, direction string, steps int, config databaseConfig) (resultErr error) {
+	if err := config.validate(); err != nil {
+		return err
+	}
 	migrationsPath, err := filepath.Abs(filepath.Join("services", service, "migrations"))
 	if err != nil {
 		return fmt.Errorf("resolve %s migrations path: %w", service, err)
@@ -151,10 +189,12 @@ func migrateService(service, direction string, steps int, config databaseConfig)
 	}
 	defer func() { resultErr = errors.Join(resultErr, sourceDriver.Close()) }()
 
-	database, err := sql.Open("postgres", config.url())
+	connector, err := pq.NewConnector(config.url())
 	if err != nil {
-		return fmt.Errorf("open %s database connection: %w", service, err)
+		// Never expose a URL parser error: it may embed the password-bearing DSN.
+		return fmt.Errorf("invalid %s PostgreSQL connection parameters", service)
 	}
+	database := sql.OpenDB(connector)
 	defer func() {
 		resultErr = errors.Join(resultErr, database.Close())
 	}()
