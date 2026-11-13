@@ -1,0 +1,12 @@
+version: v2
+modules:
+  - path: api/proto
+lint:
+  use:
+    - STANDARD
+  except:
+    # T10 specifies the source at api/proto/history.proto.
+    - PACKAGE_DIRECTORY_MATCH
+breaking:
+  use:
+    - FILE
