@@ -94,3 +94,17 @@ func (d *Directory) RemoveContact(ctx context.Context, owner, raw string) error 
 	}
 	return d.repo.RemoveContact(ctx, owner, contact)
 }
+
+// Lookup exposes only the fields required by another service. Invalid IDs are
+// not found, matching the internal operation's documented 404 response.
+func (d *Directory) Lookup(ctx context.Context, raw string) (UserSummary, error) {
+	id, err := NormalizeUserID(raw)
+	if err != nil {
+		return UserSummary{}, ErrUserNotFound
+	}
+	user, err := d.repo.GetUser(ctx, id)
+	if err != nil {
+		return UserSummary{}, err
+	}
+	return UserSummary{ID: user.ID, Username: user.Username}, nil
+}

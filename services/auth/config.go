@@ -18,6 +18,7 @@ type config struct {
 	ShutdownTimeout time.Duration
 	JWTSecret       string
 	DatabaseURL     string
+	InternalToken   string
 }
 
 func loadConfig(lookup func(string) (string, bool)) (config, error) {
@@ -62,5 +63,24 @@ func loadConfig(lookup func(string) (string, bool)) (config, error) {
 	if cfg.DatabaseURL == "" {
 		return config{}, fmt.Errorf("AUTH_DATABASE_URL must not be empty")
 	}
+	cfg.InternalToken = value("AUTH_INTERNAL_TOKEN", "")
+	if err := validateInternalToken(cfg.InternalToken); err != nil {
+		return config{}, err
+	}
+	if cfg.InternalToken == cfg.JWTSecret {
+		return config{}, fmt.Errorf("AUTH_INTERNAL_TOKEN must differ from JWT_SECRET")
+	}
 	return cfg, nil
+}
+
+func validateInternalToken(token string) error {
+	if len(token) < 32 {
+		return fmt.Errorf("AUTH_INTERNAL_TOKEN must contain at least 32 bytes")
+	}
+	for _, b := range []byte(token) {
+		if b < 0x21 || b > 0x7e {
+			return fmt.Errorf("AUTH_INTERNAL_TOKEN must contain printable ASCII without spaces")
+		}
+	}
+	return nil
 }

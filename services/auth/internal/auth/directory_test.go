@@ -88,3 +88,25 @@ func TestDirectoryValidationAndOwnership(t *testing.T) {
 		}
 	}
 }
+
+func TestInternalLookupPublicFields(t *testing.T) {
+	const id = "8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0"
+	var calls int
+	d := NewDirectory(directoryStub{get: func(_ context.Context, got string) (User, error) {
+		calls++
+		if got != id {
+			return User{}, ErrUserNotFound
+		}
+		return User{ID: id, Username: "Alice_1"}, nil
+	}})
+	user, err := d.Lookup(context.Background(), strings.ToUpper(id))
+	if err != nil || user.ID != id || user.Username != "Alice_1" {
+		t.Fatal("lookup failed", err)
+	}
+	if _, err := d.Lookup(context.Background(), "bad-id"); !errors.Is(err, ErrUserNotFound) || calls != 1 {
+		t.Fatal("invalid internal ID reached storage", err)
+	}
+	if _, err := d.Lookup(context.Background(), "00000000-0000-0000-0000-000000000000"); !errors.Is(err, ErrUserNotFound) {
+		t.Fatal("missing lookup accepted", err)
+	}
+}

@@ -7,7 +7,7 @@ import (
 )
 
 func TestAuthConfig(t *testing.T) {
-	base := map[string]string{"JWT_SECRET": strings.Repeat("x", 32), "AUTH_DATABASE_URL": "postgres://auth:password@localhost/auth?sslmode=disable"}
+	base := map[string]string{"JWT_SECRET": strings.Repeat("x", 32), "AUTH_INTERNAL_TOKEN": strings.Repeat("i", 32), "AUTH_DATABASE_URL": "postgres://auth:password@localhost/auth?sslmode=disable"}
 	lookup := func(name string) (string, bool) { v, ok := base[name]; return v, ok }
 	cfg, err := loadConfig(lookup)
 	if err != nil || cfg.ServiceName != "auth" || cfg.HTTPAddr != ":8080" || cfg.ShutdownTimeout != 10*time.Second {
@@ -16,6 +16,9 @@ func TestAuthConfig(t *testing.T) {
 	for _, tc := range []struct{ name, value string }{
 		{"SERVICE_NAME", ""}, {"HTTP_ADDR", "localhost"}, {"HTTP_ADDR", ":65536"}, {"HTTP_ADDR", ":-1"},
 		{"LOG_LEVEL", "verbose"}, {"SHUTDOWN_TIMEOUT", "0s"}, {"SHUTDOWN_TIMEOUT", "bad"},
+		{"AUTH_INTERNAL_TOKEN", ""}, {"AUTH_INTERNAL_TOKEN", strings.Repeat("i", 31)},
+		{"AUTH_INTERNAL_TOKEN", strings.Repeat("i", 32) + " "}, {"AUTH_INTERNAL_TOKEN", strings.Repeat("i", 32) + "\n"},
+		{"AUTH_INTERNAL_TOKEN", strings.Repeat("я", 32)}, {"AUTH_INTERNAL_TOKEN", strings.Repeat("x", 32)},
 		{"JWT_SECRET", ""}, {"JWT_SECRET", strings.Repeat("x", 31)}, {"AUTH_DATABASE_URL", ""},
 	} {
 		t.Run(tc.name+tc.value, func(t *testing.T) {

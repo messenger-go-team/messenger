@@ -17,6 +17,7 @@ docker compose up -d --wait postgres
 make migrate-up MIGRATE_SERVICE=auth
 make build SERVICE=auth
 export JWT_SECRET="$(openssl rand -hex 32)"
+export AUTH_INTERNAL_TOKEN="$(openssl rand -hex 32)"
 export AUTH_DATABASE_URL='postgres://messenger:YOUR_LOCAL_PASSWORD@127.0.0.1:15432/messenger?sslmode=disable'
 HTTP_ADDR=127.0.0.1:8081 ./bin/auth
 ```
@@ -30,6 +31,7 @@ Auth читает только окружение процесса, `.env` ав�
 | --- | --- | --- |
 | `AUTH_DATABASE_URL` | нет | PostgreSQL URL/DSN; обязательна, содержит секрет |
 | `JWT_SECRET` | нет | Общий HS256-секрет минимум 32 байта |
+| `AUTH_INTERNAL_TOKEN` | нет | Отдельный служебный секрет, минимум 32 печатных ASCII-байта без пробелов, отличный от JWT_SECRET |
 | `HTTP_ADDR` | `:8080` | Адрес HTTP listener |
 | `SERVICE_NAME` | `auth` | Поле service JSON-логов |
 | `LOG_LEVEL` | `INFO` | Уровень slog |
@@ -57,8 +59,9 @@ OpenAPI и cookie Path; в этой реализации контракт сох
   как определено текущим контрактом.
 
 Эти четыре маршрута не требуют access JWT. Профиль, поиск и контакты требуют
-пользовательский Bearer JWT (см. ниже). Внутренняя авторизация lookup
-согласовывается отдельно по пометке OpenAPI. Существующие access JWT продолжают
+пользовательский Bearer JWT (см. ниже). Для внутреннего lookup подготовлен
+вариант с отдельным секретом из OpenAPI; подтверждение команды остаётся
+пунктом ревью #28, предложение в контракте не объявлено согласованным. Существующие access JWT продолжают
 действовать до своего `exp` после logout; logout отзывает refresh.
 
 Register/login принимают `application/json`, ровно поля `username` и `password`.
@@ -121,6 +124,36 @@ username; исходное написание сохраняется. Пусто
 Для #36 внешний Nginx должен проксировать также `/me`, `/users/search`, `/contacts`
 и `/contacts/{contact_id}` по OpenAPI. Реальной конфигурации Nginx в main пока нет;
 доступность через внешний HTTPS проверяется после деплоя в #38.
+
+## Внутренний lookup (предложение для ревью #28)
+
+`GET /internal/users/{user_id}` принимает ровно один
+`Authorization: Bearer <AUTH_INTERNAL_TOKEN>` и возвращает только `id` и
+исходный `username`. Credential сравнивается через SHA-256 digest и
+constant-time compare. Парольный hash, created_at и refresh не возвращаются.
+Пользовательский access JWT, cookie и query-параметр не дают служебного доступа.
+Ошибки credentials дают 401; отсутствующий пользователь и некорректный UUID
+дают 404. Успешный lookup не зависит от существования пользовательской сессии.
+
+Секрет обязателен при запуске, не имеет рабочего значения по умолчанию и не
+совпадает с JWT_SECRET. Передайте одинаковый отдельный секрет только Auth и
+History через окружение/Secrets. Не отдавайте его фронтенду и не пишите в логи.
+Замена текущего секрета требует согласованного обновления потребителя и Auth;
+автоматической ротации нескольких служебных ключей здесь нет.
+
+Сервисный HTTP использует тот же внутренний порт Auth по OpenAPI.
+Он не добавляет шифрование канала: внутренний HTTP предполагает доверие
+окружению одного VPS. TLS внешнего Nginx не шифрует отдельный History -> Auth.
+Внутренний TLS/mTLS является отдельным инфраструктурным решением.
+
+Для #36 подготовлен [snippet](../../deploy/nginx/snippets/auth-locations.conf):
+он проксирует публичные Auth/profile/search/contacts и отвечает 404 на
+`/internal` и `/internal/...` даже при верном служебном credential.
+Его нужно включить в публичный `server`, объявив upstream `auth_backend`
+с адресом Auth внутри Compose. Порт самого Auth наружу не публиковать.
+Полная конфигурация домена, TLS и деплоя остаётся в #36-38.
+Snippet и собранный Auth проверены настоящим Nginx в отдельной Docker-сети.
+Это не результат QA реального стенда.
 
 ## Состояние и остановка
 

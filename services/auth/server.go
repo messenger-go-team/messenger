@@ -48,8 +48,12 @@ func run(ctx context.Context, cfg config, logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	directory := newDirectoryHandler(auth.NewDirectory(repository), verifier)
-	handler := newAuthHandler(&ready, logger, application, repository.CheckReady, directory)
+	directoryService := auth.NewDirectory(repository)
+	directory := newDirectoryHandler(directoryService, verifier)
+	routes := http.NewServeMux()
+	routes.Handle("/internal/", newInternalHandler(directoryService, cfg.InternalToken))
+	routes.Handle("/", directory)
+	handler := newAuthHandler(&ready, logger, application, repository.CheckReady, routes)
 	server := newHTTPServer(cfg, handler, logger)
 	return serve(ctx, server, listener, &ready, cfg.ShutdownTimeout, logger)
 }

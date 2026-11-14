@@ -128,3 +128,14 @@ docker compose --env-file .env.example config --quiet
 Справка: [Compose include](https://docs.docker.com/compose/how-tos/multiple-compose-files/include/),
 [образ PostgreSQL](https://hub.docker.com/_/postgres),
 [Redis CLI](https://redis.io/docs/latest/develop/tools/cli/).
+
+## Маршрутизация Auth для T36
+
+[snippets/auth-locations.conf](nginx/snippets/auth-locations.conf) включает
+публичные пути Auth, /me, /users/search и контакты и закрывает /internal
+на внешнем Nginx. Snippet размещается внутри server; upstream auth_backend
+должен указывать на Auth во внутренней сети (по OpenAPI auth:8080).
+Это заготовка маршрутизации #28 для интеграции в #36, а не готовый деплой.
+Служебный AUTH_INTERNAL_TOKEN передаётся только Auth/History. Backend-порт
+не публикуется наружу. Подробности и ограничение внутреннего HTTP:
+[Auth README](../services/auth/README.md).
