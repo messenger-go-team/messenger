@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package messenger.history.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/messenger-go-team/messenger/api/gen/history/v1;historyv1";
+
+// HistoryService is internal to chat -> history. See README.md for status codes.
+service HistoryService {
+  // SaveMessage checks membership and commits before returning OK.
+  // Same key and body return the original result with duplicate=true;
+  // the same key with a different body returns ALREADY_EXISTS.
+  rpc SaveMessage(SaveMessageRequest) returns (SaveMessageResponse);
+  // GetChatMembers authorizes requester_id and returns current routing targets.
+  rpc GetChatMembers(GetChatMembersRequest) returns (GetChatMembersResponse);
+  // CheckMembership is a snapshot, not authorization for a subsequent write.
+  rpc CheckMembership(CheckMembershipRequest) returns (CheckMembershipResponse);
+}
+
+message SaveMessageRequest {
+  // Required UUID of a chat already created through history REST.
+  string chat_id = 1;
+  // Required UUID from the JWT verified by chat, never from WS payload.
+  string sender_id = 2;
+  // Required client-generated UUID v4, unchanged across retries.
+  string client_msg_id = 3;
+  // UTF-8 plain text: 1..4096 code points, not only Unicode White_Space.
+  // History rejects U+0000 with INVALID_ARGUMENT before storage.
+  // Preserve exactly: no trimming or Unicode normalization.
+  string body = 4;
+}
+
+message SaveMessageResponse {
+  // Required server UUID, stable across duplicates.
+  string message_id = 1;
+  // Monotonic within chat: 1..9007199254740991 (safe for external JSON).
+  int64 seq = 2;
+  // Required server time of the first save, stable across duplicates.
+  google.protobuf.Timestamp created_at = 3;
+  // false for the first committed insert; true for an identical retry.
+  bool duplicate = 4;
+}
+
+message GetChatMembersRequest {
+  // Required UUID.
+  string chat_id = 1;
+  // Required authenticated user's UUID from JWT; must belong to this chat.
+  string requester_id = 2;
+}
+
+message GetChatMembersResponse {
+  // Unique current chat_members.user_id values, including the requester.
+  // Sorted by canonical UUID string ascending; two for a personal chat.
+  repeated string user_ids = 1;
+}
+
+message CheckMembershipRequest {
+  // Required UUID.
+  string chat_id = 1;
+  // Required authenticated user's UUID from JWT.
+  string user_id = 2;
+}
+
+message CheckMembershipResponse {
+  // false for a non-member of an existing chat; storage errors are not false.
+  bool is_member = 1;
+}
