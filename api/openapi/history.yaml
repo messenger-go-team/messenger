@@ -117,11 +117,18 @@ paths:
         курсора; after_seq возвращает сообщения с seq строго больше и начинает
         страницу с самого раннего ещё не загруженного сообщения. Передать оба курсора
         одновременно нельзя. В ответе курсоры next_before_seq и next_after_seq
-        равны seq первого и последнего сообщения страницы соответственно;
-        если сообщений нет, оба значения null. has_more_after описывает
-        состояние на момент формирования ответа: сообщения, сохранённые позже,
-        приходят через WebSocket или следующий запрос history. GET истории не
-        меняет last_read_seq.
+        равны seq первого и последнего сообщения страницы соответственно.
+        Если подходящих сообщений нет, возвращается 200 с messages: [],
+        next_before_seq: null, next_after_seq: null, has_more_before: false
+        и has_more_after: false. Это правило действует для пустого чата,
+        before_seq=1, after_seq=last_seq и after_seq выше последнего сообщения,
+        если параметры находятся в допустимом диапазоне. Проверки JWT,
+        существования чата и членства выполняются и для пустой страницы.
+        Пустая страница завершает текущую догрузку. Клиент сохраняет прежний
+        курсор синхронизации и использует его при следующем запросе.
+        has_more_after описывает состояние на момент формирования ответа:
+        сообщения, сохранённые позже, приходят через WebSocket или следующий
+        запрос history. GET истории не меняет last_read_seq.
       security:
         - accessToken: []
       parameters:
@@ -169,18 +176,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessagePage'
-              example:
-                messages:
-                  - id: 6df63854-0a0a-43cb-b4d4-2fbc97ed7eb3
-                    chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
-                    seq: 12
-                    sender_id: 8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0
-                    body: Привет!
-                    created_at: '2026-11-07T12:00:00Z'
-                next_before_seq: 12
-                next_after_seq: 12
-                has_more_before: true
-                has_more_after: false
+              examples:
+                populated:
+                  summary: Страница с сообщением
+                  value:
+                    messages:
+                      - id: 6df63854-0a0a-43cb-b4d4-2fbc97ed7eb3
+                        chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
+                        seq: 12
+                        sender_id: 8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0
+                        body: Привет!
+                        created_at: '2026-11-07T12:00:00Z'
+                    next_before_seq: 12
+                    next_after_seq: 12
+                    has_more_before: true
+                    has_more_after: false
+                empty:
+                  summary: Пустой чат или нет сообщений за выбранным курсором
+                  value:
+                    messages: []
+                    next_before_seq: null
+                    next_after_seq: null
+                    has_more_before: false
+                    has_more_after: false
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
