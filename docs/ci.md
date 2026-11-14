@@ -56,6 +56,10 @@ Workflow .github/workflows/ci.yml запускается на каждый PR в
 - **Go lint**: официальный golangci-lint action с v2.15.0 и аргументами
   ./... ./services/_template.
 - **Go test**: make test, включая race detector и явную проверку шаблона.
+  Отдельный PostgreSQL 18 и `AUTH_TEST_DATABASE_URL` включают Auth integration-тесты
+  через HTTPS: регистрация, вход, cookie, ротация, выход и конкуренция транзакций.
+  Тесты создают и удаляют собственные БД; локальный запуск описан в
+  [services/auth](../services/auth/README.md#проверки).
 - **Migration integration**: отдельный PostgreSQL 18 и тесты
   `go test ./cmd/migrate -run TestMigrationsIntegration -count=1 -v`.
   Тесты создают и удаляют собственные БД, проверяют применение, откат,

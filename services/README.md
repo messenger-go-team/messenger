@@ -5,7 +5,7 @@
 
 | Каталог | Ответственность | Таблицы во владении |
 | --- | --- | --- |
-| `auth/` | Пользователи, токены и контакты | `users`, `refresh_tokens`, `contacts` |
+| [auth/](auth/README.md) | Пользователи, токены и контакты | `users`, `refresh_tokens`, `contacts` |
 | [chat/](chat/README.md) | WebSocket-соединения и доставка событий | Собственных таблиц нет |
 | `history/` | Чаты, участники, сохранение и выдача сообщений | `chats`, `chat_members`, `messages` |
 
