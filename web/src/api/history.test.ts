@@ -270,7 +270,28 @@ describe('History API', () => {
         beforeSeq: 1,
       })
 
-      expect(result.messages).toEqual([])
+      expect(result).toEqual({
+        messages: [],
+        next_before_seq: null,
+        next_after_seq: null,
+        has_more_before: false,
+        has_more_after: false,
+      })
+    })
+
+    it.each([
+      ['after_seq at last_seq', 6],
+      ['after_seq above last_seq', 7],
+    ])('returns an empty page for %s', async (_name, afterSeq) => {
+      await expect(
+        getMessageHistory(INITIAL_CHAT_ID, await aliceToken(), { afterSeq }),
+      ).resolves.toEqual({
+        messages: [],
+        next_before_seq: null,
+        next_after_seq: null,
+        has_more_before: false,
+        has_more_after: false,
+      })
     })
 
     it('applies limit one', async () => {
@@ -358,6 +379,27 @@ describe('History API', () => {
         status: 422,
         code: 'validation_error',
       })
+    })
+
+    it('returns history for an existing chat addressed by uppercase UUID', async () => {
+      const chatId = 'abcdefab-cdef-4abc-8def-abcdefabcdef'
+      const charlieToken = await addCharlieAndCreateToken()
+      const uuidSpy = vi.spyOn(crypto, 'randomUUID').mockReturnValue(chatId)
+
+      try {
+        const chat = await createPersonalChat(ALICE_ID, charlieToken)
+        expect(chat.id).toBe(chatId)
+
+        await expect(getMessageHistory(chatId.toUpperCase(), charlieToken)).resolves.toEqual({
+          messages: [],
+          next_before_seq: null,
+          next_after_seq: null,
+          has_more_before: false,
+          has_more_after: false,
+        })
+      } finally {
+        uuidSpy.mockRestore()
+      }
     })
 
     // Raw query нужен для комбинаций, которые типизированный client намеренно не позволяет собрать.

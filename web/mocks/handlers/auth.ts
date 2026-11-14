@@ -13,6 +13,7 @@ import {
 } from '../data/auth'
 import { resolveRefreshToken } from '../lib/cookies'
 import { createAccessToken, verifyAccessToken } from '../lib/tokens'
+import { normalizeUuid } from '../lib/validation'
 
 const MIN_PASSWORD_LENGTH = 8
 
@@ -375,16 +376,23 @@ export const authHandlers = [
       )
     }
 
-    const contactId = params.contactId
+    const contactId = normalizeUuid(params.contactId)
 
-    if (
-      typeof contactId !== 'string' ||
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(contactId)
-    ) {
+    if (!contactId) {
       return HttpResponse.json(
         {
           code: 'validation_error',
           message: 'Invalid contact ID',
+        },
+        { status: 422 },
+      )
+    }
+
+    if (contactId === userId) {
+      return HttpResponse.json(
+        {
+          code: 'validation_error',
+          message: 'Cannot add the current user as a contact',
         },
         { status: 422 },
       )
@@ -431,12 +439,9 @@ export const authHandlers = [
       )
     }
 
-    const contactId = params.contactId
+    const contactId = normalizeUuid(params.contactId)
 
-    if (
-      typeof contactId !== 'string' ||
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(contactId)
-    ) {
+    if (!contactId) {
       return HttpResponse.json(
         {
           code: 'validation_error',

@@ -9,7 +9,7 @@ import {
   markHistoryChatRead,
 } from '../data/history'
 import { authenticateAccessToken } from '../lib/authentication'
-import { isUuid, parseIntegerParameter } from '../lib/validation'
+import { normalizeUuid, parseIntegerParameter } from '../lib/validation'
 
 const MAX_SAFE_SEQ = Number.MAX_SAFE_INTEGER
 
@@ -69,22 +69,27 @@ export const historyHandlers = [
       body === null ||
       Array.isArray(body) ||
       Object.keys(body).some((key) => key !== 'user_id') ||
-      !('user_id' in body) ||
-      !isUuid(body.user_id)
+      !('user_id' in body)
     ) {
       return validationError('Invalid personal chat request')
     }
 
-    if (body.user_id === currentUserId) {
+    const otherUserId = normalizeUuid(body.user_id)
+
+    if (!otherUserId) {
+      return validationError('Invalid personal chat request')
+    }
+
+    if (otherUserId === currentUserId) {
       return validationError('A personal chat requires another user')
     }
 
-    if (!findUserById(body.user_id)) {
+    if (!findUserById(otherUserId)) {
       return notFound('User not found')
     }
 
     // Data layer гарантирует единственный personal chat для неупорядоченной пары пользователей.
-    const result = createOrGetPersonalChat(currentUserId, body.user_id)
+    const result = createOrGetPersonalChat(currentUserId, otherUserId)
 
     return HttpResponse.json(result.chat, { status: result.created ? 201 : 200 })
   }),
@@ -106,9 +111,9 @@ export const historyHandlers = [
       return unauthorized()
     }
 
-    const chatId = params.chatId
+    const chatId = normalizeUuid(params.chatId)
 
-    if (!isUuid(chatId)) {
+    if (!chatId) {
       return validationError('Invalid chat ID')
     }
 
@@ -170,9 +175,9 @@ export const historyHandlers = [
       return unauthorized()
     }
 
-    const chatId = params.chatId
+    const chatId = normalizeUuid(params.chatId)
 
-    if (!isUuid(chatId)) {
+    if (!chatId) {
       return validationError('Invalid chat ID')
     }
 

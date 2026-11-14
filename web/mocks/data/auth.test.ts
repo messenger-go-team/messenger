@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createRefreshSession,
   consumeRefreshSession,
@@ -39,6 +39,21 @@ describe('Mock refresh sessions', () => {
 
     expect(revokeRefreshSession(token)).toBe(true)
     expect(consumeRefreshSession(token)).toBeNull()
+  })
+
+  it('rejects and removes an expired refresh token during revocation', () => {
+    vi.useFakeTimers()
+
+    try {
+      vi.setSystemTime(new Date('2026-11-01T12:00:00Z'))
+      const token = createRefreshSession(USER_ID)
+      vi.setSystemTime(new Date('2026-12-02T12:00:00Z'))
+
+      expect(revokeRefreshSession(token)).toBe(false)
+      expect(consumeRefreshSession(token)).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('rejects an unknown refresh token', () => {
@@ -96,6 +111,25 @@ describe('Contacts storage', () => {
     addContact(aliceId, bob.id)
 
     expect(listContacts(aliceId)).toHaveLength(1)
+  })
+
+  it('sorts contacts by ASCII lower-case username while preserving original case', () => {
+    const zed = {
+      id: '00000000-0000-4000-8000-000000000011',
+      username: 'Zed_1',
+      password: 'test-password',
+      created_at: '2026-11-01T10:10:00Z',
+    }
+    const initialBobId = '00000000-0000-4000-8000-000000000002'
+
+    addUser(zed)
+    addContact(aliceId, zed.id)
+    addContact(aliceId, initialBobId)
+
+    expect(listContacts(aliceId)).toEqual([
+      { id: initialBobId, username: 'bob_2' },
+      { id: zed.id, username: 'Zed_1' },
+    ])
   })
 
   it('removes an existing contact', () => {

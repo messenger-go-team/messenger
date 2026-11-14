@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify } from 'jose'
+import { normalizeUuid } from './validation'
 
 const MOCK_JWT_SECRET = 'messenger-mock-jwt-secret-for-development-only'
 const ACCESS_TOKEN_TTL = '15m'
@@ -39,7 +40,7 @@ export async function verifyAccessToken(token: string): Promise<string | null> {
       maxTokenAge: ACCESS_TOKEN_TTL,
     })
 
-    return typeof payload.sub === 'string' ? payload.sub : null
+    return normalizeUuid(payload.sub)
   } catch {
     return null
   }

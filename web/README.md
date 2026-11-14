@@ -178,9 +178,12 @@ credentials, если origin отличается. Все запросы отп�
 
 MSW не является настоящим сервером: browser worker сохраняет синтетическую
 HttpOnly refresh cookie во внутреннем cookie store и передаёт её handlers через
-resolver `cookies`. В Node/jsdom этот store отсутствует, поэтому тесты сессий
-явно передают Cookie header. Refresh-токен не хранится в localStorage.
-WebSocket не входит в эти моки.
+resolver `cookies`. В браузерном mock-режиме MSW сохраняет данные этого store в
+`localStorage`; это деталь эмуляции, а не эквивалент защиты настоящей HttpOnly-cookie
+backend-сервера. Поэтому mock refresh-token может быть доступен клиентской среде и
+не должен считаться защищённым как в production. В Node/jsdom browser cookie store
+отсутствует, поэтому тесты сессий явно передают Cookie header. WebSocket не входит
+в эти моки.
 
 History поддерживает курсорную пагинацию `before_seq` или `after_seq`, лимит от 1
 до 100 и выдаёт сообщения по `seq` по возрастанию. Получение истории не отмечает

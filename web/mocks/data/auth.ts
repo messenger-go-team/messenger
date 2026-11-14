@@ -89,9 +89,17 @@ export function consumeRefreshSession(refreshToken: string): string | null {
   return session.userId
 }
 
-/** Отзывает refresh-сессию; повторный отзыв безопасно возвращает `false`. */
+/** Отзывает только действующую refresh-сессию; истёкшая также удаляется и возвращает `false`. */
 export function revokeRefreshSession(refreshToken: string): boolean {
-  return refreshSessions.delete(refreshToken)
+  const session = refreshSessions.get(refreshToken)
+
+  if (!session) {
+    return false
+  }
+
+  refreshSessions.delete(refreshToken)
+
+  return session.expiresAt > Date.now()
 }
 
 /** Возвращает не более 20 публичных профилей с case-insensitive prefix. */
@@ -116,6 +124,14 @@ export function listContacts(userId: string) {
   return [...contactIds]
     .map((contactId) => findUserById(contactId))
     .filter((user) => user !== undefined)
+    .sort((first, second) => {
+      const firstUsername = first.username.toLowerCase()
+      const secondUsername = second.username.toLowerCase()
+
+      if (firstUsername < secondUsername) return -1
+      if (firstUsername > secondUsername) return 1
+      return 0
+    })
     .map((user) => ({
       id: user.id,
       username: user.username,

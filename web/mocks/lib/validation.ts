@@ -5,6 +5,11 @@ export function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_PATTERN.test(value)
 }
 
+/** Валидирует UUID и возвращает каноническое lower-case представление для ключей хранилищ. */
+export function normalizeUuid(value: unknown): string | null {
+  return isUuid(value) ? value.toLowerCase() : null
+}
+
 /**
  * Разбирает десятичный query-параметр без знака, дробей и экспоненты.
  * Дополнительно ограничивает результат safe-integer диапазоном, важным для `seq` в JavaScript.

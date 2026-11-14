@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { SignJWT } from 'jose'
 import { ApiError, apiRequest } from './client'
 import {
@@ -11,8 +11,8 @@ import {
   getContacts,
   addContact,
 } from './auth'
-import { verifyAccessToken } from '../../mocks/lib/tokens'
-import { createRefreshSession } from '../../mocks/data/auth'
+import { createAccessToken, verifyAccessToken } from '../../mocks/lib/tokens'
+import { addUser, createRefreshSession } from '../../mocks/data/auth'
 import { http, HttpResponse } from 'msw'
 import { server } from '../../mocks/server'
 
@@ -415,6 +415,29 @@ describe('Auth API', () => {
     })
   })
 
+  it('returns 401 when logout receives a refresh session expired for 31 days', async () => {
+    vi.useFakeTimers()
+
+    try {
+      vi.setSystemTime(new Date('2026-11-01T12:00:00Z'))
+      const refreshToken = createRefreshSession(ALICE_ID)
+      vi.setSystemTime(new Date('2026-12-02T12:00:00Z'))
+
+      const response = await fetch('/auth/logout', {
+        method: 'POST',
+        headers: { Cookie: `refresh_token=${refreshToken}` },
+      })
+
+      expect(response.status).toBe(401)
+      expect(await response.json()).toEqual({
+        code: 'unauthorized',
+        message: 'Invalid or missing refresh token',
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('keeps login, refresh rotation, and logout in one valid session chain', async () => {
     const loginResponse = await fetch('/auth/login', {
       method: 'POST',
@@ -619,6 +642,64 @@ describe('Auth API', () => {
     expect(result.contacts).toHaveLength(1)
   })
 
+  it('returns 422 for the current user UUID in lower and upper case without changing contacts', async () => {
+    const currentUserId = 'abcdefab-cdef-4abc-8def-abcdefabcdef'
+    addUser({
+      id: currentUserId,
+      username: 'self_user',
+      password: 'test-password',
+      created_at: '2026-11-01T10:10:00Z',
+    })
+    const accessToken = await createAccessToken(currentUserId)
+
+    for (const contactId of [currentUserId, currentUserId.toUpperCase()]) {
+      await expect(addContact(contactId, accessToken)).rejects.toMatchObject({
+        status: 422,
+        code: 'validation_error',
+      })
+    }
+
+    await expect(getContacts(accessToken)).resolves.toEqual({ contacts: [] })
+  })
+
+  it('adds an existing user by uppercase UUID and stores the canonical ID', async () => {
+    const contactId = 'abcdefab-cdef-4abc-8def-abcdefabcdea'
+    addUser({
+      id: contactId,
+      username: 'uppercase_contact',
+      password: 'test-password',
+      created_at: '2026-11-01T10:10:00Z',
+    })
+    const { access_token } = await login({
+      username: 'alice_1',
+      password: 'correct-horse-battery',
+    })
+
+    await expect(addContact(contactId.toUpperCase(), access_token)).resolves.toBeUndefined()
+    await expect(getContacts(access_token)).resolves.toEqual({
+      contacts: [{ id: contactId, username: 'uppercase_contact' }],
+    })
+  })
+
+  it('sorts contacts case-insensitively and preserves username case', async () => {
+    const zed = await register({ username: 'Zed_1', password: 'test-password' })
+    const bobId = '00000000-0000-4000-8000-000000000002'
+    const { access_token } = await login({
+      username: 'alice_1',
+      password: 'correct-horse-battery',
+    })
+
+    await addContact(zed.id, access_token)
+    await addContact(bobId, access_token)
+
+    await expect(getContacts(access_token)).resolves.toEqual({
+      contacts: [
+        { id: bobId, username: 'bob_2' },
+        { id: zed.id, username: 'Zed_1' },
+      ],
+    })
+  })
+
   it('returns 404 when adding a nonexistent user', async () => {
     const { access_token } = await login({
       username: 'alice_1',
@@ -643,6 +724,20 @@ describe('Auth API', () => {
       status: 422,
       code: 'validation_error',
     })
+  })
+
+  it('returns 401 when adding a contact without a valid access token', async () => {
+    await expect(
+      addContact('00000000-0000-4000-8000-000000000002', 'invalid-token'),
+    ).rejects.toMatchObject({
+      status: 401,
+      code: 'unauthorized',
+    })
+
+    const response = await fetch('/contacts/00000000-0000-4000-8000-000000000002', {
+      method: 'PUT',
+    })
+    expect(response.status).toBe(401)
   })
 })
 
