@@ -12,8 +12,9 @@ import (
 func (r *Repository) CheckReady(ctx context.Context) error {
 	_, err := r.db.ExecContext(ctx, `SELECT
   u.id, u.username, u.username_normalized, u.password_hash, u.created_at,
-  rt.id, rt.user_id, rt.token_hash, rt.expires_at, rt.revoked_at
- FROM auth.users AS u CROSS JOIN auth.refresh_tokens AS rt LIMIT 0`)
+  rt.id, rt.user_id, rt.token_hash, rt.expires_at, rt.revoked_at,
+  c.user_id, c.contact_id
+ FROM auth.users AS u CROSS JOIN auth.refresh_tokens AS rt CROSS JOIN auth.contacts AS c LIMIT 0`)
 	if err != nil {
 		return errors.New("auth schema is not accessible")
 	}
@@ -21,7 +22,9 @@ func (r *Repository) CheckReady(ctx context.Context) error {
 	err = r.db.QueryRowContext(ctx, `SELECT
   has_table_privilege(current_user, 'auth.users', 'INSERT') AND
   has_table_privilege(current_user, 'auth.refresh_tokens', 'INSERT') AND
-  has_table_privilege(current_user, 'auth.refresh_tokens', 'UPDATE')`).Scan(&allowed)
+  has_table_privilege(current_user, 'auth.refresh_tokens', 'UPDATE') AND
+  has_table_privilege(current_user, 'auth.contacts', 'INSERT') AND
+  has_table_privilege(current_user, 'auth.contacts', 'DELETE')`).Scan(&allowed)
 	if err != nil || !allowed {
 		return errors.New("auth write privileges are not available")
 	}

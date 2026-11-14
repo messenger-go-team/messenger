@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/messenger-go-team/messenger/pkg/jwtauth"
 	"github.com/messenger-go-team/messenger/services/auth/internal/auth"
 	"github.com/messenger-go-team/messenger/services/auth/internal/postgres"
 	"log/slog"
@@ -43,7 +44,12 @@ func run(ctx context.Context, cfg config, logger *slog.Logger) error {
 		return err
 	}
 	var ready atomic.Bool
-	handler := newAuthHandler(&ready, logger, application, repository.CheckReady)
+	verifier, err := jwtauth.New(cfg.JWTSecret)
+	if err != nil {
+		return err
+	}
+	directory := newDirectoryHandler(auth.NewDirectory(repository), verifier)
+	handler := newAuthHandler(&ready, logger, application, repository.CheckReady, directory)
 	server := newHTTPServer(cfg, handler, logger)
 	return serve(ctx, server, listener, &ready, cfg.ShutdownTimeout, logger)
 }
