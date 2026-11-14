@@ -81,15 +81,16 @@ describe('Auth API', () => {
     expect(userId).toBe('00000000-0000-4000-8000-000000000001')
   })
 
-  it('returns 401 for invalid credentials', async () => {
+  it('preserves invalid_credentials in ApiError for invalid credentials', async () => {
     await expect(
       login({
         username: 'alice_1',
         password: 'wrong-password',
       }),
     ).rejects.toMatchObject({
+      name: 'ApiError',
       status: 401,
-      code: 'unauthorized',
+      code: 'invalid_credentials',
     })
   })
 
@@ -130,6 +131,30 @@ describe('Auth API', () => {
     await expect(login({ username, password })).resolves.toMatchObject({ token_type: 'Bearer' })
   })
 
+  it.each([
+    ['a lone high surrogate', 'surrogate_high', `1234567\ud800`],
+    ['a lone low surrogate', 'surrogate_low', `1234567\udc00`],
+    ['an invalid surrogate sequence', 'surrogate_order', `123456\udc00\ud800`],
+  ])('rejects %s during registration and login', async (_name, username, password) => {
+    await expect(register({ username, password })).rejects.toMatchObject({
+      status: 422,
+      code: 'validation_error',
+    })
+    await expect(login({ username, password })).rejects.toMatchObject({
+      status: 422,
+      code: 'validation_error',
+    })
+  })
+
+  it.each([
+    ['a valid surrogate pair representing an emoji', 'valid_emoji', '1234567😀'],
+    ['a real U+FFFD replacement character', 'replacement_char', '1234567�'],
+    ['literal \\uD800 text', 'literal_escape', 'ok\\uD800'],
+  ])('accepts %s during registration and login', async (_name, username, password) => {
+    await expect(register({ username, password })).resolves.toMatchObject({ username })
+    await expect(login({ username, password })).resolves.toMatchObject({ token_type: 'Bearer' })
+  })
+
   it('throws an ApiError for failed requests', async () => {
     await expect(
       login({
@@ -164,7 +189,7 @@ describe('Auth API', () => {
       }),
     ).rejects.toMatchObject({
       status: 409,
-      code: 'conflict',
+      code: 'username_taken',
     })
   })
 
@@ -272,7 +297,7 @@ describe('Auth API', () => {
     const error = await secondResponse.json()
 
     expect(error).toEqual({
-      code: 'unauthorized',
+      code: 'invalid_refresh_token',
       message: 'Invalid or expired refresh token',
     })
   })
@@ -344,8 +369,54 @@ describe('Auth API', () => {
     const error = await response.json()
 
     expect(error).toEqual({
-      code: 'unauthorized',
+      code: 'invalid_refresh_token',
       message: 'Refresh token is required',
+    })
+  })
+
+  it('preserves invalid_refresh_token in ApiError', async () => {
+    await expect(refresh()).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 401,
+      code: 'invalid_refresh_token',
+    })
+  })
+
+  it('returns invalid_refresh_token for a refresh session expired for 31 days', async () => {
+    vi.useFakeTimers()
+
+    try {
+      vi.setSystemTime(new Date('2026-11-01T12:00:00Z'))
+      const refreshToken = createRefreshSession(ALICE_ID)
+      vi.setSystemTime(new Date('2026-12-02T12:00:00Z'))
+
+      const response = await fetch('/auth/refresh', {
+        method: 'POST',
+        headers: { Cookie: `refresh_token=${refreshToken}` },
+      })
+
+      expect(response.status).toBe(401)
+      expect(await response.json()).toEqual({
+        code: 'invalid_refresh_token',
+        message: 'Invalid or expired refresh token',
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('rejects a refresh session belonging to a nonexistent user', async () => {
+    const refreshToken = createRefreshSession('00000000-0000-4000-8000-000000000099')
+
+    const response = await fetch('/auth/refresh', {
+      method: 'POST',
+      headers: { Cookie: `refresh_token=${refreshToken}` },
+    })
+
+    expect(response.status).toBe(401)
+    expect(await response.json()).toEqual({
+      code: 'invalid_refresh_token',
+      message: 'User not found',
     })
   })
 
@@ -395,7 +466,7 @@ describe('Auth API', () => {
     const error = await refreshResponse.json()
 
     expect(error).toEqual({
-      code: 'unauthorized',
+      code: 'invalid_refresh_token',
       message: 'Invalid or expired refresh token',
     })
   })
@@ -410,7 +481,7 @@ describe('Auth API', () => {
     const error = await response.json()
 
     expect(error).toEqual({
-      code: 'unauthorized',
+      code: 'invalid_refresh_token',
       message: 'Invalid or missing refresh token',
     })
   })
@@ -430,7 +501,7 @@ describe('Auth API', () => {
 
       expect(response.status).toBe(401)
       expect(await response.json()).toEqual({
-        code: 'unauthorized',
+        code: 'invalid_refresh_token',
         message: 'Invalid or missing refresh token',
       })
     } finally {
@@ -473,6 +544,22 @@ describe('Auth API', () => {
     })
 
     expect(revokedResponse.status).toBe(401)
+    expect(await revokedResponse.json()).toMatchObject({ code: 'invalid_refresh_token' })
+  })
+
+  it('returns invalid_refresh_token when logout receives an already revoked session', async () => {
+    const refreshToken = createRefreshSession(ALICE_ID)
+    const options: RequestInit = {
+      method: 'POST',
+      headers: { Cookie: `refresh_token=${refreshToken}` },
+    }
+
+    expect((await fetch('/auth/logout', options)).status).toBe(204)
+
+    const response = await fetch('/auth/logout', options)
+
+    expect(response.status).toBe(401)
+    expect(await response.json()).toMatchObject({ code: 'invalid_refresh_token' })
   })
 
   // Временные MSW handlers изолированно проверяют thin client для ответов без cookie-эмуляции jsdom.

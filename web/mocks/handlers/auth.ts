@@ -17,9 +17,29 @@ import { normalizeUuid } from '../lib/validation'
 
 const MIN_PASSWORD_LENGTH = 8
 
-/** Проверяет OpenAPI `minLength` в Unicode code points, а не в UTF-16 code units. */
+/** Проверяет корректность UTF-16 и OpenAPI `minLength` в Unicode code points. */
 function isValidPassword(password: unknown): password is string {
-  return typeof password === 'string' && Array.from(password).length >= MIN_PASSWORD_LENGTH
+  if (typeof password !== 'string') {
+    return false
+  }
+
+  for (let index = 0; index < password.length; index += 1) {
+    const codeUnit = password.charCodeAt(index)
+
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const nextCodeUnit = password.charCodeAt(index + 1)
+
+      if (!(nextCodeUnit >= 0xdc00 && nextCodeUnit <= 0xdfff)) {
+        return false
+      }
+
+      index += 1
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return false
+    }
+  }
+
+  return Array.from(password).length >= MIN_PASSWORD_LENGTH
 }
 
 /**
@@ -59,7 +79,7 @@ export const authHandlers = [
 
     if (findUserByUsername(body.username)) {
       return HttpResponse.json(
-        { code: 'conflict', message: 'Username already exists' },
+        { code: 'username_taken', message: 'Username already exists' },
         { status: 409 },
       )
     }
@@ -124,7 +144,7 @@ export const authHandlers = [
     if (!user || user.password !== body.password) {
       return HttpResponse.json(
         {
-          code: 'unauthorized',
+          code: 'invalid_credentials',
           message: 'Invalid credentials',
         },
         { status: 401 },
@@ -156,7 +176,7 @@ export const authHandlers = [
     if (!refreshToken) {
       return HttpResponse.json(
         {
-          code: 'unauthorized',
+          code: 'invalid_refresh_token',
           message: 'Refresh token is required',
         },
         { status: 401 },
@@ -168,7 +188,7 @@ export const authHandlers = [
     if (!userId) {
       return HttpResponse.json(
         {
-          code: 'unauthorized',
+          code: 'invalid_refresh_token',
           message: 'Invalid or expired refresh token',
         },
         { status: 401 },
@@ -180,7 +200,7 @@ export const authHandlers = [
     if (!user) {
       return HttpResponse.json(
         {
-          code: 'unauthorized',
+          code: 'invalid_refresh_token',
           message: 'User not found',
         },
         { status: 401 },
@@ -211,7 +231,7 @@ export const authHandlers = [
     if (!refreshToken || !revokeRefreshSession(refreshToken)) {
       return HttpResponse.json(
         {
-          code: 'unauthorized',
+          code: 'invalid_refresh_token',
           message: 'Invalid or missing refresh token',
         },
         { status: 401 },
