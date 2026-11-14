@@ -3,3 +3,4 @@ dist/
 coverage/
 *.tsbuildinfo
 package-lock.json
+public/mockServiceWorker.js
