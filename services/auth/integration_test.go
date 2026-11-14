@@ -27,6 +27,13 @@ import (
 // its application tables are never touched. The test role needs CREATEDB.
 func authTestDatabase(t *testing.T) *sql.DB {
 	t.Helper()
+	db := emptyAuthTestDatabase(t)
+	applyAuthTestSchema(t, db)
+	return db
+}
+
+func emptyAuthTestDatabase(t *testing.T) *sql.DB {
+	t.Helper()
 	raw := os.Getenv("AUTH_TEST_DATABASE_URL")
 	if raw == "" {
 		t.Skip("set AUTH_TEST_DATABASE_URL to run Auth PostgreSQL integration tests")
@@ -59,6 +66,13 @@ func authTestDatabase(t *testing.T) *sql.DB {
 		t.Fatal("open isolated Auth database failed")
 	}
 	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+func applyAuthTestSchema(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	migration, err := os.ReadFile("migrations/000001_initial_schema.up.sql")
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +80,6 @@ func authTestDatabase(t *testing.T) *sql.DB {
 	if _, err := db.ExecContext(ctx, string(migration)); err != nil {
 		t.Fatal("apply Auth schema:", err)
 	}
-	return db
 }
 
 func TestAuthIntegration(t *testing.T) {
@@ -79,7 +92,7 @@ func TestAuthIntegration(t *testing.T) {
 	}
 	var ready atomic.Bool
 	ready.Store(true)
-	server := httptest.NewTLSServer(newAuthHandler(&ready, newLogger(io.Discard, "auth", slog.LevelInfo), service, db.PingContext))
+	server := httptest.NewTLSServer(newAuthHandler(&ready, newLogger(io.Discard, "auth", slog.LevelInfo), service, repo.CheckReady))
 	t.Cleanup(server.Close)
 	client := server.Client()
 	client.Timeout = 15 * time.Second
@@ -197,6 +210,34 @@ func TestAuthIntegration(t *testing.T) {
 	checkStatus(response, data, 200)
 	live := cookieOf(response)
 
+	t.Run("Unicode passwords retain their identity", func(t *testing.T) {
+		for _, tc := range []struct{ username, encoded, password string }{
+			{"UnicodeEmoji", `abcdefg\ud83d\ude00`, "abcdefg😀"},
+			{"UnicodeReplacement", `abcdefg\ufffd`, "abcdefg�"},
+			{"UnicodeBackslash", `abcdefg\\ud800`, `abcdefg\ud800`},
+		} {
+			body := `{"username":"` + tc.username + `","password":"` + tc.encoded + `"}`
+			response, data := request("/auth/register", body, nil)
+			checkStatus(response, data, http.StatusCreated)
+			literal, err := json.Marshal(map[string]string{"username": tc.username, "password": tc.password})
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, data = request("/auth/login", string(literal), nil)
+			checkStatus(response, data, http.StatusOK)
+			for _, invalid := range []string{`abcdefg\ud800`, `abcdefg\udc00`} {
+				body := `{"username":"` + tc.username + `","password":"` + invalid + `"}`
+				response, data = request("/auth/login", body, nil)
+				checkStatus(response, data, http.StatusUnprocessableEntity)
+			}
+		}
+		response, data := request("/auth/register", `{"username":"InvalidSurrogate","password":"abcdefg\ud800"}`, nil)
+		checkStatus(response, data, http.StatusUnprocessableEntity)
+		var count int
+		if err := db.QueryRow(`SELECT count(*) FROM auth.users WHERE username_normalized='invalidsurrogate'`).Scan(&count); err != nil || count != 0 {
+			t.Fatal("unpaired surrogate created an account", err)
+		}
+	})
 	t.Run("expired refresh", func(t *testing.T) {
 		hash, _ := auth.HashRefresh(live.Value)
 		if _, err := db.Exec(`UPDATE auth.refresh_tokens SET expires_at=clock_timestamp()-interval '1 second' WHERE token_hash=$1`, hash); err != nil {

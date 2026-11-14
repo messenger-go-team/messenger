@@ -61,7 +61,7 @@ func newServiceHandler(ready *atomic.Bool, logger *slog.Logger, application http
 	return newServiceHandlerWithReadiness(ready, logger, application, nil)
 }
 
-func newServiceHandlerWithReadiness(ready *atomic.Bool, logger *slog.Logger, application http.Handler, ping func(context.Context) error) http.Handler {
+func newServiceHandlerWithReadiness(ready *atomic.Bool, logger *slog.Logger, application http.Handler, checkReady func(context.Context) error) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /metrics", metrics.NewHandler())
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -69,9 +69,9 @@ func newServiceHandlerWithReadiness(ready *atomic.Bool, logger *slog.Logger, app
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		available := ready.Load()
-		if available && ping != nil {
+		if available && checkReady != nil {
 			ctx, cancel := context.WithTimeout(r.Context(), time.Second)
-			available = ping(ctx) == nil
+			available = checkReady(ctx) == nil
 			cancel()
 		}
 		if !available || !ready.Load() {

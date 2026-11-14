@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"strconv"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
@@ -27,7 +28,7 @@ type authentication interface {
 
 type authAPI struct{ service authentication }
 
-func newAuthHandler(ready *atomic.Bool, logger *slog.Logger, service authentication, ping func(context.Context) error) http.Handler {
+func newAuthHandler(ready *atomic.Bool, logger *slog.Logger, service authentication, checkReady func(context.Context) error) http.Handler {
 	api := authAPI{service: service}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /auth/register", api.register)
@@ -40,7 +41,7 @@ func newAuthHandler(ready *atomic.Bool, logger *slog.Logger, service authenticat
 		defer cancel()
 		mux.ServeHTTP(w, r.WithContext(ctx))
 	})
-	return newServiceHandlerWithReadiness(ready, logger, application, ping)
+	return newServiceHandlerWithReadiness(ready, logger, application, checkReady)
 }
 
 func (api authAPI) register(w http.ResponseWriter, r *http.Request) {
@@ -151,7 +152,7 @@ func readCredentials(r *http.Request) (string, string, error) {
 			return "", "", invalid
 		}
 		var value json.RawMessage
-		if err := d.Decode(&value); err != nil || len(value) == 0 || value[0] != '"' {
+		if err := d.Decode(&value); err != nil || len(value) == 0 || value[0] != '"' || !validSurrogateEscapes(value) {
 			return "", "", invalid
 		}
 		var text string
@@ -167,6 +168,40 @@ func readCredentials(r *http.Request) (string, string, error) {
 		return "", "", invalid
 	}
 	return fields["username"], fields["password"], nil
+}
+
+// encoding/json accepts lone UTF-16 surrogates and silently replaces them
+// with U+FFFD. Validate escapes before decoding so a password is never changed.
+// raw is already a syntactically valid JSON string from Decoder.Decode.
+func validSurrogateEscapes(raw []byte) bool {
+	for i := 1; i < len(raw)-1; i++ {
+		if raw[i] != '\\' {
+			continue
+		}
+		i++
+		if raw[i] != 'u' {
+			continue
+		} // Also consumes escaped backslashes and quotes.
+		code, err := strconv.ParseUint(string(raw[i+1:i+5]), 16, 16)
+		if err != nil {
+			return false
+		}
+		i += 4
+		switch {
+		case code >= 0xdc00 && code <= 0xdfff:
+			return false
+		case code >= 0xd800 && code <= 0xdbff:
+			if i+6 >= len(raw)-1 || raw[i+1] != '\\' || raw[i+2] != 'u' {
+				return false
+			}
+			low, err := strconv.ParseUint(string(raw[i+3:i+7]), 16, 16)
+			if err != nil || low < 0xdc00 || low > 0xdfff {
+				return false
+			}
+			i += 6
+		}
+	}
+	return true
 }
 
 func writeAuthError(w http.ResponseWriter, r *http.Request, err error) {

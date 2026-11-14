@@ -37,12 +37,13 @@ func run(ctx context.Context, cfg config, logger *slog.Logger) error {
 	if err != nil {
 		return errors.New("connect to auth database failed")
 	}
-	application, err := auth.NewService(postgres.New(db), cfg.JWTSecret)
+	repository := postgres.New(db)
+	application, err := auth.NewService(repository, cfg.JWTSecret)
 	if err != nil {
 		return err
 	}
 	var ready atomic.Bool
-	handler := newAuthHandler(&ready, logger, application, db.PingContext)
+	handler := newAuthHandler(&ready, logger, application, repository.CheckReady)
 	server := newHTTPServer(cfg, handler, logger)
 	return serve(ctx, server, listener, &ready, cfg.ShutdownTimeout, logger)
 }
