@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 import App from './App'
 
+// Router smoke tests фиксируют основной маршрут и wildcard fallback без browser history.
 describe('App', () => {
   it('renders the application', () => {
     render(
