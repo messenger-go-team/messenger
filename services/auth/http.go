@@ -1,0 +1,97 @@
+package main
+
+import (
+	"context"
+	"crypto/rand"
+	"io"
+	"log/slog"
+	"net/http"
+	"regexp"
+	"sync/atomic"
+	"time"
+
+	"github.com/messenger-go-team/messenger/internal/metrics"
+)
+
+type requestLoggerKey struct{}
+
+var validRequestID = regexp.MustCompile("^[A-Za-z0-9._-]{1,64}$")
+
+func newLogger(output io.Writer, service string, level slog.Level) *slog.Logger {
+	return slog.New(slog.NewJSONHandler(output, &slog.HandlerOptions{Level: level})).
+		With("service", service)
+}
+
+// Handlers use this logger so that their records include request_id.
+func loggerFromContext(ctx context.Context) *slog.Logger {
+	if logger, ok := ctx.Value(requestLoggerKey{}).(*slog.Logger); ok {
+		return logger
+	}
+	return slog.Default()
+}
+
+func requestLogging(logger *slog.Logger, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := r.Header.Get("X-Request-ID")
+		if !validRequestID.MatchString(id) {
+			id = rand.Text()
+		}
+		w.Header().Set("X-Request-ID", id)
+		requestLogger := logger.With("request_id", id)
+		r = r.WithContext(context.WithValue(r.Context(), requestLoggerKey{}, requestLogger))
+		start := time.Now()
+		defer func() {
+			// No query, credentials, headers or body are written to access logs.
+			requestLogger.InfoContext(r.Context(), "http request",
+				"method", r.Method, "path", r.URL.Path,
+				"duration_ms", time.Since(start).Milliseconds())
+		}()
+		// Recovery tracks the response while preserving Flush and Hijack support.
+		next.ServeHTTP(w, r)
+	})
+}
+
+func newHandler(ready *atomic.Bool, logger *slog.Logger) http.Handler {
+	return newServiceHandler(ready, logger, http.NotFoundHandler())
+}
+
+// Public infrastructure routes bypass application authentication. Services mount
+// their protected application mux through jwtauth.Middleware before passing it here.
+func newServiceHandler(ready *atomic.Bool, logger *slog.Logger, application http.Handler) http.Handler {
+	return newServiceHandlerWithReadiness(ready, logger, application, nil)
+}
+
+func newServiceHandlerWithReadiness(ready *atomic.Bool, logger *slog.Logger, application http.Handler, checkReady func(context.Context) error) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", metrics.NewHandler())
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		writeHealth(w, r, http.StatusOK, "{\"status\":\"ok\"}\n")
+	})
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		available := ready.Load()
+		if available && checkReady != nil {
+			ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+			available = checkReady(ctx) == nil
+			cancel()
+		}
+		if !available || !ready.Load() {
+			writeHealth(w, r, http.StatusServiceUnavailable, "{\"status\":\"not_ready\"}\n")
+			return
+		}
+		writeHealth(w, r, http.StatusOK, "{\"status\":\"ready\"}\n")
+	})
+	router := http.NewServeMux()
+	for _, path := range []string{"/healthz", "/readyz", "/metrics"} {
+		router.Handle(path, mux)
+	}
+	router.Handle("/", application)
+	return requestLogging(logger, recoverPanic(router))
+}
+
+func writeHealth(w http.ResponseWriter, r *http.Request, status int, body string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if _, err := io.WriteString(w, body); err != nil {
+		loggerFromContext(r.Context()).ErrorContext(r.Context(), "write health response", "error", err)
+	}
+}

@@ -89,6 +89,7 @@ docker compose ps
 
 Compose пока запускает PostgreSQL и Redis. Шаблон Go-сервиса собирается
 командой `make build` и запускается отдельно: [инструкция](services/_template/README.md).
+Запуск Auth и его integration-тестов: [services/auth](services/auth/README.md).
 Веб-клиент добавляется в [T17](https://github.com/messenger-go-team/messenger/issues/17).
 
 Файлы `.env` и `.env.*` с локальными настройками не коммитим.
