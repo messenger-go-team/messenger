@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { cn } from './utils'
 
+// Проверяется совместная семантика clsx и tailwind-merge, на которую опираются UI-компоненты.
 describe('cn', () => {
   it('merges conditional classes', () => {
     expect(cn('flex', { hidden: false, 'items-center': true })).toBe('flex items-center')
