@@ -7,12 +7,46 @@ import (
 	"unicode/utf8"
 
 	"github.com/gorilla/websocket"
+	"github.com/messenger-go-team/messenger/pkg/jwtauth"
 )
 
 const (
 	wsMaxMessageBytes = 64 * 1024
 	wsTokenExpired    = 4401
+	wsQueueSize       = 32
 )
+
+type socketSession struct {
+	conn       *websocket.Conn
+	userID     string
+	expiresAt  time.Time
+	outgoing   chan []byte
+	overloaded chan struct{}
+}
+
+func newSocketSession(conn *websocket.Conn, identity jwtauth.Identity) *socketSession {
+	return &socketSession{
+		conn:       conn,
+		userID:     identity.UserID,
+		expiresAt:  identity.ExpiresAt,
+		outgoing:   make(chan []byte, wsQueueSize),
+		overloaded: make(chan struct{}),
+	}
+}
+
+// enqueue is called under the hub lock. The writer owns the network writes.
+func (s *socketSession) enqueue(event []byte) {
+	select {
+	case <-s.overloaded:
+		return
+	default:
+	}
+	select {
+	case s.outgoing <- event:
+	default:
+		close(s.overloaded)
+	}
+}
 
 type wsTiming struct {
 	pingInterval time.Duration
@@ -34,7 +68,8 @@ type pingProbe struct {
 	pong    chan struct{}
 }
 
-func (ws *wsEndpoint) serveSocket(conn *websocket.Conn, expiresAt time.Time) {
+func (ws *wsEndpoint) serveSocket(socket *socketSession) {
+	conn := socket.conn
 	conn.SetReadLimit(wsMaxMessageBytes)
 	var pending atomic.Pointer[pingProbe]
 	conn.SetPongHandler(func(payload string) error {
@@ -47,15 +82,16 @@ func (ws *wsEndpoint) serveSocket(conn *websocket.Conn, expiresAt time.Time) {
 		return nil
 	})
 
-	readDone, heartbeatDone := make(chan struct{}), make(chan struct{})
+	readDone, writeDone := make(chan struct{}), make(chan struct{})
 	go func() {
-		defer close(heartbeatDone)
+		defer close(writeDone)
 		defer func() { _ = conn.Close() }()
-		ws.heartbeat(conn, expiresAt, &pending, readDone)
+		ws.writeSocket(socket, &pending, readDone)
 	}()
 	defer func() {
 		close(readDone)
-		<-heartbeatDone
+		_ = conn.Close() // Unblock an in-flight write when the reader exits.
+		<-writeDone
 	}()
 
 	for {
@@ -76,10 +112,12 @@ func (ws *wsEndpoint) serveSocket(conn *websocket.Conn, expiresAt time.Time) {
 	}
 }
 
-func (ws *wsEndpoint) heartbeat(conn *websocket.Conn, expiresAt time.Time, pending *atomic.Pointer[pingProbe], readDone <-chan struct{}) {
+// writeSocket serializes data frames and runs the heartbeat for one connection.
+func (ws *wsEndpoint) writeSocket(socket *socketSession, pending *atomic.Pointer[pingProbe], readDone <-chan struct{}) {
+	conn := socket.conn
 	pings := time.NewTicker(ws.timing.pingInterval)
 	defer pings.Stop()
-	expiry := time.NewTimer(time.Until(expiresAt))
+	expiry := time.NewTimer(time.Until(socket.expiresAt))
 	defer expiry.Stop()
 	pongTimer := time.NewTimer(ws.timing.pongTimeout)
 	pongTimer.Stop()
@@ -88,15 +126,43 @@ func (ws *wsEndpoint) heartbeat(conn *websocket.Conn, expiresAt time.Time, pendi
 	var pongDeadline <-chan time.Time
 
 	for {
+		// Check close signals before draining pending events, even with a full queue.
 		select {
 		case <-readDone:
 			return
 		case <-ws.stopping:
 			ws.sendClose(conn, websocket.CloseGoingAway, "server shutting down")
 			return
-		case <-expiry.C:
+		case <-socket.overloaded:
+			ws.sendClose(conn, websocket.CloseTryAgainLater, "outbound queue full")
+			return
+		default:
+		}
+		if !time.Now().Before(socket.expiresAt) {
 			ws.sendClose(conn, wsTokenExpired, "access token expired")
 			return
+		}
+
+		select {
+		case <-readDone:
+		case <-ws.stopping:
+		case <-socket.overloaded:
+		case <-expiry.C:
+		case event := <-socket.outgoing:
+			now := time.Now()
+			if !now.Before(socket.expiresAt) {
+				continue
+			}
+			deadline := now.Add(ws.timing.writeTimeout)
+			if socket.expiresAt.Before(deadline) {
+				deadline = socket.expiresAt
+			}
+			if err := conn.SetWriteDeadline(deadline); err != nil {
+				return
+			}
+			if err := conn.WriteMessage(websocket.TextMessage, event); err != nil {
+				return
+			}
 		case <-pings.C:
 			ping := &pingProbe{payload: rand.Text(), pong: make(chan struct{}, 1)}
 			pending.Store(ping)
