@@ -36,7 +36,10 @@ paths:
         Текущий пользователь определяется из access JWT. Между двумя
         пользователями существует не более одного личного чата. Если чат
         уже есть, возвращается он же со статусом 200; иначе создаётся новый
-        чат со статусом 201.
+        чат со статусом 201. Временный отказ БД или Auth, неверный служебный
+        credential и неконтрактный ответ Auth (включая закрытый Nginx маршрут)
+        возвращают 503 service_unavailable. Отсутствие собеседника считается
+        подтверждённым только по контрактному JSON 404 Auth с user_not_found.
       security:
         - accessToken: []
       requestBody:
@@ -66,6 +69,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /chats:
     get:
@@ -918,6 +923,18 @@ components:
           description: Идентификатор запроса для поиска в логах, если доступен.
 
   responses:
+    ServiceUnavailable:
+      description: >-
+        History или необходимая зависимость временно недоступны. Ошибка
+        служебного lookup, включая неконтрактный 404, не означает отсутствие
+        пользователя и не требует повторного пользовательского входа.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: service_unavailable
+            message: Сервис временно недоступен.
     LaterEntryResult:
       description: >-
         Доступная активная запись после операции: 201 при создании,
