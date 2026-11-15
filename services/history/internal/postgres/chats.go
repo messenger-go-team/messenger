@@ -101,6 +101,7 @@ func (r *Repository) Ready(ctx context.Context) error {
 		`SELECT id,type,created_at,last_seq FROM history.chats LIMIT 0`,
 		`SELECT chat_id,user_id,role FROM history.chat_members LIMIT 0`,
 		`SELECT user_low_id,user_high_id,chat_id FROM history.personal_chat_pairs LIMIT 0`,
+		`SELECT id,chat_id,seq,sender_id,client_msg_id,body,created_at FROM history.messages LIMIT 0`,
 	} {
 		rows, err := r.DB.QueryContext(ctx, q)
 		if err != nil {
@@ -111,14 +112,14 @@ func (r *Repository) Ready(ctx context.Context) error {
 		}
 	}
 	var allowed bool
-	err := r.DB.QueryRowContext(ctx, `SELECT bool_and(has_table_privilege(t,p)) FROM unnest(ARRAY['history.chats','history.chat_members','history.personal_chat_pairs']) t CROSS JOIN unnest(ARRAY['SELECT','INSERT']) p`).Scan(&allowed)
+	err := r.DB.QueryRowContext(ctx, `SELECT bool_and(has_table_privilege(t,p)) FROM unnest(ARRAY['history.chats','history.chat_members','history.personal_chat_pairs','history.messages']) t CROSS JOIN unnest(ARRAY['SELECT','INSERT']) p`).Scan(&allowed)
 	if err != nil {
 		return err
 	}
 	if !allowed {
 		return chats.ErrUnavailable
 	}
-	err = r.DB.QueryRowContext(ctx, `SELECT has_table_privilege('history.chats','UPDATE')`).Scan(&allowed)
+	err = r.DB.QueryRowContext(ctx, `SELECT has_column_privilege('history.chats','last_seq','UPDATE') AND has_any_column_privilege('history.chat_members','UPDATE')`).Scan(&allowed)
 	if err != nil {
 		return err
 	}

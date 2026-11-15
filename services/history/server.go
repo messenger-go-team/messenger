@@ -15,6 +15,7 @@ import (
 	historyv1 "github.com/messenger-go-team/messenger/api/gen/history/v1"
 	"github.com/messenger-go-team/messenger/services/history/internal/authclient"
 	"github.com/messenger-go-team/messenger/services/history/internal/chats"
+	"github.com/messenger-go-team/messenger/services/history/internal/messages"
 	"github.com/messenger-go-team/messenger/services/history/internal/postgres"
 	"google.golang.org/grpc"
 )
@@ -50,7 +51,7 @@ func run(ctx context.Context, c config, logger *slog.Logger) error {
 	var ready atomic.Bool
 	web := &http.Server{Handler: newServiceHandlerWithReadiness(&ready, logger, chatRoutes(service, c.JWTVerifier), repo.Ready), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError)}
 	rpc := grpc.NewServer(grpc.UnaryInterceptor(rpcLogging(logger)), grpc.MaxRecvMsgSize(1<<20))
-	historyv1.RegisterHistoryServiceServer(rpc, &historyGRPC{repo: repo})
+	historyv1.RegisterHistoryServiceServer(rpc, &historyGRPC{repo: repo, messages: messages.New(repo)})
 	return serveHistory(ctx, web, rpc, httpListener, grpcListener, &ready, c.ShutdownTimeout, logger)
 }
 func serveHistory(ctx context.Context, web *http.Server, rpc *grpc.Server, httpListener, grpcListener net.Listener, ready *atomic.Bool, timeout time.Duration, logger *slog.Logger) error {
