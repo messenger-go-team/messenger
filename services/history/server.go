@@ -62,7 +62,8 @@ func serveHistory(ctx context.Context, web *http.Server, rpc *grpc.Server, httpL
 		}
 		results <- err
 	}()
-	go func() { results <- rpc.Serve(grpcListener) }()
+	connections := &grpcConnections{Listener: grpcListener, conns: make(map[*grpcConnection]struct{})}
+	go func() { results <- rpc.Serve(connections) }()
 	ready.Store(true)
 	logger.Info("servers listening", "http_addr", httpListener.Addr().String(), "grpc_addr", grpcListener.Addr().String())
 	var first error
@@ -84,15 +85,28 @@ func serveHistory(ctx context.Context, web *http.Server, rpc *grpc.Server, httpL
 		_ = web.Close()
 		first = errors.Join(first, errors.New("HTTP shutdown deadline exceeded"))
 	}
+	force := func() error {
+		connections.forceClose()
+		_ = web.Close()
+		// Stop itself can wait behind GracefulStop. Completion of either
+		// gRPC stop or Serve is not a prerequisite for returning a timeout.
+		go rpc.Stop()
+		logger.Error("shutdown deadline exceeded; transports closed")
+		return errors.Join(first, errors.New("gRPC shutdown deadline exceeded"))
+	}
 	select {
 	case <-done:
 	case <-shutdown.Done():
-		rpc.Stop()
-		first = errors.Join(first, errors.New("gRPC shutdown deadline exceeded"))
+		return force()
 	}
 	for received < 2 {
-		first = errors.Join(first, <-results)
-		received++
+		select {
+		case err := <-results:
+			first = errors.Join(first, err)
+			received++
+		case <-shutdown.Done():
+			return force()
+		}
 	}
 	logger.Info("servers stopped")
 	return first

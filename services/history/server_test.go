@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -81,8 +82,9 @@ func await(t *testing.T, signal <-chan struct{}) {
 }
 
 type blockedMembership struct {
-	entered chan struct{}
-	release chan struct{}
+	entered  chan struct{}
+	canceled chan struct{}
+	release  chan struct{}
 }
 
 func (b *blockedMembership) Personal(context.Context, string, string) (chats.Chat, bool, error) {
@@ -91,12 +93,23 @@ func (b *blockedMembership) Personal(context.Context, string, string) (chats.Cha
 func (b *blockedMembership) Membership(context.Context, string, string) (bool, error) {
 	return false, chats.ErrUnavailable
 }
-func (b *blockedMembership) Members(context.Context, string, string) ([]string, error) {
+func (b *blockedMembership) Members(ctx context.Context, _ string, _ string) ([]string, error) {
 	close(b.entered)
+	<-ctx.Done()
+	close(b.canceled)
 	<-b.release
 	return []string{userA}, nil
 }
 func TestHistoryForceStopsActiveRPC(t *testing.T) {
+	for _, disconnected := range []bool{false, true} {
+		name := "connected"
+		if disconnected {
+			name = "disconnected"
+		}
+		t.Run(name, func(t *testing.T) { testHistoryForceStop(t, disconnected) })
+	}
+}
+func testHistoryForceStop(t *testing.T, disconnected bool) {
 	hl, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -106,8 +119,9 @@ func TestHistoryForceStopsActiveRPC(t *testing.T) {
 		_ = hl.Close()
 		t.Fatal(err)
 	}
-	blocked := &blockedMembership{entered: make(chan struct{}), release: make(chan struct{})}
-	defer close(blocked.release)
+	blocked := &blockedMembership{entered: make(chan struct{}), canceled: make(chan struct{}), release: make(chan struct{})}
+	release := sync.OnceFunc(func() { close(blocked.release) })
+	defer release()
 	rpc := grpc.NewServer()
 	historyv1.RegisterHistoryServiceServer(rpc, &historyGRPC{repo: blocked})
 	web := &http.Server{Handler: http.NotFoundHandler(), ReadHeaderTimeout: time.Second}
@@ -129,6 +143,10 @@ func TestHistoryForceStopsActiveRPC(t *testing.T) {
 		requestDone <- err
 	}()
 	await(t, blocked.entered)
+	if disconnected {
+		_ = conn.Close()
+		await(t, blocked.canceled)
+	}
 	cancel()
 	select {
 	case err := <-done:
@@ -146,4 +164,11 @@ func TestHistoryForceStopsActiveRPC(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("RPC transport remained open")
 	}
+	await(t, blocked.canceled)
+	if ready.Load() {
+		t.Error("readiness remained set")
+	}
+	// Permit the intentionally uncooperative handler to finish, then join gRPC.
+	release()
+	rpc.Stop()
 }
