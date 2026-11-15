@@ -89,6 +89,8 @@ func TestPersonalChatsIntegration(t *testing.T) {
 	db := historyDatabase(t)
 	repo := &postgres.Repository{DB: db}
 	var authDown atomic.Bool
+	var bad404 atomic.Int32
+	var ownerMissing atomic.Bool
 	users := map[string]string{userA: "Alice_1", userB: "Bob_2", userC: "Carol_3"}
 	auth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+serviceSecret {
@@ -100,9 +102,21 @@ func TestPersonalChatsIntegration(t *testing.T) {
 			return
 		}
 		id := strings.TrimPrefix(r.URL.Path, "/internal/users/")
+		mode := bad404.Load()
+		if (mode == 1 && id == userA) || (mode == 2 && id == userB) {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if ownerMissing.Load() && id == userA {
+			w.WriteHeader(404)
+			_ = json.NewEncoder(w).Encode(map[string]string{"code": "user_not_found", "message": "Пользователь не найден."})
+			return
+		}
 		name, ok := users[id]
 		if !ok {
 			w.WriteHeader(404)
+			_ = json.NewEncoder(w).Encode(map[string]string{"code": "user_not_found", "message": "Пользователь не найден."})
 			return
 		}
 		_ = json.NewEncoder(w).Encode(chats.User{ID: id, Username: name})
@@ -144,6 +158,12 @@ func TestPersonalChatsIntegration(t *testing.T) {
 		if strings.Contains(string(data), serviceSecret) || strings.Contains(string(data), "password_hash") {
 			t.Fatal("private data disclosed")
 		}
+		if want == 503 {
+			var failure map[string]json.RawMessage
+			if json.Unmarshal(data, &failure) != nil || string(failure["code"]) != `"service_unavailable"` || len(failure) != 3 {
+				t.Fatal("503 must be the public service_unavailable ApiError")
+			}
+		}
 		var chat chats.Chat
 		if want == 200 || want == 201 {
 			if err = json.Unmarshal(data, &chat); err != nil {
@@ -158,6 +178,14 @@ func TestPersonalChatsIntegration(t *testing.T) {
 		create(tokenA, body, 422)
 	}
 	create(tokenA, `{"user_id":"`+missing+`"}`, 404)
+	for _, mode := range []int32{1, 2} {
+		bad404.Store(mode)
+		create(tokenA, `{"user_id":"`+userB+`"}`, 503)
+	}
+	bad404.Store(0)
+	ownerMissing.Store(true)
+	create(tokenA, `{"user_id":"`+userB+`"}`, 401)
+	ownerMissing.Store(false)
 	chat := create(tokenA, `{"user_id":"`+strings.ToUpper(userB)+`"}`, 201)
 	if !chats.ValidRPCID(chat.ID) || chat.Type != "personal" || chat.CreatedAt.IsZero() || chat.LastSeq != 0 || len(chat.Members) != 2 || chat.Members[0].ID != userA || chat.Members[1].Username != "Bob_2" {
 		t.Fatal("incorrect chat response", chat)
