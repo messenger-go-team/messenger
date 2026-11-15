@@ -15,10 +15,11 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// SaveMessage is supplied by #29 as a separate method on this server.
+// Membership and message handlers share the generated HistoryService registration.
 type historyGRPC struct {
 	historyv1.UnimplementedHistoryServiceServer
-	repo chats.Repository
+	repo     chats.Repository
+	messages messageSaver
 }
 
 func (s *historyGRPC) GetChatMembers(ctx context.Context, r *historyv1.GetChatMembersRequest) (*historyv1.GetChatMembersResponse, error) {

@@ -2,6 +2,8 @@
 
 [#30](https://github.com/messenger-go-team/messenger/issues/30): создание личного
 чата по REST и чтение текущего членства по внутреннему gRPC.
+[#29](https://github.com/messenger-go-team/messenger/issues/29): транзакционное
+сохранение сообщений через SaveMessage.
 Контракты: [History OpenAPI](../../api/openapi/history.yaml),
 [history.proto и правила ошибок](../../api/proto/README.md).
 Используется существующая миграция #12, схема БД не меняется.
@@ -92,8 +94,9 @@ RPC доступны только доверенному Chat во внутре�
 ## Состояние, логи и завершение
 
 HTTP сохраняет request_id, panic recovery и /metrics из шаблона.
-/healthz проверяет процесс. /readyz проверяет схему трёх таблиц,
-SELECT/INSERT и UPDATE для chats; без миграции/прав даёт 503.
+/healthz проверяет процесс. /readyz проверяет схему четырёх таблиц и SELECT/INSERT,
+UPDATE(last_seq) для chats и UPDATE хотя бы одного столбца chat_members
+для блокировки членства; без миграции/прав даёт 503.
 Готовность восстанавливается после исправления БД без перезапуска.
 Auth вызывается при создании чата; его временный отказ отражается в ответе
 операции 503 и не блокирует чтение членства по gRPC.
@@ -118,13 +121,56 @@ HISTORY_TEST_DATABASE_URL='postgres://test_user:test_password@127.0.0.1:15432/po
 Проверяются реальный HTTP/gRPC, конкурентная пара, отозванное членство,
 ошибки Auth/БД, rollback, deadline под блокировкой, config и lifecycle.
 
-## Подключение #29 и #31
+## SaveMessage (#29)
 
-SaveMessage пока возвращает стандартный UNIMPLEMENTED. Для #29 добавить
-отдельный метод SaveMessage на historyGRPC и внедрить репозиторий сообщений;
-повторно регистрировать HistoryService не нужно. Membership-методы лежат
-в membership_grpc.go, операции пар - internal/postgres/chats.go.
+Запрос: канонические ненулевые chat_id/sender_id, UUID v4 client_msg_id и
+исходный UTF-8 body (1..4096 code points, не только Unicode White_Space,
+без U+0000). Пробелы, переносы строк и Unicode-последовательность сохраняются.
+Chat берёт sender_id только из проверенного JWT. History проверяет запрос
+самостоятельно; Auth при SaveMessage не вызывается, права определяются
+текущей строкой history.chat_members.
 
-Список чатов, история и курсор прочтения относятся к #31. Контракт не менялся.
+Транзакция блокирует чат FOR UPDATE, затем членство FOR KEY SHARE и ищет
+(chat_id,sender_id,client_msg_id). Идентичный повтор возвращает исходные
+message_id/seq/created_at с duplicate=true. Другой body с тем же ключом
+даёт ALREADY_EXISTS. Повторы и конфликты не продвигают last_seq.
+
+Только для нового сообщения проверяется предел 9007199254740991,
+увеличивается last_seq и вставляется сообщение с серверным UUID и
+clock_timestamp() БД. Обе записи фиксируются одним commit. PostgreSQL
+sequence не используется. Ответ OK возвращается после успешного commit.
+
+Членство проверяется и блокируется при каждом сохранении, включая повтор.
+Предварительный CheckMembership остаётся снимком. Для блокировки строки
+PostgreSQL требует UPDATE хотя бы одного столбца chat_members
+([правила SELECT](https://www.postgresql.org/docs/18/sql-select.html)).
+Пример минимального дополнения к SELECT/INSERT: UPDATE(last_seq) для chats
+и UPDATE(role) для chat_members. Readiness проверяет эти возможности,
+а также наличие полей и SELECT/INSERT таблицы messages.
+
+Ошибки: INVALID_ARGUMENT для входных данных, NOT_FOUND для отсутствующего
+чата, PERMISSION_DENIED для постороннего, ALREADY_EXISTS для конфликта
+идемпотентности, OUT_OF_RANGE для нового сообщения за пределом seq.
+Отмена/deadline сохраняют CANCELLED/DEADLINE_EXCEEDED; сбой БД даёт UNAVAILABLE.
+Ошибки не возвращают исходный текст, metadata сообщения, SQL или credentials.
+Некорректные сохранённые metadata не выдаются как OK (DATA_LOSS).
+
+При потере ответа, timeout или разрыве результат commit может быть неизвестен.
+Повторяют прежние chat_id/sender_id/client_msg_id и точный body; новый ключ
+означает новое сообщение. History не выполняет автоматический повтор записи.
+Политика backoff/jitter вызывающего Chat описана в protobuf-контракте для #35.
+
+SaveMessage реализован в messages_grpc.go, правила входа - internal/messages,
+SQL - internal/postgres/messages.go. Сохранение и рассылка не атомарны:
+в #35 ack строится из подтверждённого ответа, а потеря рассылки восстанавливается
+историей. Список чатов, история и курсор прочтения остаются в #31.
+
+Дополнительные тесты #29: 100 новых сообщений, конкурентные одинаковые ключи
+и конфликты body, Unicode/границы, последняя seq и повтор на пределе,
+ошибка INSERT и deferred commit, потеря ответа после commit, отмена SQL
+под блокировкой, отзыв членства до сохранения/повтора и ограниченная DB-роль.
+Тест отзыва членства при сохранённом сообщении снимает FK только в отдельной
+одноразовой тестовой БД; миграция приложения остаётся без изменений.
+
 Для #36/#38 проверить маршрутизацию, HTTPS/JWT и недоступность внутреннего
 порта через внешний домен. Локальные тесты не заменяют QA на staging.
