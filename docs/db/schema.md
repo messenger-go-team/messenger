@@ -10,7 +10,7 @@
 | PostgreSQL-схема | Владелец | Таблицы |
 | --- | --- | --- |
 | `auth` | auth-сервис | `users`, `refresh_tokens`, `contacts` |
-| `history` | history-сервис | `chats`, `chat_members`, `personal_chat_pairs`, `messages` |
+| `history` | history-сервис | `chats`, `chat_members`, `personal_chat_pairs`, `messages`, `later_entries` |
 
 `history` хранит UUID пользователей без внешнего ключа на `auth.users`. Иначе
 миграции history напрямую зависели бы от схемы, которой владеет другой сервис.
@@ -185,6 +185,34 @@ OpenAPI. В T12 нужны соответствующие CHECK для seq и к
 нового сообщения завершается ошибкой без изменения `last_seq`;
 повтор ранее сохранённого сообщения продолжает возвращать исходный результат.
 
+### `history.later_entries` (#86)
+
+Добавляется миграцией `000002_later_entries`. Это личная ссылка на исходное
+сообщение, без копирования его текста или состояния прочтения.
+
+| Поле | Тип | Ограничение | Назначение |
+| --- | --- | --- | --- |
+| `id` | `uuid` | PK, default gen_random_uuid() | Стабильный ID активной записи; после done новое сохранение получает новый ID |
+| `user_id` | `uuid` | NOT NULL, без FK на auth | Владелец, определяемый вызывающим API из проверенного JWT |
+| `message_id` | `uuid` | NOT NULL, FK на messages(id), ON DELETE CASCADE | Исходное сообщение; chat_id получается из messages |
+| `due_at` | `timestamptz` | NULL либо конечное время в UTC-диапазоне 0001..9999 | null означает «Просто сохранить», прошедший срок допустим |
+| `state` | `text` | NOT NULL, active/done, default active | Хранимое состояние; due/scheduled/unscheduled вычисляются при чтении |
+| `created_at` | `timestamptz` | NOT NULL, default statement_timestamp() | Сохраняется при повторном сохранении активной записи |
+| `updated_at` | `timestamptz` | NOT NULL, default statement_timestamp() | Обновляется по часам БД при сохранении и переходе в done |
+
+Частичный UNIQUE `(user_id, message_id) WHERE state = 'active'` гарантирует
+не более одной активной записи. Произвольное число done не препятствует новому
+сохранению. Индекс активного списка `(user_id, due_at ASC NULLS LAST,
+created_at, id) WHERE state = 'active'` соответствует порядку согласованного API;
+истёкшие сроки располагаются перед будущими, null идут последними. Отдельный
+индекс `(message_id)` обслуживает удаление источника с каскадом по всем владельцам.
+
+Нет FK от владельца записи к chat_members: потеря членства не удаляет сохранение
+и не переводит его в done. После восстановления доступа активная запись снова
+должна попасть в выдачу #87. Физическое удаление исходного сообщения удаляет
+ссылки на него, в том числе done; удаление чата действует через каскад messages.
+Межсервисный FK на auth.users не добавляется.
+
 ## Индексы и инварианты
 
 | Имя | Таблица | Определение | Причина |
@@ -195,6 +223,9 @@ OpenAPI. В T12 нужны соответствующие CHECK для seq и к
 | `messages_chat_seq_uq` | `history.messages` | UNIQUE (`chat_id`, `seq` DESC) | Порядок и выборка истории по `chat_id`, `seq DESC` |
 | `messages_idempotency_uq` | `history.messages` | UNIQUE (`chat_id`, `sender_id`, `client_msg_id`) | Повторная отправка не создаёт дубликат |
 | `personal_chat_pairs_pkey` | `history.personal_chat_pairs` | PK (`user_low_id`, `user_high_id`) | Один личный чат на пару |
+| `later_entries_active_uq` | `history.later_entries` | UNIQUE (`user_id`, `message_id`) WHERE state='active' | Одна активная личная запись |
+| `later_entries_active_list_idx` | `history.later_entries` | (`user_id`, `due_at` ASC NULLS LAST, `created_at`, `id`) WHERE state='active' | Полный список владельца в контрактном порядке |
+| `later_entries_message_idx` | `history.later_entries` | (`message_id`) | Каскад физического удаления источника |
 
 `messages_chat_seq_uq` одновременно обеспечивает уникальность `(chat_id, seq)`
 и индекс для `ORDER BY seq DESC`. PostgreSQL B-tree может сканировать индекс в
@@ -261,6 +292,46 @@ OpenAPI. В T12 нужны соответствующие CHECK для seq и к
 также используют монотонные обновления, чтобы запоздалое событие не откатило
 курсоры и не нарушило CHECK.
 
+### Сохранение и завершение личной записи (#86)
+
+`postgres.LaterRepository` использует отдельный storage-интерфейс Save/Complete.
+Порядок блокировок: чат FOR KEY SHARE, актуальное членство владельца FOR KEY SHARE,
+сообщение указанного чата FOR KEY SHARE, затем строка личной записи.
+Он защищает доступ и существование источника до commit. Для отсутствующего,
+чужого или недоступного ресурса возвращается одна ErrNotFound без данных.
+
+Save генерирует кандидат ID на сервере и выполняет один атомарный
+`INSERT ... ON CONFLICT (user_id, message_id) WHERE state='active' DO UPDATE`.
+Обновляются due_at и updated_at; id, owner/message и created_at прежней записи
+остаются неизменными. Признак первого создания определяется сравнением нового
+кандидата с возвращённым PK, без гонки SELECT-before-INSERT и без зависимости
+от внутренних MVCC-полей xmax. Успех возвращается только после commit.
+
+Complete проверяет владельца и доступ к источнику и для уже done записи.
+Он блокирует именно переданный ID, переводит active в done, а повтор done
+не изменяет более новую активную запись того же сообщения. Конкурентные Save
+и Complete сериализуются на строке/уникальном индексе: Save после done создаёт
+новую запись; done после обновления завершает прежнюю. Ошибка commit откатывает
+и due_at/state, и timestamps. Курсоры чтения и last_seq не меняются.
+
+Storage принимает typed time.Time: UTC-диапазон 0001..9999 и точность до микросекунд,
+без округления; null и прошедший срок разрешены. Полный календарный разбор исходной
+HTTP-строки без trim, JWT, список с актуальным доступом, reschedule и публичные
+проекции относятся к #87. Эта задача не добавляет endpoints, polling или очередь.
+
+LaterRepository.Ready проверяет свою таблицу и фактические права на upsert,
+completion и блокировки источника. Runtime нужен SELECT источников и UPDATE хотя
+бы одного столбца каждой source-таблицы для row locking; пример минимального
+дополнения к #29: UPDATE(id) у messages. Для later_entries нужны SELECT/INSERT
+и UPDATE(due_at,state,updated_at), без DELETE и полного UPDATE. В #87 эту проверку
+нужно подключить к общей readiness при включении API. В #86 действующая readiness
+#29 не меняется, так как запущенные endpoints ещё не используют новое хранилище.
+
+Up до версии 2 сохраняет существующую историю. Down одной ступени удаляет
+только later_entries с её индексами и данными, оставляя v1 и сообщения; повторный
+up создаёт пустое хранилище Later. Откат уничтожает личные записи и не является
+backup/restore. Миграции применяются отдельно от запуска приложения.
+
 ## Ссылки на PostgreSQL
 
 - [Ограничения CHECK, UNIQUE и FK](https://www.postgresql.org/docs/18/ddl-constraints.html).
@@ -270,6 +341,6 @@ OpenAPI. В T12 нужны соответствующие CHECK для seq и к
 
 ## Дальше
 
-T12 перенесёт эту схему в `services/auth/migrations` и
-`services/history/migrations`, добавит `up`/`down` миграции и проверит их на
-чистой PostgreSQL.
+Базовая схема реализована в #12, Later добавляется миграцией версии 2 в #86.
+Следующие #87/#88 подключают API личных записей и переход к сообщению по уже
+согласованному OpenAPI; schema history остаётся единственным владельцем данных.

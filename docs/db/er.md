@@ -54,6 +54,16 @@ erDiagram
         timestamptz created_at
     }
 
+    HISTORY_LATER_ENTRIES {
+        uuid id PK
+        uuid user_id
+        uuid message_id FK
+        timestamptz due_at
+        text state
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
     AUTH_USERS ||--o{ AUTH_REFRESH_TOKENS : owns
     AUTH_USERS ||--o{ AUTH_CONTACTS : owns
     AUTH_USERS ||--o{ AUTH_CONTACTS : added_as
@@ -61,10 +71,11 @@ erDiagram
     HISTORY_CHATS ||--o| HISTORY_PERSONAL_CHAT_PAIRS : represents
     HISTORY_CHATS ||--o{ HISTORY_MESSAGES : contains
     HISTORY_CHAT_MEMBERS ||--o{ HISTORY_MESSAGES : sends
+    HISTORY_MESSAGES ||--o{ HISTORY_LATER_ENTRIES : saved_as
 ```
 
 UUID-поля `history.chat_members.user_id`, `history.personal_chat_pairs.*` и
-`history.messages.sender_id` логически ссылаются на `auth.users`, но не имеют
+`history.messages.sender_id` и `history.later_entries.user_id` логически ссылаются на `auth.users`, но не имеют
 внешних ключей между сервисными схемами. Подробнее - в [схеме БД](schema.md).
 
 Составные ключи, которые нельзя трактовать как уникальность отдельных полей:
@@ -81,3 +92,9 @@ UUID-поля `history.chat_members.user_id`, `history.personal_chat_pairs.*` и
 гарантирует: у личного чата ровно два участника и одна каноническая пара,
 созданные в одной транзакции. Поле `type` допускает будущие группы, поэтому
 общая связь chats/members не задаёт фиксированное число участников.
+
+Для `history.later_entries` уникальна только активная пара `(user_id, message_id)`
+через частичный индекс WHERE state='active'. FK на messages удаляет записи при
+физическом удалении источника; FK на членство владельца отсутствует намеренно,
+чтобы отзыв доступа скрывал, но не уничтожил личное сохранение. HTTP-проекция #87
+не раскрывает user_id и хранимое state другим участникам.
