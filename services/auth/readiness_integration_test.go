@@ -32,7 +32,7 @@ func TestAuthReadinessIntegration(t *testing.T) {
 	assertStatus(t, "/healthz", http.StatusOK)
 	applyAuthTestSchema(t, db)
 	assertStatus(t, "/readyz", http.StatusOK)
-	for _, table := range []string{"users", "refresh_tokens"} {
+	for _, table := range []string{"users", "refresh_tokens", "contacts"} {
 		t.Run("missing "+table, func(t *testing.T) {
 			name := pq.QuoteIdentifier(table)
 			if _, err := db.Exec(`ALTER TABLE auth.` + name + ` RENAME TO readiness_missing`); err != nil {
@@ -96,7 +96,10 @@ func TestAuthReadinessIntegration(t *testing.T) {
 			{`GRANT SELECT ON auth.users TO ` + role, http.StatusServiceUnavailable},
 			{`GRANT SELECT ON auth.refresh_tokens TO ` + role, http.StatusServiceUnavailable},
 			{`GRANT INSERT ON auth.users, auth.refresh_tokens TO ` + role, http.StatusServiceUnavailable},
-			{`GRANT UPDATE ON auth.refresh_tokens TO ` + role, http.StatusOK},
+			{`GRANT UPDATE ON auth.refresh_tokens TO ` + role, http.StatusServiceUnavailable},
+			{`GRANT SELECT ON auth.contacts TO ` + role, http.StatusServiceUnavailable},
+			{`GRANT INSERT ON auth.contacts TO ` + role, http.StatusServiceUnavailable},
+			{`GRANT DELETE ON auth.contacts TO ` + role, http.StatusOK},
 			{`REVOKE SELECT ON auth.users FROM ` + role, http.StatusServiceUnavailable},
 			{`GRANT SELECT ON auth.users TO ` + role, http.StatusOK},
 		} {
