@@ -71,7 +71,7 @@ func TestMessageReadinessPrivileges(t *testing.T) {
 	assertMessageCounts(t, db, chat, 0, 0)
 	// Row locks need UPDATE on at least one membership column; full UPDATE
 	// on every table is not necessary for the service's SaveMessage query.
-	if _, err := db.Exec(`GRANT UPDATE(role) ON history.chat_members TO ` + quoted); err != nil {
+	if _, err := db.Exec(`GRANT UPDATE(role,last_read_seq,last_delivered_seq) ON history.chat_members TO ` + quoted); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Ready(t.Context()); err != nil {
@@ -101,4 +101,32 @@ func TestMessageReadinessPrivileges(t *testing.T) {
 	if err := repo.Ready(t.Context()); err != nil {
 		t.Fatal("readiness did not recover", err)
 	}
+	// #31 requires UPDATE on both private cursor columns, not full table UPDATE.
+	for _, column := range []string{"last_read_seq", "last_delivered_seq"} {
+		if _, err := db.Exec(`REVOKE UPDATE(` + column + `) ON history.chat_members FROM ` + quoted); err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.Ready(t.Context()); err == nil {
+			t.Fatal("readiness ignored read-cursor privilege", column)
+		}
+		if err := repo.MarkRead(t.Context(), chat, userA, 1); err == nil {
+			t.Fatal("read worked without cursor privilege", column)
+		}
+		if read, delivered := cursorState(t, db, chat, userA); read != 0 || delivered != 0 {
+			t.Fatal("failed read changed cursor")
+		}
+		if _, err := db.Exec(`GRANT UPDATE(` + column + `) ON history.chat_members TO ` + quoted); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := repo.Ready(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.MarkRead(t.Context(), chat, userA, 1); err != nil {
+		t.Fatal("column-level grants must allow read", err)
+	}
+	if read, delivered := cursorState(t, db, chat, userA); read != 1 || delivered != 1 {
+		t.Fatal(read, delivered)
+	}
+
 }
