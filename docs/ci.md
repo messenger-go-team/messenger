@@ -51,7 +51,7 @@ Internal/metrics проверяется через обычный ./...: тес�
 Workflow .github/workflows/ci.yml запускается на каждый PR в main и push в main,
 без фильтрации путей. Setup Go читает версию из go.mod, actions закреплены по SHA.
 
-Четыре задания выполняются параллельно:
+Проверки выполняются параллельно.
 
 - **Go lint**: официальный golangci-lint action с v2.15.0 и аргументами
   ./... ./services/_template.
@@ -67,8 +67,14 @@ Workflow .github/workflows/ci.yml запускается на каждый PR в
   `MIGRATE_TEST_DATABASE_URL`, подробнее в [services/README.md](../services/README.md#интеграционные-проверки-миграций).
 - **Protobuf generation**: make proto, проверка формата/lint схемы и отсутствия
   изменений и новых незакоммиченных файлов в api/gen после генерации.
+- **Docker build (auth, chat, history)** собирает каждый образ из корня
+  репозитория. В финальном этапе каждого Dockerfile задавайте `USER 65532:65532`.
+  Явный UID защищает от случайного запуска от root, а явный GID исключает
+  группу root по умолчанию в `scratch`. CI проверяет точное значение `.Config.User`.
+  При обновлении Go синхронизируйте версию в трёх Dockerfile с `go.mod`.
 
-Timeout Go lint, Go test и Migration integration - 5 минут, Protobuf generation - 10 минут. Кеш учитывает go.mod и go.sum.
+Timeout Go lint, Go test и Migration integration - 5 минут, Protobuf generation
+и Docker build - 10 минут. Кеш Go учитывает go.mod и go.sum.
 Новый push в ту же ветку PR отменяет устаревший прогон.
 Проверка сборки выбранного исполняемого сервиса выполняется локально через make build;
 Go test в CI также компилирует проверяемые пакеты.
