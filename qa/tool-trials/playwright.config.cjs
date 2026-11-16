@@ -7,7 +7,7 @@ module.exports = defineConfig({
   workers: 1,
   retries: 0,
   outputDir: `reports/playwright-${negative ? "negative" : "pass"}-artifacts`,
-  reporter: [["list"], ["junit", { outputFile: `reports/playwright-${negative ? "negative" : "pass"}.xml` }]],
+  reporter: [["list"], ["json", { outputFile: `reports/playwright-${negative ? "negative" : "pass"}.json` }], ["junit", { outputFile: `reports/playwright-${negative ? "negative" : "pass"}.xml` }]],
   use: { baseURL: "http://127.0.0.1:3100", browserName: "chromium", headless: true, trace: "retain-on-failure" },
   webServer: process.env.TRIAL_EXTERNAL_SERVER === "1" ? undefined : {
     command: "node server.cjs", url: "http://127.0.0.1:3100/health", reuseExistingServer: false, timeout: 10000

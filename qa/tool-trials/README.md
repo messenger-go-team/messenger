@@ -35,14 +35,18 @@ npm run trial:all
 
 Порт 3100 должен быть свободен. Если ранее запускали node server.cjs вручную,
 остановите его Ctrl+C. Runner проверяет порт, запускает собственную заглушку,
-ждёт readiness, выполняет шесть прогонов и останавливает только свой процесс.
+ждёт readiness, выполняет семь прогонов и останавливает только свой процесс.
 Сервер слушает 127.0.0.1: GET /health возвращает 200 и JSON status=ok,
-GET / открывает тестовую HTML-страницу с кнопкой Check API; прочее — 404.
+GET / открывает страницу с кнопкой Check API. Auth-маршруты обслуживают
+контрактный PoC; прочее — 404. Заглушка не является реализацией Messenger.
 
 Проверки и ожидаемые exit codes:
 
 - Bruno local: две проверки статуса/JSON успешны, exit 0.
 - Bruno negative: ожидается 201 при фактическом 200, одна ошибка, exit 1.
+- Bruno PoC: 7 запросов, 20 проверок текущих схем auth.yaml, bearer и cookie jar,
+  exit 0. Запускается в Developer Mode для внешнего Ajv и чтения YAML; только
+  доверенные локальные файлы. Базовая health-коллекция использует Safe Mode.
 - Playwright: страница вызывает API и показывает ok; два browser context
   изолируют localStorage. Два теста успешны, exit 0.
 - Playwright negative: намеренно ожидается broken вместо ok; один тест
@@ -53,19 +57,67 @@ GET / открывает тестовую HTML-страницу с кнопко�
 - k6 negative: ожидается 201 вместо 200; threshold checks нарушается,
   exit 99. Одних checks без thresholds недостаточно для падения k6.
 
-Общий runner возвращает 0, только если каждый exit code совпал с ожидаемым.
+Общий runner возвращает 0, только если коды и содержимое свежих JSON/JUnit
+соответствуют ожиданиям. Для Bruno проверяются имена всех тестов, ровно одна
+ошибка expected 200 to equal 201 и успех второй проверки. Для Playwright —
+конкретное ожидание broken вместо ok и успех теста изоляции, отсутствие
+ошибок загрузки, пропусков и повторов. Старые отчёты удаляются до запуска.
+У k6 проверяются URL, оба checks, отсутствие HTTP-ошибок и thresholds.
+
+trial:all принудительно передаёт BASE_URL=http://127.0.0.1:3100. run-k6.cjs
+закрепляет тот же URL и отключает proxy; health.js отвергает другой адрес
+и запрещает редиректы. Перед нагрузкой проверяется версия k6 строго 2.4.0,
+включая бинарник из PATH или K6_BIN на Linux/macOS. Сами Linux/macOS не проверялись.
 Он специально проверяет намеренные падения; этот запуск не заменяет обычную
 API/e2e-регрессию, где любая неожиданная ошибка должна давать красный CI.
+
+## Проверка исправлений ревью
+
+```bash
+npm run trial:verify
+```
+
+Или npm test. Проверка поднимает отдельный контрольный сервис, наследует
+его адрес в BASE_URL и выполняет trial:all. Успех требует нуля обращений
+к контрольному сервису и семи подтверждённых отчётов. Далее семь тестов
+валидаторов проверяют ошибки запуска/загрузки, посторонние падения,
+отсутствующий отчёт, неверный адрес, перенос credentials и другую версию k6.
+
+Для ручной проверки внешней переменной в Git Bash:
+
+```bash
+BASE_URL=https://staging.invalid npm run trial:all
+```
+
+Внешний адрес не должен использоваться; в k6-отчётах trial.base_url должен
+оставаться http://127.0.0.1:3100.
+
+## Контрактный PoC
+
+bruno-poc/contract.cjs читает api/openapi/auth.yaml из текущего checkout,
+валидирует Ajv2020 8.20.0 + ajv-formats 3.0.1; yaml 2.9.1 читает контракт.
+Цепочка: login → профиль → невалидный профиль → контакты → refresh → logout
+→ refresh после logout (401). Проверяются корневые/вложенные $ref, response $ref,
+форматы uuid/date-time, required/type/additionalProperties/const. Cookie jar
+автоматически сохраняет, отправляет, ротирует и удаляет refresh cookie.
+
+У fixture нет HTTPS: Secure опущен намеренно, access-токены фиктивные.
+JWT-подпись и реальный сервис не проверяются. Полная коллекция auth/history,
+HTTPS/Secure и остальные конструкции OpenAPI остаются в T49. Входные
+credentials фиктивные; перед настоящими токенами нужно проверить содержимое
+всех отчётов: Bruno маскирует исходящие заголовки, но тело ответа может
+содержать access_token. Developer Mode не является защитной границей.
 
 ## Артефакты
 
 В reports сохраняются:
 
-- trial-summary.json — версии, команды, окружения и коды шести запусков;
-- bruno-pass/negative.json и .xml — JSON/JUnit Bruno;
-- playwright-pass/negative.xml — JUnit Playwright;
+- trial-summary.json — версии, команды, окружения и коды семи запусков;
+- bruno-pass/negative.json и .xml, bruno-poc.json/xml — JSON/JUnit Bruno;
+- playwright-pass/negative.json и .xml — JSON/JUnit Playwright;
 - playwright-negative-artifacts — ошибка и trace.zip;
 - k6-pass/negative.json — метрики и результаты thresholds;
+- base-url-regression.json — адрес контрольного сервиса и ноль запросов;
 - *.log — вывод отдельных инструментов.
 
 reports и .tools исключены из Git. Исходники, lock-файл и итог в tools.md
@@ -79,19 +131,18 @@ npx --no-install playwright show-trace reports/playwright-negative-artifacts/fix
 
 Для Bruno/k6 сначала запустите npm run trial:server в первом терминале.
 Во втором доступны npm run trial:bruno, npm run trial:bruno:negative,
-npm run trial:k6 и npm run trial:k6:negative.
+npm run trial:k6, npm run trial:k6:negative и npm run trial:bruno:poc.
 Playwright самостоятельно поднимает сервер командой npm run trial:playwright;
 для него порт должен быть свободен. Папка reports создаётся общим runner;
 при полностью отдельном запуске Bruno сначала выполните mkdir -p reports.
 
 ## Известные ограничения
 
-npm audit после установки сообщает 18 advisories: 8 high и 10 moderate,
-связанных с зависимостями Bruno. Это не исправлено и не подтверждено как
-эксплуатируемое в данном fixture. Автоматический force-fix не выполнялся:
-предлагаемый для части проблем переход меняет major-версию CLI на 3.4.2.
-Перед запуском на внешних API и включением в CI необходим разбор этих advisories.
-Для повторной проверки: npm audit --json. При проверке 15 ноября отчёт
-сохранён локально в reports/npm-audit.json.
+npm audit сообщает 18 записей уязвимых пакетов: 8 high и 10 moderate
+(20 уникальных GHSA с учётом транзитивного риска). Они не исправлены.
+[Разбор зависимостей](../../docs/qa/t24-dependency-review.md) содержит все пути,
+advisories, условия применимости и план. Внешние API и CI отложены до
+устранения high и решения команды по оставшимся moderate. Force-fix не применялся.
+Повторная проверка: npm audit --json; отчёт сохранён в reports/npm-audit.json.
 
 Результаты: [tools.md](../../docs/qa/tools.md).
