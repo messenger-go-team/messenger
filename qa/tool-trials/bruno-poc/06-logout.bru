@@ -1,0 +1,17 @@
+meta {
+  name: 06-logout
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/auth/logout
+  body: none
+  auth: none
+}
+
+tests {
+  test("logout status", () => expect(res.status).to.equal(204));
+  test("logout empty body", () => expect(res.body).to.equal(""));
+  test("cookie cleared", () => expect(String(res.headers["set-cookie"])).to.include("Max-Age=0"));
+}

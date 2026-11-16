@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "T24 auth contract PoC",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

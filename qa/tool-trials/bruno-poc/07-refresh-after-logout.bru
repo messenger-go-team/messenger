@@ -1,0 +1,20 @@
+meta {
+  name: 07-refresh-after-logout
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/auth/refresh
+  body: none
+  auth: none
+}
+
+tests {
+  const { responseValidator } = require("./contract.cjs");
+  test("refresh after logout status", () => expect(res.status).to.equal(401));
+  test("ApiError schema", () => {
+    const validate = responseValidator("/auth/refresh", "post", 401);
+    expect(validate(res.body), JSON.stringify(validate.errors)).to.equal(true);
+  });
+}
