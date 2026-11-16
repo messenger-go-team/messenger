@@ -17,6 +17,7 @@ import (
 	"github.com/messenger-go-team/messenger/services/history/internal/chats"
 	"github.com/messenger-go-team/messenger/services/history/internal/messages"
 	"github.com/messenger-go-team/messenger/services/history/internal/postgres"
+	"github.com/messenger-go-team/messenger/services/history/internal/reading"
 	"google.golang.org/grpc"
 )
 
@@ -49,7 +50,7 @@ func run(ctx context.Context, c config, logger *slog.Logger) error {
 	}
 	defer func() { _ = grpcListener.Close() }()
 	var ready atomic.Bool
-	web := &http.Server{Handler: newServiceHandlerWithReadiness(&ready, logger, chatRoutes(service, c.JWTVerifier), repo.Ready), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError)}
+	web := &http.Server{Handler: newServiceHandlerWithReadiness(&ready, logger, chatRoutes(service, c.JWTVerifier, &reading.Service{Repo: repo, Users: service.Users}), repo.Ready), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError)}
 	rpc := grpc.NewServer(grpc.UnaryInterceptor(rpcLogging(logger)), grpc.MaxRecvMsgSize(1<<20))
 	historyv1.RegisterHistoryServiceServer(rpc, &historyGRPC{repo: repo, messages: messages.New(repo)})
 	return serveHistory(ctx, web, rpc, httpListener, grpcListener, &ready, c.ShutdownTimeout, logger)
