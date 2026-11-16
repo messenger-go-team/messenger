@@ -142,6 +142,18 @@ done
 [образ PostgreSQL](https://hub.docker.com/_/postgres),
 [Redis CLI](https://redis.io/docs/latest/develop/tools/cli/).
 
+### Проверки состояния Go-сервисов
+
+Compose выполняет `healthcheck.test` внутри проверяемого контейнера.
+Наши `scratch`-образы содержат бинарник сервиса и корневые TLS-сертификаты.
+[Документация Compose](https://docs.docker.com/reference/compose-file/services/#healthcheck).
+
+HTTP-пробы для этих образов настраиваются на уровне развёртывания. В
+[#37](https://github.com/messenger-go-team/messenger/issues/37) шаг деплоя
+после запуска проверяет `/healthz` каждого сервиса по внутренней сети с VPS
+или из отдельного контейнера с `curl` или `wget`. `/readyz` показывает
+готовность сервиса обслуживать запросы.
+
 ## Маршрутизация Auth для T36
 
 [snippets/auth-locations.conf](nginx/snippets/auth-locations.conf) включает

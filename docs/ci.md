@@ -68,8 +68,10 @@ Workflow .github/workflows/ci.yml запускается на каждый PR в
 - **Protobuf generation**: make proto, проверка формата/lint схемы и отсутствия
   изменений и новых незакоммиченных файлов в api/gen после генерации.
 - **Docker build (auth, chat, history)** собирает каждый образ из корня
-  репозитория и проверяет UID и GID запуска. При обновлении Go синхронизируйте
-  версию в трёх Dockerfile с `go.mod`.
+  репозитория. В финальном этапе каждого Dockerfile задавайте `USER 65532:65532`.
+  Явный UID защищает от случайного запуска от root, а явный GID исключает
+  группу root по умолчанию в `scratch`. CI проверяет точное значение `.Config.User`.
+  При обновлении Go синхронизируйте версию в трёх Dockerfile с `go.mod`.
 
 Timeout Go lint, Go test и Migration integration - 5 минут, Protobuf generation
 и Docker build - 10 минут. Кеш Go учитывает go.mod и go.sum.
