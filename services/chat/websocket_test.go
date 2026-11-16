@@ -15,6 +15,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
+	historyv1 "github.com/messenger-go-team/messenger/api/gen/history/v1"
 )
 
 const (
@@ -26,7 +27,7 @@ func TestWSHandshake(t *testing.T) {
 	cfg := testConfig(t)
 	var ready atomic.Bool
 	ready.Store(true)
-	ws := newWSEndpoint(cfg, &ready, defaultWSTiming())
+	ws := newWSEndpoint(cfg, &ready, defaultWSTiming(), nil)
 	server := httptest.NewServer(newServiceHandler(&ready, newLogger(io.Discard, "chat", cfg.LogLevel), ws))
 	defer server.Close()
 
@@ -147,17 +148,18 @@ func TestWSHeartbeat(t *testing.T) {
 }
 
 func TestWSExpiresWhileIdle(t *testing.T) {
-	url := startTestChat(t, defaultWSTiming())
+	ws, url := startTestWSEndpoint(t, defaultWSTiming(), nil)
 	token := signTestToken(t, time.Now().Add(1500*time.Millisecond))
 	conn, _ := dialTestSocket(t, url, testWSHeaders(token))
 	defer func() { _ = conn.Close() }()
 	assertSocketClose(t, conn, wsTokenExpired)
+	waitForConnections(t, ws, 0)
 }
 
 func TestWSGracefulShutdown(t *testing.T) {
 	cfg := testConfig(t)
 	var ready atomic.Bool
-	ws := newWSEndpoint(cfg, &ready, defaultWSTiming())
+	ws := newWSEndpoint(cfg, &ready, defaultWSTiming(), nil)
 	logger := newLogger(io.Discard, "chat", cfg.LogLevel)
 	handler := newServiceHandler(&ready, logger, ws)
 	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
@@ -188,6 +190,9 @@ func TestWSGracefulShutdown(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("service did not stop")
 	}
+	if got := ws.hub.size(); got != 0 {
+		t.Fatalf("%d WebSocket sessions remained after shutdown", got)
+	}
 	if ready.Load() || ws.admit() {
 		t.Fatal("service is still accepting connections")
 	}
@@ -211,6 +216,41 @@ func TestWSAllowedOriginsConfig(t *testing.T) {
 	}
 }
 
+func TestHistoryRPCConfig(t *testing.T) {
+	cfg := testConfig(t)
+	if cfg.HistoryGRPCAddr != "history:9090" || cfg.HistoryRPCTimeout != 3*time.Second {
+		t.Fatalf("default History RPC config = %q, %s", cfg.HistoryGRPCAddr, cfg.HistoryRPCTimeout)
+	}
+	for _, tt := range []struct {
+		addr, timeout string
+		valid         bool
+	}{
+		{"127.0.0.1:9091", "150ms", true},
+		{"[::1]:9090", "3s", true},
+		{"history", "3s", false},
+		{":9090", "3s", false},
+		{"http://history:9090", "3s", false},
+		{"history:0", "3s", false},
+		{"history:65536", "3s", false},
+		{"history:9090", "0s", false},
+		{"history:9090", "invalid", false},
+	} {
+		cfg, err := loadConfig(func(name string) (string, bool) {
+			value, ok := map[string]string{
+				"JWT_SECRET": testSecret, "WS_ALLOWED_ORIGINS": testOrigin,
+				"HISTORY_GRPC_ADDR": tt.addr, "HISTORY_RPC_TIMEOUT": tt.timeout,
+			}[name]
+			return value, ok
+		})
+		if (err == nil) != tt.valid {
+			t.Errorf("History RPC config %q, %q returned %v", tt.addr, tt.timeout, err)
+		}
+		if tt.valid && (cfg.HistoryGRPCAddr != tt.addr || cfg.HistoryRPCTimeout.String() != tt.timeout) {
+			t.Errorf("History RPC settings = %q, %s, want %q, %s", cfg.HistoryGRPCAddr, cfg.HistoryRPCTimeout, tt.addr, tt.timeout)
+		}
+	}
+}
+
 func testConfig(t *testing.T) config {
 	t.Helper()
 	cfg, err := loadConfig(func(name string) (string, bool) {
@@ -225,25 +265,41 @@ func testConfig(t *testing.T) config {
 
 func startTestChat(t *testing.T, timing wsTiming) string {
 	t.Helper()
+	_, url := startTestWSEndpoint(t, timing, nil)
+	return url
+}
+
+func startTestWSEndpoint(t *testing.T, timing wsTiming, history historyv1.HistoryServiceClient) (*wsEndpoint, string) {
+	t.Helper()
 	cfg := testConfig(t)
 	var ready atomic.Bool
 	ready.Store(true)
-	ws := newWSEndpoint(cfg, &ready, timing)
+	ws := newWSEndpoint(cfg, &ready, timing, history)
 	logger := newLogger(io.Discard, "chat", cfg.LogLevel)
 	server := httptest.NewServer(newServiceHandler(&ready, logger, ws))
 	t.Cleanup(func() {
 		ws.stopAccepting()
-		ws.forceClose()
+		ws.hub.forceClose()
 		server.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if err := ws.wait(ctx); err != nil {
+			t.Error(err)
+		}
 	})
-	return server.URL
+	return ws, server.URL
 }
 
 func signTestToken(t *testing.T, expiry time.Time) string {
 	t.Helper()
+	return signTestUserToken(t, "10000000-0000-4000-8000-000000000001", expiry)
+}
+
+func signTestUserToken(t *testing.T, userID string, expiry time.Time) string {
+	t.Helper()
 	issued := time.Now().Add(-time.Hour)
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
-		Subject:   "10000000-0000-4000-8000-000000000001",
+		Subject:   userID,
 		IssuedAt:  jwt.NewNumericDate(issued),
 		ExpiresAt: jwt.NewNumericDate(expiry),
 	})
