@@ -62,10 +62,8 @@ func defaultWSTiming() wsTiming {
 	}
 }
 
-// pingProbe lets the reader notify the heartbeat loop about its current Ping.
 type pingProbe struct {
 	payload string
-	pong    chan struct{}
 }
 
 func (ws *wsEndpoint) serveSocket(socket *socketSession) {
@@ -74,10 +72,7 @@ func (ws *wsEndpoint) serveSocket(socket *socketSession) {
 	var pending atomic.Pointer[pingProbe]
 	conn.SetPongHandler(func(payload string) error {
 		if ping := pending.Load(); ping != nil && ping.payload == payload {
-			select {
-			case ping.pong <- struct{}{}:
-			default:
-			}
+			pending.CompareAndSwap(ping, nil)
 		}
 		return nil
 	})
@@ -112,18 +107,20 @@ func (ws *wsEndpoint) serveSocket(socket *socketSession) {
 	}
 }
 
-// writeSocket serializes data frames and runs the heartbeat for one connection.
+// writeSocket serializes data frames and sends heartbeat pings.
 func (ws *wsEndpoint) writeSocket(socket *socketSession, pending *atomic.Pointer[pingProbe], readDone <-chan struct{}) {
 	conn := socket.conn
 	pings := time.NewTicker(ws.timing.pingInterval)
 	defer pings.Stop()
 	expiry := time.NewTimer(time.Until(socket.expiresAt))
 	defer expiry.Stop()
-	pongTimer := time.NewTimer(ws.timing.pongTimeout)
-	pongTimer.Stop()
-	defer pongTimer.Stop()
-	var pong <-chan struct{}
-	var pongDeadline <-chan time.Time
+	var pongTimer *time.Timer
+	defer func() {
+		pending.Store(nil)
+		if pongTimer != nil {
+			pongTimer.Stop()
+		}
+	}()
 
 	for {
 		// Check close signals before draining pending events, even with a full queue.
@@ -164,21 +161,23 @@ func (ws *wsEndpoint) writeSocket(socket *socketSession, pending *atomic.Pointer
 				return
 			}
 		case <-pings.C:
-			ping := &pingProbe{payload: rand.Text(), pong: make(chan struct{}, 1)}
-			pending.Store(ping)
+			ping := &pingProbe{payload: rand.Text()}
+			if !pending.CompareAndSwap(nil, ping) {
+				continue
+			}
+			if pongTimer != nil {
+				pongTimer.Stop()
+			}
 			if err := conn.WriteControl(websocket.PingMessage, []byte(ping.payload), time.Now().Add(ws.timing.writeTimeout)); err != nil {
 				return
 			}
-			pong = ping.pong
-			pongTimer.Reset(ws.timing.pongTimeout)
-			pongDeadline = pongTimer.C
-		case <-pong:
-			pending.Store(nil)
-			pongTimer.Stop()
-			pong, pongDeadline = nil, nil
-		case <-pongDeadline:
-			// Returning closes the transport even if the peer is no longer responsive.
-			return
+			pongTimer = time.AfterFunc(ws.timing.pongTimeout, func() {
+				// A matching Pong clears this probe. Otherwise Close unblocks any
+				// in-flight write, even while the writer cannot service its select.
+				if pending.CompareAndSwap(ping, nil) {
+					_ = conn.Close()
+				}
+			})
 		}
 	}
 }

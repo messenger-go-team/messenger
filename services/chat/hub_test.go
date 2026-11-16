@@ -61,17 +61,102 @@ func TestWSSlowSocketDoesNotDelayAnotherTab(t *testing.T) {
 }
 
 func TestWSDisconnectUnblocksPendingWrite(t *testing.T) {
+	ws, conn, transport := startTestBlockedWriteSocket(t, defaultWSTiming())
+	beginTestBlockedWrite(t, ws, transport)
+
+	// Give the server's reader EOF while the server's write is still blocked.
+	if err := conn.UnderlyingConn().(*net.TCPConn).CloseWrite(); err != nil {
+		t.Fatal(err)
+	}
+	waitForConnections(t, ws, 0) // Removal only happens after the writer has exited.
+}
+
+func TestWSHeartbeatWithPendingWrite(t *testing.T) {
+	timing := wsTiming{pingInterval: 500 * time.Millisecond, pongTimeout: 200 * time.Millisecond, writeTimeout: 2 * time.Second}
+	t.Run("missing Pong", func(t *testing.T) {
+		ws, conn, transport := startTestBlockedWriteSocket(t, timing)
+		pings, readDone := readTestPings(t, conn)
+		if _, ok := <-pings; !ok {
+			t.Fatal("the socket closed before sending Ping")
+		}
+		deadline := time.NewTimer(timing.pongTimeout + 120*time.Millisecond)
+		defer deadline.Stop()
+		beginTestBlockedWrite(t, ws, transport)
+
+		// The transport still holds the blocked data write when the socket must close.
+		select {
+		case <-readDone:
+		case <-deadline.C:
+			t.Fatal("a blocked data write delayed the Pong timeout")
+		}
+		waitForConnections(t, ws, 0)
+	})
+	t.Run("matching Pong", func(t *testing.T) {
+		ws, conn, transport := startTestBlockedWriteSocket(t, timing)
+		pings, _ := readTestPings(t, conn)
+		payload, ok := <-pings
+		if !ok {
+			t.Fatal("the socket closed before sending Ping")
+		}
+		beginTestBlockedWrite(t, ws, transport)
+		if err := conn.WriteControl(websocket.PongMessage, []byte(payload), time.Now().Add(time.Second)); err != nil {
+			t.Fatal(err)
+		}
+
+		// Keep the writer blocked past the original Pong deadline, then let it send again.
+		time.Sleep(timing.pongTimeout + 50*time.Millisecond)
+		close(transport.releaseWrites)
+		if _, ok := <-pings; !ok {
+			t.Fatal("the socket closed despite receiving the matching Pong")
+		}
+		waitForConnections(t, ws, 1)
+	})
+}
+
+func readTestPings(t *testing.T, conn *websocket.Conn) (<-chan string, <-chan struct{}) {
+	t.Helper()
+	pings := make(chan string, 2)
+	readDone := make(chan struct{})
+	if err := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	conn.SetPingHandler(func(payload string) error {
+		select {
+		case pings <- payload:
+		default:
+		}
+		return nil // Each test decides whether to send Pong.
+	})
+	go func() {
+		defer close(readDone)
+		defer close(pings)
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}()
+	t.Cleanup(func() {
+		_ = conn.Close()
+		<-readDone
+	})
+	return pings, readDone
+}
+
+func startTestBlockedWriteSocket(t *testing.T, timing wsTiming) (*wsEndpoint, *websocket.Conn, blockedWriteListener) {
+	t.Helper()
 	cfg := testConfig(t)
 	var ready atomic.Bool
 	ready.Store(true)
-	ws := newWSEndpoint(cfg, &ready, defaultWSTiming(), nil)
+	ws := newWSEndpoint(cfg, &ready, timing, nil)
 	server := httptest.NewUnstartedServer(newServiceHandler(&ready, newLogger(io.Discard, "chat", cfg.LogLevel), ws))
-	blockWrites, writeStarted := make(chan struct{}), make(chan struct{})
-	server.Listener = blockedWriteListener{
-		Listener:     server.Listener,
-		blockWrites:  blockWrites,
-		writeStarted: writeStarted,
+	transport := blockedWriteListener{
+		Listener:      server.Listener,
+		blockWrites:   make(chan struct{}),
+		writeStarted:  make(chan struct{}),
+		releaseWrites: make(chan struct{}),
 	}
+	server.Listener = transport
 	server.Start()
 	t.Cleanup(func() {
 		ws.stopAccepting()
@@ -86,27 +171,27 @@ func TestWSDisconnectUnblocksPendingWrite(t *testing.T) {
 
 	conn, _ := dialTestUser(t, server.URL, fanoutAlice)
 	waitForConnections(t, ws, 1)
-	close(blockWrites)
+	return ws, conn, transport
+}
+
+func beginTestBlockedWrite(t *testing.T, ws *wsEndpoint, transport blockedWriteListener) {
+	t.Helper()
+	close(transport.blockWrites)
 	if err := ws.broker.Publish(t.Context(), []string{fanoutAlice}, []byte(`{"type":"message.new"}`)); err != nil {
 		t.Fatal(err)
 	}
 	select {
-	case <-writeStarted:
+	case <-transport.writeStarted:
 	case <-time.After(3 * time.Second):
 		t.Fatal("WebSocket writer did not reach the transport")
 	}
-
-	// Give the server's reader EOF while the server's write is still blocked.
-	if err := conn.UnderlyingConn().(*net.TCPConn).CloseWrite(); err != nil {
-		t.Fatal(err)
-	}
-	waitForConnections(t, ws, 0) // Removal only happens after the writer has exited.
 }
 
 type blockedWriteListener struct {
 	net.Listener
-	blockWrites  <-chan struct{}
-	writeStarted chan struct{}
+	blockWrites   chan struct{}
+	writeStarted  chan struct{}
+	releaseWrites chan struct{}
 }
 
 func (l blockedWriteListener) Accept() (net.Conn, error) {
@@ -115,30 +200,36 @@ func (l blockedWriteListener) Accept() (net.Conn, error) {
 		return nil, err
 	}
 	return &blockedWriteConn{
-		Conn:         conn,
-		blockWrites:  l.blockWrites,
-		writeStarted: l.writeStarted,
-		closed:       make(chan struct{}),
+		Conn:          conn,
+		blockWrites:   l.blockWrites,
+		writeStarted:  l.writeStarted,
+		releaseWrites: l.releaseWrites,
+		closed:        make(chan struct{}),
 	}, nil
 }
 
 // The handshake uses the real TCP connection. A subsequent write can be held
-// until Close so the test doesn't depend on filling the OS socket buffer.
+// until released or closed, independent of the OS socket buffer.
 type blockedWriteConn struct {
 	net.Conn
-	blockWrites  <-chan struct{}
-	writeStarted chan struct{}
-	closed       chan struct{}
-	startOnce    sync.Once
-	closeOnce    sync.Once
+	blockWrites   <-chan struct{}
+	writeStarted  chan struct{}
+	releaseWrites <-chan struct{}
+	closed        chan struct{}
+	startOnce     sync.Once
+	closeOnce     sync.Once
 }
 
 func (c *blockedWriteConn) Write(data []byte) (int, error) {
 	select {
 	case <-c.blockWrites:
 		c.startOnce.Do(func() { close(c.writeStarted) })
-		<-c.closed
-		return 0, net.ErrClosed
+		select {
+		case <-c.releaseWrites:
+			return c.Conn.Write(data)
+		case <-c.closed:
+			return 0, net.ErrClosed
+		}
 	default:
 		return c.Conn.Write(data)
 	}
