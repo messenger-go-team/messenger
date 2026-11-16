@@ -18,6 +18,21 @@ var _ later.Repository = (*LaterRepository)(nil)
 // preserve access and the source until commit, including an upsert of an entry
 // that already exists. Loss of access must not delete the saved entry itself.
 func lockLaterSource(ctx context.Context, tx *sql.Tx, user, chat, message string) error {
+	// Reject inaccessible sources without waiting behind a writer to the chat.
+	// This snapshot does not authorize the write: each row is rechecked and
+	// locked below, using fresh Read Committed snapshots after any lock wait.
+	var accessible bool
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(
+ SELECT 1 FROM history.messages m
+ JOIN history.chats c ON c.id=m.chat_id
+ JOIN history.chat_members cm ON cm.chat_id=c.id AND cm.user_id=$1
+ WHERE c.id=$2 AND m.id=$3)`, user, chat, message).Scan(&accessible)
+	if err != nil {
+		return err
+	}
+	if !accessible {
+		return later.ErrNotFound
+	}
 	for _, query := range []struct {
 		sql  string
 		args []any
@@ -63,7 +78,7 @@ func (r *LaterRepository) Save(ctx context.Context, in later.SaveInput) (later.E
 	if err != nil {
 		return later.Entry{}, false, err
 	}
-	tx, err := r.DB.BeginTx(ctx, nil)
+	tx, err := r.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return later.Entry{}, false, err
 	}
@@ -97,7 +112,7 @@ func (r *LaterRepository) Complete(ctx context.Context, user, id string) error {
 		return err
 	}
 	user, id = ids[0], ids[1]
-	tx, err := r.DB.BeginTx(ctx, nil)
+	tx, err := r.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return err
 	}
