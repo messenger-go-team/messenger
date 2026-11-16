@@ -125,6 +125,12 @@ describe('History API', () => {
       expect(response.status).toBe(422)
     })
 
+    it('returns 401 when the caller no longer exists in Auth', async () => {
+      await expect(
+        createPersonalChat(ALICE_ID, await createAccessToken(UNKNOWN_ID)),
+      ).rejects.toMatchObject({ status: 401, code: 'unauthorized' })
+    })
+
     it('returns 404 for an unknown user', async () => {
       await expect(createPersonalChat(UNKNOWN_ID, await aliceToken())).rejects.toMatchObject({
         status: 404,
@@ -199,11 +205,8 @@ describe('History API', () => {
       }
     })
 
-    it('returns 401 for a valid token whose subject is unknown', async () => {
-      await expect(listChats(await createAccessToken(UNKNOWN_ID))).rejects.toMatchObject({
-        status: 401,
-        code: 'unauthorized',
-      })
+    it('returns an empty list for a valid token whose subject is unknown to Auth', async () => {
+      await expect(listChats(await createAccessToken(UNKNOWN_ID))).resolves.toEqual({ chats: [] })
     })
   })
 
@@ -367,6 +370,19 @@ describe('History API', () => {
       })
     })
 
+    it('checks chat access for a valid token whose subject is unknown to Auth', async () => {
+      const accessToken = await createAccessToken(UNKNOWN_ID)
+
+      await expect(getMessageHistory(INITIAL_CHAT_ID, accessToken)).rejects.toMatchObject({
+        status: 403,
+        code: 'chat_membership_required',
+      })
+      await expect(getMessageHistory(UNKNOWN_ID, accessToken)).rejects.toMatchObject({
+        status: 404,
+        code: 'not_found',
+      })
+    })
+
     it('returns 404 for an unknown chat', async () => {
       await expect(getMessageHistory(UNKNOWN_ID, await aliceToken())).rejects.toMatchObject({
         status: 404,
@@ -499,6 +515,19 @@ describe('History API', () => {
       await expect(markChatRead(INITIAL_CHAT_ID, 1, charlieToken)).rejects.toMatchObject({
         status: 403,
         code: 'chat_membership_required',
+      })
+    })
+
+    it('checks chat access for a valid token whose subject is unknown to Auth', async () => {
+      const accessToken = await createAccessToken(UNKNOWN_ID)
+
+      await expect(markChatRead(INITIAL_CHAT_ID, 0, accessToken)).rejects.toMatchObject({
+        status: 403,
+        code: 'chat_membership_required',
+      })
+      await expect(markChatRead(UNKNOWN_ID, 0, accessToken)).rejects.toMatchObject({
+        status: 404,
+        code: 'not_found',
       })
     })
 

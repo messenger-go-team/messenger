@@ -326,10 +326,20 @@ func TestChatListRESTIntegration(t *testing.T) {
 	}
 	f.request(t, "GET", "/chats/"+b+"/messages?after_seq=2", userA, "", 403)
 	f.request(t, "POST", "/chats/"+b+"/read", userA, `{"seq":0}`, 403)
-	data = f.request(t, "GET", "/chats", missing, "", 200)
-	if string(data) != "{\"chats\":[]}\n" {
-		t.Fatal("empty list must be array", string(data))
+	// History authenticates the JWT locally. Without memberships an unknown
+	// subject has an empty list, even when the Auth directory is unavailable.
+	for _, mode := range []int32{0, 1, 2} {
+		f.authFailure.Store(mode)
+		data = f.request(t, "GET", "/chats", missing, "", 200)
+		if string(data) != "{\"chats\":[]}\n" {
+			t.Fatal("empty list must be array", string(data))
+		}
+		f.request(t, "GET", "/chats/"+a+"/messages?before_seq=1", missing, "", 403)
+		f.request(t, "POST", "/chats/"+a+"/read", missing, `{"seq":0}`, 403)
+		f.request(t, "GET", "/chats/"+missing+"/messages", missing, "", 404)
+		f.request(t, "POST", "/chats/"+missing+"/read", missing, `{"seq":0}`, 404)
 	}
+	f.authFailure.Store(0)
 	if _, err := f.db.Exec(`ALTER TABLE history.messages RENAME TO missing_messages`); err != nil {
 		t.Fatal(err)
 	}
@@ -389,6 +399,64 @@ func TestHistoryPageSnapshot(t *testing.T) {
 		t.Fatal(next)
 	}
 }
+
+// An outsider must receive the contract's 403 while a legitimate writer still
+// holds the chat row. A client deadline turns accidental lock waits into a
+// failure without releasing the gate and allowing a false-positive response.
+func TestMarkReadRejectsNonMembersWhileChatLocked(t *testing.T) {
+	for _, tc := range []struct {
+		name, user string
+		revoked    bool
+	}{
+		{"outsider", userC, false},
+		{"subject unknown to Auth", missing, false},
+		{"revoked member", userA, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newReadingFixture(t)
+			chat := messageChat(t, f.db, 10, userA, userB)
+			if tc.revoked {
+				if _, err := f.db.ExecContext(t.Context(), `DELETE FROM history.chat_members WHERE chat_id=$1 AND user_id=$2`, chat, tc.user); err != nil {
+					t.Fatal(err)
+				}
+			}
+			gate, err := f.db.BeginTx(t.Context(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = gate.Rollback() }()
+			if _, err = gate.ExecContext(t.Context(), `SELECT 1 FROM history.chats WHERE id=$1 FOR UPDATE`, chat); err != nil {
+				t.Fatal(err)
+			}
+			// Even seq above last_seq must not reveal chat state to a non-member.
+			for _, body := range []string{`{"seq":0}`, `{"seq":11}`} {
+				ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+				defer cancel()
+				req, err := http.NewRequestWithContext(ctx, http.MethodPost, f.web.URL+"/chats/"+chat+"/read", strings.NewReader(body))
+				if err != nil {
+					t.Fatal(err)
+				}
+				req.Header.Set("Authorization", "Bearer "+historyJWT(t, tc.user))
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("X-Request-ID", "locked-nonmember")
+				res, err := f.web.Client().Do(req)
+				if err != nil {
+					t.Fatalf("non-member must receive 403 before the chat lock is released: %v", err)
+				}
+				data, readErr := io.ReadAll(res.Body)
+				_ = res.Body.Close()
+				var apiErr map[string]string
+				if readErr != nil || res.StatusCode != http.StatusForbidden || json.Unmarshal(data, &apiErr) != nil || apiErr["code"] != "chat_membership_required" || apiErr["request_id"] != "locked-nonmember" || res.Header.Get("Cache-Control") != "no-store" {
+					t.Fatalf("non-member response: status=%d body=%s error=%v", res.StatusCode, data, readErr)
+				}
+			}
+			if read, delivered := cursorState(t, f.db, chat, userB); read != 0 || delivered != 0 {
+				t.Fatal("denied read changed another member's cursors", read, delivered)
+			}
+		})
+	}
+}
+
 func TestReadCursorRollbackAndCancellation(t *testing.T) {
 	f := newReadingFixture(t)
 	chat := messageChat(t, f.db, 20, userA, userB)

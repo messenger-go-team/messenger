@@ -116,6 +116,15 @@ func (r *Repository) History(ctx context.Context, chat, user string, q reading.Q
 }
 
 func (r *Repository) MarkRead(ctx context.Context, chat, user string, seq int64) error {
+	// Reject non-members without waiting behind a writer to someone else's chat.
+	// This snapshot is only a fast rejection; access is rechecked under lock below.
+	member, err := r.Membership(ctx, chat, user)
+	if err != nil {
+		return err
+	}
+	if !member {
+		return chats.ErrForbidden
+	}
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -130,8 +139,8 @@ func (r *Repository) MarkRead(ctx context.Context, chat, user string, seq int64)
 	if err != nil {
 		return err
 	}
-	var member int
-	err = tx.QueryRowContext(ctx, `SELECT 1 FROM history.chat_members WHERE chat_id=$1 AND user_id=$2 FOR UPDATE`, chat, user).Scan(&member)
+	var membership int
+	err = tx.QueryRowContext(ctx, `SELECT 1 FROM history.chat_members WHERE chat_id=$1 AND user_id=$2 FOR UPDATE`, chat, user).Scan(&membership)
 	if errors.Is(err, sql.ErrNoRows) {
 		return chats.ErrForbidden
 	}
