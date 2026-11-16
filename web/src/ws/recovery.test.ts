@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MessengerWebSocketClient } from './client'
 import { MockWebSocketServer } from './mock/server'
 import type { HistoryAdapter, HistoryMessage, HistoryPage, MessageNewEvent } from './types'
@@ -6,6 +6,7 @@ import type { HistoryAdapter, HistoryMessage, HistoryPage, MessageNewEvent } fro
 const USER_ID = '60000000-0000-4000-8000-000000000001'
 const OTHER_USER_ID = '60000000-0000-4000-8000-000000000002'
 const CHAT_ID = '20000000-0000-4000-8000-000000000001'
+const CLIENT_ID = '30000000-0000-4000-8000-000000000001'
 
 function message(seq: number): HistoryMessage {
   return {
@@ -152,6 +153,7 @@ describe('history recovery', () => {
     await client.synchronizeHistory()
     expect(client.getSnapshot().history).toBe('error')
     expect(client.getSyncedCursor(CHAT_ID)).toBe(1)
+    client.stop()
   })
 
   it('preserves existing, partial and buffered messages after a History error', async () => {
@@ -182,6 +184,7 @@ describe('history recovery', () => {
     expect(client.getSnapshot().history).toBe('error')
     expect(client.getSnapshot().messages.map((item) => item.seq)).toEqual([1, 2, 3])
     expect(client.getSyncedCursor(CHAT_ID)).toBe(1)
+    client.stop()
   })
 
   it('rejects a non-advancing page instead of looping forever', async () => {
@@ -198,5 +201,511 @@ describe('history recovery', () => {
     expect(client.getSnapshot().history).toBe('error')
     expect(client.getSyncedCursor(CHAT_ID)).toBe(0)
     expect(history.getMessages).toHaveBeenCalledOnce()
+    client.stop()
+  })
+})
+
+describe('automatic history retry', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => {
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
+  it('recovers History and sends pending on the same WebSocket after a temporary failure', async () => {
+    const listChats = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('503 service unavailable'))
+      .mockResolvedValueOnce([])
+    const history: HistoryAdapter = { listChats, getMessages: vi.fn() }
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const webSocketFactory = vi.fn(server.webSocketFactory)
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory,
+      history,
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    expect(client.getSnapshot().history).toBe('ready')
+
+    server.disconnectAll(1013, 'temporary disconnect')
+    client.sendMessage(CHAT_ID, 'pending body', CLIENT_ID)
+    expect(client.getSnapshot().pending[0]).toMatchObject({
+      clientMsgId: CLIENT_ID,
+      body: 'pending body',
+      status: 'pending',
+      attempts: 0,
+    })
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flushMicrotasks()
+
+    expect(webSocketFactory).toHaveBeenCalledTimes(2)
+    expect(client.getSnapshot().history).toBe('error')
+    expect(client.getSnapshot().pending[0]?.attempts).toBe(0)
+    expect(server.received).toHaveLength(0)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flushMicrotasks()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(listChats).toHaveBeenCalledTimes(3)
+    expect(client.getSnapshot().history).toBe('ready')
+    expect(client.getSnapshot().pending[0]).toMatchObject({
+      clientMsgId: CLIENT_ID,
+      body: 'pending body',
+      attempts: 1,
+    })
+    expect(server.received).toHaveLength(1)
+    expect(server.received[0]?.payload).toEqual({
+      chat_id: CHAT_ID,
+      client_msg_id: CLIENT_ID,
+      body: 'pending body',
+    })
+    expect(webSocketFactory).toHaveBeenCalledTimes(2)
+
+    client.stop()
+  })
+
+  it('uses exponential backoff across failures and resets it after success', async () => {
+    const listChats = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('first failure'))
+      .mockRejectedValueOnce(new Error('second failure'))
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('failure after recovery'))
+      .mockResolvedValueOnce([])
+    const history: HistoryAdapter = { listChats, getMessages: vi.fn() }
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      history,
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    expect(client.getSnapshot().history).toBe('error')
+
+    await vi.advanceTimersByTimeAsync(999)
+    expect(listChats).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    await flushMicrotasks()
+    expect(listChats).toHaveBeenCalledTimes(2)
+    expect(client.getSnapshot().history).toBe('error')
+
+    await vi.advanceTimersByTimeAsync(1_999)
+    expect(listChats).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1)
+    await flushMicrotasks()
+    expect(listChats).toHaveBeenCalledTimes(3)
+    expect(client.getSnapshot().history).toBe('ready')
+
+    await client.synchronizeHistory()
+    expect(listChats).toHaveBeenCalledTimes(4)
+    expect(client.getSnapshot().history).toBe('error')
+    await vi.advanceTimersByTimeAsync(999)
+    expect(listChats).toHaveBeenCalledTimes(4)
+    await vi.advanceTimersByTimeAsync(1)
+    await flushMicrotasks()
+    expect(listChats).toHaveBeenCalledTimes(5)
+    expect(client.getSnapshot().history).toBe('ready')
+
+    client.stop()
+  })
+
+  it('retries an interrupted page from the last confirmed safe cursor', async () => {
+    const getMessages = vi
+      .fn()
+      .mockResolvedValueOnce({ messages: [message(1)], next_after_seq: 1, has_more_after: false })
+      .mockResolvedValueOnce({ messages: [message(2)], next_after_seq: 2, has_more_after: true })
+      .mockRejectedValueOnce(new Error('next page unavailable'))
+      .mockResolvedValueOnce({
+        messages: [message(2), message(3)],
+        next_after_seq: 3,
+        has_more_after: false,
+      })
+    const history: HistoryAdapter = {
+      listChats: vi.fn().mockResolvedValue([{ id: CHAT_ID }]),
+      getMessages,
+    }
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      history,
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    expect(client.getSyncedCursor(CHAT_ID)).toBe(1)
+
+    await client.synchronizeHistory()
+    expect(client.getSnapshot().history).toBe('error')
+    expect(client.getSyncedCursor(CHAT_ID)).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flushMicrotasks()
+
+    expect(getMessages).toHaveBeenNthCalledWith(4, CHAT_ID, 'access', {
+      afterSeq: 1,
+      limit: 100,
+    })
+    expect(client.getSnapshot().messages.map((item) => item.seq)).toEqual([1, 2, 3])
+    expect(client.getSyncedCursor(CHAT_ID)).toBe(3)
+    expect(client.getSnapshot().history).toBe('ready')
+
+    client.stop()
+  })
+
+  it('does not start parallel History requests or keep an obsolete retry timer', async () => {
+    const recovered = deferred<readonly { id: string }[]>()
+    const listChats = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockReturnValueOnce(recovered.promise)
+    const history: HistoryAdapter = { listChats, getMessages: vi.fn() }
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      history,
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    expect(client.getSnapshot().history).toBe('error')
+
+    const firstSync = client.synchronizeHistory()
+    const duplicateSync = client.synchronizeHistory()
+    expect(duplicateSync).toBe(firstSync)
+    expect(listChats).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(listChats).toHaveBeenCalledTimes(2)
+
+    recovered.resolve([])
+    await firstSync
+    expect(client.getSnapshot().history).toBe('ready')
+
+    client.stop()
+  })
+
+  it('cancels a scheduled History retry on stop', async () => {
+    const listChats = vi.fn().mockRejectedValue(new Error('temporary failure'))
+    const history: HistoryAdapter = { listChats, getMessages: vi.fn() }
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      history,
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    expect(client.getSnapshot().history).toBe('error')
+
+    client.stop()
+    expect(vi.getTimerCount()).toBe(0)
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    expect(listChats).toHaveBeenCalledOnce()
+    expect(client.getSnapshot().transport).toBe('stopped')
+  })
+
+  it('discards a scheduled History retry when a new WebSocket generation starts', async () => {
+    const listChats = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce([])
+    const history: HistoryAdapter = { listChats, getMessages: vi.fn() }
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const webSocketFactory = vi.fn(server.webSocketFactory)
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory,
+      history,
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    await client.synchronizeHistory()
+    expect(client.getSnapshot().history).toBe('error')
+
+    server.disconnectAll(1013, 'new generation')
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flushMicrotasks()
+
+    expect(webSocketFactory).toHaveBeenCalledTimes(2)
+    expect(listChats).toHaveBeenCalledTimes(3)
+    expect(client.getSnapshot().history).toBe('ready')
+
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(listChats).toHaveBeenCalledTimes(3)
+
+    client.stop()
+  })
+
+  it('ignores completion of an in-flight History request from an old generation', async () => {
+    const staleRequest = deferred<readonly { id: string }[]>()
+    const listChats = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockReturnValueOnce(staleRequest.promise)
+      .mockResolvedValueOnce([])
+    const history: HistoryAdapter = { listChats, getMessages: vi.fn() }
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      history,
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    const staleSync = client.synchronizeHistory()
+    await flushMicrotasks()
+
+    server.disconnectAll(1013, 'new generation')
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flushMicrotasks()
+    expect(client.getSnapshot().history).toBe('ready')
+
+    staleRequest.reject(new Error('stale failure'))
+    await staleSync
+    await flushMicrotasks()
+
+    expect(client.getSnapshot().history).toBe('ready')
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(listChats).toHaveBeenCalledTimes(3)
+
+    client.stop()
+  })
+})
+
+describe('active tab history synchronization', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
+  it('recovers a lost message from History after thirty seconds without reconnecting', async () => {
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    const getMessages = vi
+      .fn()
+      .mockResolvedValueOnce({ messages: [], next_after_seq: null, has_more_after: false })
+      .mockResolvedValueOnce({
+        messages: [message(1)],
+        next_after_seq: 1,
+        has_more_after: false,
+      })
+    const history: HistoryAdapter = {
+      listChats: vi.fn().mockResolvedValue([{ id: CHAT_ID }]),
+      getMessages,
+    }
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const webSocketFactory = vi.fn(server.webSocketFactory)
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory,
+      history,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    expect(client.getSnapshot().messages).toHaveLength(0)
+
+    await vi.advanceTimersByTimeAsync(29_999)
+    expect(getMessages).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(1)
+    await flushMicrotasks()
+
+    expect(getMessages).toHaveBeenCalledTimes(2)
+    expect(client.getSnapshot().messages.map((item) => item.seq)).toEqual([1])
+    expect(client.getSyncedCursor(CHAT_ID)).toBe(1)
+    expect(webSocketFactory).toHaveBeenCalledOnce()
+    expect(server.connections.size).toBe(1)
+
+    client.stop()
+  })
+
+  it('pauses periodic sync while hidden and synchronizes immediately when visible', async () => {
+    let visibilityState: DocumentVisibilityState = 'hidden'
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibilityState)
+    const getMessages = vi
+      .fn()
+      .mockResolvedValueOnce({ messages: [], next_after_seq: null, has_more_after: false })
+      .mockResolvedValueOnce({
+        messages: [message(1)],
+        next_after_seq: 1,
+        has_more_after: false,
+      })
+    const history: HistoryAdapter = {
+      listChats: vi.fn().mockResolvedValue([{ id: CHAT_ID }]),
+      getMessages,
+    }
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const client = createClient(history, server)
+
+    client.start()
+    await flushMicrotasks()
+    expect(getMessages).toHaveBeenCalledOnce()
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(getMessages).toHaveBeenCalledOnce()
+
+    visibilityState = 'visible'
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushMicrotasks()
+
+    expect(getMessages).toHaveBeenCalledTimes(2)
+    expect(client.getSnapshot().messages.map((item) => item.seq)).toEqual([1])
+    expect(client.getSyncedCursor(CHAT_ID)).toBe(1)
+
+    client.stop()
+  })
+
+  it('deduplicates periodic and visibility synchronization while a request is active', async () => {
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    const activeSync = deferred<readonly { id: string }[]>()
+    const listChats = vi.fn().mockResolvedValueOnce([]).mockReturnValueOnce(activeSync.promise)
+    const history: HistoryAdapter = { listChats, getMessages: vi.fn() }
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const client = createClient(history, server)
+
+    client.start()
+    await flushMicrotasks()
+    await vi.advanceTimersByTimeAsync(30_000)
+    await flushMicrotasks()
+    expect(listChats).toHaveBeenCalledTimes(2)
+
+    document.dispatchEvent(new Event('visibilitychange'))
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(listChats).toHaveBeenCalledTimes(2)
+
+    activeSync.resolve([])
+    await flushMicrotasks()
+    expect(client.getSnapshot().history).toBe('ready')
+
+    client.stop()
+  })
+
+  it('hands a periodic failure to History backoff without advancing the safe cursor', async () => {
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    const getMessages = vi
+      .fn()
+      .mockResolvedValueOnce({ messages: [message(1)], next_after_seq: 1, has_more_after: false })
+      .mockResolvedValueOnce({ messages: [message(2)], next_after_seq: 2, has_more_after: true })
+      .mockRejectedValueOnce(new Error('history unavailable'))
+      .mockResolvedValueOnce({
+        messages: [message(2), message(3)],
+        next_after_seq: 3,
+        has_more_after: false,
+      })
+    const history: HistoryAdapter = {
+      listChats: vi.fn().mockResolvedValue([{ id: CHAT_ID }]),
+      getMessages,
+    }
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      history,
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    expect(client.getSyncedCursor(CHAT_ID)).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    await flushMicrotasks()
+    expect(client.getSnapshot().history).toBe('error')
+    expect(client.getSyncedCursor(CHAT_ID)).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(999)
+    expect(getMessages).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(1)
+    await flushMicrotasks()
+
+    expect(getMessages).toHaveBeenNthCalledWith(4, CHAT_ID, 'access', {
+      afterSeq: 1,
+      limit: 100,
+    })
+    expect(client.getSnapshot().messages.map((item) => item.seq)).toEqual([1, 2, 3])
+    expect(client.getSyncedCursor(CHAT_ID)).toBe(3)
+    expect(client.getSnapshot().history).toBe('ready')
+
+    client.stop()
+  })
+
+  it('removes periodic timers and the visibility listener on stop', async () => {
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    const removeEventListener = vi.spyOn(document, 'removeEventListener')
+    const listChats = vi.fn().mockResolvedValue([])
+    const history: HistoryAdapter = { listChats, getMessages: vi.fn() }
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const client = createClient(history, server)
+
+    client.start()
+    await flushMicrotasks()
+    client.stop()
+
+    expect(removeEventListener).toHaveBeenCalledWith('visibilitychange', expect.any(Function))
+    expect(vi.getTimerCount()).toBe(0)
+
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(listChats).toHaveBeenCalledOnce()
+  })
+
+  it('does not require document in a non-browser environment', async () => {
+    vi.stubGlobal('document', undefined)
+    const history: HistoryAdapter = {
+      listChats: vi.fn().mockResolvedValue([]),
+      getMessages: vi.fn(),
+    }
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const client = createClient(history, server)
+
+    expect(() => client.start()).not.toThrow()
+    await flushMicrotasks()
+    expect(client.getSnapshot().history).toBe('ready')
+
+    client.stop()
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

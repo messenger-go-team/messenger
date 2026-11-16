@@ -28,7 +28,40 @@ import {
 } from './types'
 
 const OPEN = 1
+const HISTORY_SYNC_INTERVAL_MS = 30_000
 const NON_RETRYABLE_PROTOCOL_CLOSES = new Set([1000, 1002, 1003, 1007, 1009])
+
+function isAccessTokenExpired(token: string): boolean {
+  try {
+    const parts = token.split('.')
+    if (parts.length !== 3) return false
+    const payload = parts[1]
+    if (!payload || !/^[A-Za-z0-9_-]+$/.test(payload) || payload.length % 4 === 1) return false
+
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const paddedBase64 = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
+    const binary = atob(paddedBase64)
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0))
+    const decoded: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+
+    if (
+      typeof decoded !== 'object' ||
+      decoded === null ||
+      Array.isArray(decoded) ||
+      !('exp' in decoded)
+    ) {
+      return false
+    }
+
+    const expiresAt = decoded.exp
+
+    return (
+      typeof expiresAt === 'number' && Number.isFinite(expiresAt) && expiresAt <= Date.now() / 1000
+    )
+  } catch {
+    return false
+  }
+}
 
 export interface WebSocketClientOptions {
   wsOrigin?: string
@@ -43,6 +76,7 @@ export interface WebSocketClientOptions {
   ackTimeoutMs?: number
   stableConnectionMs?: number
   maxAutomaticAttempts?: number
+  /** @deprecated Retained for compatibility; temporary failures retry until success or stop. */
   maxRefreshAttempts?: number
   onServerEvent?: (event: KnownServerEvent) => void
   onUnknownEvent?: (event: UnknownServerEvent) => void
@@ -97,11 +131,11 @@ export class MessengerWebSocketClient {
   private readonly ackTimeoutMs: number
   private readonly stableConnectionMs: number
   private readonly maxAutomaticAttempts: number
-  private readonly maxRefreshAttempts: number
   private readonly onServerEvent?: (event: KnownServerEvent) => void
   private readonly onUnknownEvent?: (event: UnknownServerEvent) => void
   private readonly onProtocolIssue?: (issue: ProtocolIssue) => void
   private readonly reconnectBackoff: ExponentialBackoff
+  private readonly historyRetryBackoff: ExponentialBackoff
   private readonly listeners = new Set<(snapshot: WebSocketClientSnapshot) => void>()
   private readonly pending = new Map<string, MutablePending>()
   private readonly messagesById = new Map<string, StoredMessage>()
@@ -116,12 +150,23 @@ export class MessengerWebSocketClient {
   private generation = 0
   private stopped = false
   private refreshPromise: Promise<void> | null = null
-  private refreshAttempts = 0
   private refreshGuard = false
   private historyGeneration = 0
   private historyPromise: Promise<void> | null = null
+  private historyRetryTimer: ReturnType<typeof setTimeout> | null = null
+  private historyPeriodicTimer: ReturnType<typeof setTimeout> | null = null
+  private visibilityDocument: Document | null = null
   private bufferingMessages = false
   private bufferedMessages: MessageNewEvent[] = []
+  private readonly handleVisibilityChange = (): void => {
+    if (this.stopped || !this.history) return
+    if (!this.isPageVisible()) {
+      this.clearHistoryPeriodicTimer()
+      this.clearHistoryRetryTimer()
+      return
+    }
+    if (this.canSynchronizeVisibleHistory()) void this.synchronizeHistory()
+  }
 
   constructor(options: WebSocketClientOptions) {
     if (!isValidUuid(options.currentUserId)) throw new Error('currentUserId must be a UUID')
@@ -137,16 +182,17 @@ export class MessengerWebSocketClient {
     this.ackTimeoutMs = options.ackTimeoutMs ?? 10_000
     this.stableConnectionMs = options.stableConnectionMs ?? 30_000
     this.maxAutomaticAttempts = options.maxAutomaticAttempts ?? 5
-    this.maxRefreshAttempts = options.maxRefreshAttempts ?? 3
     this.onServerEvent = options.onServerEvent
     this.onUnknownEvent = options.onUnknownEvent
     this.onProtocolIssue = options.onProtocolIssue
     this.reconnectBackoff = new ExponentialBackoff({ random: this.random })
+    this.historyRetryBackoff = new ExponentialBackoff({ random: this.random })
   }
 
   start(): void {
+    if (this.stopped) return
+    this.attachVisibilityListener()
     if (
-      this.stopped ||
       this.socket ||
       this.transport === 'connecting' ||
       this.transport === 'reconnecting' ||
@@ -163,10 +209,13 @@ export class MessengerWebSocketClient {
     this.historyGeneration++
     this.historyPromise = null
     this.clearReconnectTimer()
+    this.clearHistoryRetryTimer()
+    this.clearHistoryPeriodicTimer()
     this.clearStableTimer()
     this.clearPendingTimers()
     this.bufferingMessages = false
     this.bufferedMessages = []
+    this.detachVisibilityListener()
     const socket = this.socket
     this.socket = null
     if (socket) {
@@ -248,6 +297,8 @@ export class MessengerWebSocketClient {
   }
 
   synchronizeHistory(): Promise<void> {
+    this.clearHistoryRetryTimer()
+    this.clearHistoryPeriodicTimer()
     if (this.historyPromise) return this.historyPromise
     const promise = this.runHistorySync().finally(() => {
       if (this.historyPromise === promise) this.historyPromise = null
@@ -277,7 +328,7 @@ export class MessengerWebSocketClient {
     socket.onopen = () => {
       if (!this.isCurrent(socket, generation)) return
       if (socket.protocol !== MESSENGER_PROTOCOL) {
-        socket.close(1002, 'unexpected subprotocol')
+        socket.close(1000, 'unexpected subprotocol')
         return
       }
       this.setTransport('connected')
@@ -285,7 +336,6 @@ export class MessengerWebSocketClient {
       this.clearStableTimer()
       this.stableTimer = setTimeout(() => {
         this.reconnectBackoff.reset()
-        this.refreshAttempts = 0
         this.refreshGuard = false
       }, this.stableConnectionMs)
       if (this.history) void this.synchronizeHistory()
@@ -308,12 +358,14 @@ export class MessengerWebSocketClient {
       this.clearPendingTimers()
       this.historyGeneration++
       this.historyPromise = null
+      this.clearHistoryRetryTimer()
+      this.clearHistoryPeriodicTimer()
       const historyWasSyncing = this.historyState === 'syncing'
       if (this.bufferingMessages) this.commitBufferedMessages()
       if (historyWasSyncing) this.setHistoryState('error')
       if (this.stopped) return
       this.setTransport('disconnected')
-      if (event.code === 4401) {
+      if (event.code === 4401 || (event.code === 1006 && isAccessTokenExpired(this.accessToken))) {
         void this.refreshAndReconnect()
       } else if (!NON_RETRYABLE_PROTOCOL_CLOSES.has(event.code)) {
         this.scheduleReconnect()
@@ -345,12 +397,7 @@ export class MessengerWebSocketClient {
       this.setAuthFailed('refreshed_token_rejected')
       return
     }
-    if (this.refreshAttempts >= this.maxRefreshAttempts) {
-      this.setAuthFailed('refresh_retry_exhausted')
-      return
-    }
     if (this.refreshPromise) return this.refreshPromise
-    this.refreshAttempts++
     this.refreshPromise = (async () => {
       try {
         const result = await auth.refreshAccessToken()
@@ -375,10 +422,6 @@ export class MessengerWebSocketClient {
 
   private scheduleRefreshRetry(): void {
     if (this.stopped || this.reconnectTimer) {
-      return
-    }
-    if (this.refreshAttempts >= this.maxRefreshAttempts) {
-      this.setAuthFailed('refresh_retry_exhausted')
       return
     }
     const delay = this.reconnectBackoff.nextDelay()
@@ -586,12 +629,66 @@ export class MessengerWebSocketClient {
       this.syncedCursors.clear()
       for (const [chatId, cursor] of stagedCursors) this.syncedCursors.set(chatId, cursor)
       this.setHistoryState('ready')
+      this.historyRetryBackoff.reset()
       this.resendPendingAfterReconnect()
+      this.scheduleHistoryPeriodicSync()
     } catch {
       if (syncGeneration !== this.historyGeneration || this.stopped) return
       this.commitBufferedMessages()
       this.setHistoryState('error')
+      this.scheduleHistoryRetry()
     }
+  }
+
+  private scheduleHistoryRetry(): void {
+    this.clearHistoryPeriodicTimer()
+    if (this.historyRetryTimer || !this.canSynchronizeVisibleHistory()) return
+    const retryGeneration = this.historyGeneration
+    const delay = this.historyRetryBackoff.nextDelay()
+    this.historyRetryTimer = setTimeout(() => {
+      this.historyRetryTimer = null
+      if (retryGeneration !== this.historyGeneration || !this.canSynchronizeVisibleHistory()) {
+        return
+      }
+      void this.synchronizeHistory()
+    }, delay)
+  }
+
+  private scheduleHistoryPeriodicSync(): void {
+    this.clearHistoryPeriodicTimer()
+    if (!this.canSynchronizeVisibleHistory()) return
+    this.historyPeriodicTimer = setTimeout(() => {
+      this.historyPeriodicTimer = null
+      if (this.canSynchronizeVisibleHistory()) void this.synchronizeHistory()
+    }, HISTORY_SYNC_INTERVAL_MS)
+  }
+
+  private canSynchronizeVisibleHistory(): boolean {
+    return (
+      !this.stopped &&
+      Boolean(this.history) &&
+      this.transport === 'connected' &&
+      this.socket?.readyState === OPEN &&
+      this.isPageVisible()
+    )
+  }
+
+  private isPageVisible(): boolean {
+    if (this.visibilityDocument) return this.visibilityDocument.visibilityState === 'visible'
+    if (typeof document === 'undefined') return true
+    return document.visibilityState === 'visible'
+  }
+
+  private attachVisibilityListener(): void {
+    if (!this.history || this.visibilityDocument || typeof document === 'undefined') return
+    this.visibilityDocument = document
+    this.visibilityDocument.addEventListener('visibilitychange', this.handleVisibilityChange)
+  }
+
+  private detachVisibilityListener(): void {
+    if (!this.visibilityDocument) return
+    this.visibilityDocument.removeEventListener('visibilitychange', this.handleVisibilityChange)
+    this.visibilityDocument = null
   }
 
   private commitBufferedMessages(): void {
@@ -649,6 +746,16 @@ export class MessengerWebSocketClient {
   private clearReconnectTimer(): void {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     this.reconnectTimer = null
+  }
+
+  private clearHistoryRetryTimer(): void {
+    if (this.historyRetryTimer) clearTimeout(this.historyRetryTimer)
+    this.historyRetryTimer = null
+  }
+
+  private clearHistoryPeriodicTimer(): void {
+    if (this.historyPeriodicTimer) clearTimeout(this.historyPeriodicTimer)
+    this.historyPeriodicTimer = null
   }
 
   private clearStableTimer(): void {

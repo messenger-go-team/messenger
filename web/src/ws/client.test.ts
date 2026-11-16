@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MessengerWebSocketClient } from './client'
 import { MockWebSocket, MockWebSocketServer } from './mock/server'
-import type { ErrorEvent, ErrorPayload, MessageAckEvent, WebSocketFactory } from './types'
+import type {
+  ErrorEvent,
+  ErrorPayload,
+  MessageAckEvent,
+  WebSocketFactory,
+  WebSocketLike,
+} from './types'
 
 const USER_ID = '60000000-0000-4000-8000-000000000001'
 const OTHER_USER_ID = '60000000-0000-4000-8000-000000000002'
@@ -16,6 +22,18 @@ function ids() {
 
 function flushMicrotasks() {
   return Promise.resolve().then(() => Promise.resolve())
+}
+
+function jwtWithPayload(payload: unknown): string {
+  return jwtWithJsonPayload(JSON.stringify(payload))
+}
+
+function jwtWithJsonPayload(payload: string): string {
+  return [
+    'header',
+    btoa(payload).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+    'signature',
+  ].join('.')
 }
 
 function latestConnection(server: MockWebSocketServer): MockWebSocket {
@@ -86,6 +104,52 @@ describe('MessengerWebSocketClient connection and events', () => {
     expect(client.getSnapshot().transport).toBe('connected')
   })
 
+  it('closes an unexpected subprotocol with a browser-allowed code without reconnecting', async () => {
+    let readyState = 0
+    const socket: WebSocketLike = {
+      get readyState() {
+        return readyState
+      },
+      protocol: 'unexpected.v1',
+      onopen: null,
+      onmessage: null,
+      onerror: null,
+      onclose: null,
+      send: vi.fn(),
+      close: vi.fn((code = 1000, reason = '') => {
+        if (code !== 1000 && (code < 3000 || code > 4999)) {
+          throw new DOMException('Invalid WebSocket close code', 'InvalidAccessError')
+        }
+        readyState = 2
+        queueMicrotask(() => {
+          readyState = 3
+          socket.onclose?.({ code, reason, wasClean: true })
+        })
+      }),
+    }
+    const webSocketFactory: WebSocketFactory = vi.fn(() => socket)
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory,
+    })
+
+    client.start()
+    expect(client.getSnapshot().transport).toBe('connecting')
+    readyState = 1
+
+    expect(() => socket.onopen?.()).not.toThrow()
+    await flushMicrotasks()
+
+    expect(socket.close).toHaveBeenCalledWith(1000, 'unexpected subprotocol')
+    expect(client.getSnapshot().transport).toBe('disconnected')
+    expect(vi.getTimerCount()).toBe(0)
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(webSocketFactory).toHaveBeenCalledOnce()
+  })
+
   it('handles a failed handshake using only browser-visible information', async () => {
     const server = new MockWebSocketServer({ senderId: USER_ID, expectedAccessToken: 'valid' })
     const client = new MessengerWebSocketClient({
@@ -99,6 +163,140 @@ describe('MessengerWebSocketClient connection and events', () => {
     await flushMicrotasks()
     expect(client.getSnapshot().transport).toBe('disconnected')
     expect(vi.getTimerCount()).toBe(1)
+  })
+
+  it('refreshes an expired JWT after a failed WebSocket handshake', async () => {
+    const expiredToken = [
+      'header',
+      btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) - 60 }))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, ''),
+      'signature',
+    ].join('.')
+
+    const refreshAccessToken = vi.fn().mockResolvedValue({
+      kind: 'success',
+      accessToken: 'new-access-token',
+    })
+
+    const server = new MockWebSocketServer({
+      senderId: USER_ID,
+      expectedAccessToken: 'new-access-token',
+    })
+
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: expiredToken,
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      auth: { refreshAccessToken },
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+
+    expect(refreshAccessToken).toHaveBeenCalledOnce()
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flushMicrotasks()
+
+    expect(latestConnection(server).protocols).toContain('bearer.new-access-token')
+    expect(client.getSnapshot().transport).toBe('connected')
+
+    client.stop()
+  })
+
+  it('keeps normal reconnect backoff for 1006 with an unexpired JWT', async () => {
+    const accessToken = jwtWithPayload({ exp: Math.floor(Date.now() / 1000) + 60 })
+    const refreshAccessToken = vi.fn()
+    const server = new MockWebSocketServer({
+      senderId: USER_ID,
+      expectedAccessToken: 'different-token',
+    })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken,
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      auth: { refreshAccessToken },
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+
+    expect(refreshAccessToken).not.toHaveBeenCalled()
+    expect(client.getSnapshot().transport).toBe('disconnected')
+    expect(vi.getTimerCount()).toBe(1)
+
+    client.stop()
+  })
+
+  it.each([
+    ['not a JWT', 'invalid'],
+    ['invalid base64url', 'header.%$.signature'],
+    ['invalid JSON', 'header.bm90LWpzb24.signature'],
+    ['missing exp', jwtWithPayload({ sub: USER_ID })],
+    ['non-number exp', jwtWithPayload({ exp: '0' })],
+    ['null exp', jwtWithPayload({ exp: null })],
+    ['non-finite exp', jwtWithJsonPayload('{"exp":1e400}')],
+  ])('does not infer expiry from 1006 for %s', async (_case, accessToken) => {
+    const refreshAccessToken = vi.fn()
+    const server = new MockWebSocketServer({
+      senderId: USER_ID,
+      expectedAccessToken: 'different-token',
+    })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken,
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      auth: { refreshAccessToken },
+      random: () => 0.5,
+    })
+
+    expect(() => client.start()).not.toThrow()
+    await flushMicrotasks()
+
+    expect(refreshAccessToken).not.toHaveBeenCalled()
+    expect(client.getSnapshot().transport).toBe('disconnected')
+    expect(vi.getTimerCount()).toBe(1)
+
+    client.stop()
+  })
+
+  it('does not reconnect after stop while an expired-token refresh is pending', async () => {
+    const expiredToken = jwtWithPayload({ exp: Math.floor(Date.now() / 1000) - 60 })
+    let resolveRefresh: ((result: { kind: 'success'; accessToken: string }) => void) | undefined
+    const refreshAccessToken = vi.fn(
+      () =>
+        new Promise<{ kind: 'success'; accessToken: string }>((resolve) => {
+          resolveRefresh = resolve
+        }),
+    )
+    const server = new MockWebSocketServer({
+      senderId: USER_ID,
+      expectedAccessToken: 'new-access-token',
+    })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: expiredToken,
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      auth: { refreshAccessToken },
+    })
+
+    client.start()
+    await flushMicrotasks()
+
+    expect(refreshAccessToken).toHaveBeenCalledOnce()
+
+    client.stop()
+    resolveRefresh?.({ kind: 'success', accessToken: 'new-access-token' })
+    await flushMicrotasks()
+    expect(server.connections.size).toBe(0)
   })
 
   it('does not create parallel sockets for repeated start calls', async () => {
@@ -730,6 +928,50 @@ describe('MessengerWebSocketClient reconnect and authorization', () => {
     expect(server.connections.size).toBe(0)
   })
 
+  it('stops after a refreshed expired JWT is rejected with 1006', async () => {
+    const initialExpiredToken = jwtWithPayload({ exp: Math.floor(Date.now() / 1000) - 60 })
+    const refreshedExpiredToken = jwtWithPayload({ exp: Math.floor(Date.now() / 1000) - 30 })
+    const refreshAccessToken = vi.fn().mockResolvedValue({
+      kind: 'success',
+      accessToken: refreshedExpiredToken,
+    })
+    const server = new MockWebSocketServer({
+      senderId: USER_ID,
+      expectedAccessToken: 'accepted-token',
+    })
+    const webSocketFactory = vi.fn(server.webSocketFactory)
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: initialExpiredToken,
+      currentUserId: USER_ID,
+      webSocketFactory,
+      auth: { refreshAccessToken },
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+
+    expect(refreshAccessToken).toHaveBeenCalledOnce()
+    expect(vi.getTimerCount()).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flushMicrotasks()
+
+    expect(webSocketFactory).toHaveBeenCalledTimes(2)
+    expect(webSocketFactory.mock.calls[1]?.[1]).toContain(`bearer.${refreshedExpiredToken}`)
+    expect(refreshAccessToken).toHaveBeenCalledOnce()
+    expect(client.getSnapshot()).toMatchObject({
+      transport: 'auth_failed',
+      authFailure: 'refreshed_token_rejected',
+    })
+    expect(vi.getTimerCount()).toBe(0)
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(webSocketFactory).toHaveBeenCalledTimes(2)
+    expect(refreshAccessToken).toHaveBeenCalledOnce()
+  })
+
   it('retries a temporary refresh failure with backoff', async () => {
     const server = new MockWebSocketServer({ senderId: USER_ID })
     const refreshAccessToken = vi
@@ -757,6 +999,80 @@ describe('MessengerWebSocketClient reconnect and authorization', () => {
     expect(latestConnection(server).protocols).toContain('bearer.new')
   })
 
+  it('treats a thrown refresh error as temporary and reconnects after recovery', async () => {
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const refreshAccessToken = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('network unavailable'))
+      .mockResolvedValueOnce({ kind: 'success', accessToken: 'new' })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'old',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      auth: { refreshAccessToken },
+      random: () => 0.5,
+    })
+    client.start()
+    await flushMicrotasks()
+    latestConnection(server).serverClose(4401, 'expired')
+    await flushMicrotasks()
+
+    expect(refreshAccessToken).toHaveBeenCalledOnce()
+    expect(client.getSnapshot()).toMatchObject({ transport: 'disconnected' })
+    expect(client.getSnapshot().authFailure).toBeUndefined()
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flushMicrotasks()
+    expect(refreshAccessToken).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(2_000)
+    await flushMicrotasks()
+    expect(latestConnection(server).protocols).toContain('bearer.new')
+    expect(client.getSnapshot().transport).toBe('connected')
+  })
+
+  it('keeps refresh single-flight for concurrent 4401 and expired-token 1006 triggers', async () => {
+    const expiredToken = jwtWithPayload({ exp: Math.floor(Date.now() / 1000) - 60 })
+    let resolveRefresh!: (result: { kind: 'success'; accessToken: string }) => void
+    const refreshAccessToken = vi.fn(
+      () =>
+        new Promise<{ kind: 'success'; accessToken: string }>((resolve) => {
+          resolveRefresh = resolve
+        }),
+    )
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: expiredToken,
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      auth: { refreshAccessToken },
+      random: () => 0.5,
+    })
+    client.start()
+    await flushMicrotasks()
+    latestConnection(server).serverClose(4401, 'expired')
+    await flushMicrotasks()
+
+    client.start()
+    await flushMicrotasks()
+    latestConnection(server).serverClose(1006, 'handshake rejected')
+    await flushMicrotasks()
+
+    expect(refreshAccessToken).toHaveBeenCalledOnce()
+
+    resolveRefresh({ kind: 'success', accessToken: 'new' })
+    await flushMicrotasks()
+    expect(vi.getTimerCount()).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flushMicrotasks()
+    expect(refreshAccessToken).toHaveBeenCalledOnce()
+    expect(latestConnection(server).protocols).toContain('bearer.new')
+    expect(client.getSnapshot().transport).toBe('connected')
+  })
+
   it('does not reconnect after a final refresh rejection', async () => {
     const server = new MockWebSocketServer({ senderId: USER_ID })
     const refreshAccessToken = vi.fn().mockResolvedValue({ kind: 'unauthorized' })
@@ -779,9 +1095,14 @@ describe('MessengerWebSocketClient reconnect and authorization', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('reports terminal auth failure after temporary refresh retries are exhausted', async () => {
+  it('recovers after temporary refresh failures exceed the legacy attempt limit', async () => {
     const server = new MockWebSocketServer({ senderId: USER_ID })
-    const refreshAccessToken = vi.fn().mockResolvedValue({ kind: 'temporary_failure' })
+    const refreshAccessToken = vi
+      .fn()
+      .mockResolvedValueOnce({ kind: 'temporary_failure' })
+      .mockResolvedValueOnce({ kind: 'temporary_failure' })
+      .mockResolvedValueOnce({ kind: 'temporary_failure' })
+      .mockResolvedValueOnce({ kind: 'success', accessToken: 'new' })
     const client = new MessengerWebSocketClient({
       wsOrigin: 'ws://localhost',
       accessToken: 'old',
@@ -797,13 +1118,57 @@ describe('MessengerWebSocketClient reconnect and authorization', () => {
     await flushMicrotasks()
     await vi.advanceTimersByTimeAsync(1_000)
     await flushMicrotasks()
+    await vi.advanceTimersByTimeAsync(2_000)
+    await flushMicrotasks()
+    await vi.advanceTimersByTimeAsync(4_000)
+    await flushMicrotasks()
 
-    expect(refreshAccessToken).toHaveBeenCalledTimes(2)
-    expect(client.getSnapshot()).toMatchObject({
-      transport: 'auth_failed',
-      authFailure: 'refresh_retry_exhausted',
+    expect(refreshAccessToken).toHaveBeenCalledTimes(4)
+    expect(client.getSnapshot().transport).toBe('disconnected')
+
+    await vi.advanceTimersByTimeAsync(8_000)
+    await flushMicrotasks()
+
+    expect(latestConnection(server).protocols).toContain('bearer.new')
+    expect(client.getSnapshot().transport).toBe('connected')
+  })
+
+  it('caps the temporary refresh backoff base at thirty seconds and clears it on stop', async () => {
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const refreshAccessToken = vi.fn().mockResolvedValue({ kind: 'temporary_failure' })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'old',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      auth: { refreshAccessToken },
+      random: () => 0.5,
     })
+    client.start()
+    await flushMicrotasks()
+    latestConnection(server).serverClose(4401, 'expired')
+    await flushMicrotasks()
+
+    for (const delay of [1_000, 2_000, 4_000, 8_000, 16_000]) {
+      await vi.advanceTimersByTimeAsync(delay)
+      await flushMicrotasks()
+    }
+
+    expect(refreshAccessToken).toHaveBeenCalledTimes(6)
+    expect(vi.getTimerCount()).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(29_999)
+    expect(refreshAccessToken).toHaveBeenCalledTimes(6)
+    await vi.advanceTimersByTimeAsync(1)
+    await flushMicrotasks()
+    expect(refreshAccessToken).toHaveBeenCalledTimes(7)
+    expect(client.getSnapshot()).toMatchObject({ transport: 'disconnected' })
+    expect(client.getSnapshot().authFailure).toBeUndefined()
+
+    client.stop()
     expect(vi.getTimerCount()).toBe(0)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(refreshAccessToken).toHaveBeenCalledTimes(7)
   })
 
   it('never sends reserved close code 1006', async () => {

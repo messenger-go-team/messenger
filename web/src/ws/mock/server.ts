@@ -16,6 +16,10 @@ const OPEN = 1
 const CLOSING = 2
 const CLOSED = 3
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 interface StoredMockMessage {
   chatId: string
   clientMsgId: string
@@ -121,13 +125,28 @@ export class MockWebSocketServer {
       return
     }
     if (!this.isMessageSend(event)) {
-      this.sendError(socket, this.createId(), {
-        code: 'invalid_payload',
-        message: 'Invalid message.send',
-        retryable: false,
-        request_type: null,
-        client_msg_id: null,
-      })
+      const command = isObject(event) ? event : null
+      const payload = command && isObject(command.payload) ? command.payload : null
+      const requestType = command && typeof command.type === 'string' ? command.type : null
+      const clientMsgId = payload?.client_msg_id
+      this.sendError(
+        socket,
+        command && typeof command.id === 'string' && isValidUuid(command.id)
+          ? command.id
+          : this.createId(),
+        {
+          code: 'invalid_payload',
+          message: 'Invalid message.send',
+          retryable: false,
+          request_type: requestType,
+          client_msg_id:
+            requestType === 'message.send' &&
+            typeof clientMsgId === 'string' &&
+            isValidUuid(clientMsgId)
+              ? clientMsgId
+              : null,
+        },
+      )
       return
     }
     this.received.push(event)
@@ -222,10 +241,10 @@ export class MockWebSocketServer {
   }
 
   private isMessageSend(value: unknown): value is MessageSendEvent {
-    if (typeof value !== 'object' || value === null) return false
-    const event = value as Partial<MessageSendEvent>
+    if (!isObject(value)) return false
+    const event = value
     const envelopeKeys = Object.keys(value).sort()
-    const payloadKeys = event.payload ? Object.keys(event.payload).sort() : []
+    const payloadKeys = isObject(event.payload) ? Object.keys(event.payload).sort() : []
     return (
       JSON.stringify(envelopeKeys) === JSON.stringify(['id', 'payload', 'ts', 'type']) &&
       JSON.stringify(payloadKeys) === JSON.stringify(['body', 'chat_id', 'client_msg_id']) &&
@@ -234,7 +253,6 @@ export class MockWebSocketServer {
       isValidUuid(event.id) &&
       typeof event.ts === 'string' &&
       Number.isFinite(Date.parse(event.ts)) &&
-      event.payload !== undefined &&
       isValidOutgoingMessage(event.payload)
     )
   }

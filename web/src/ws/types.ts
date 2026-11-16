@@ -6,6 +6,7 @@ export type TransportState =
 export type AuthFailureReason =
   | 'missing_refresh_adapter'
   | 'refresh_rejected'
+  // Retained for compatibility; temporary failures no longer become terminal.
   | 'refresh_retry_exhausted'
   | 'refreshed_token_rejected'
 

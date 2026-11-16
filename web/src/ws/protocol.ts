@@ -141,7 +141,15 @@ function hasUnpairedSurrogate(value: string): boolean {
   return false
 }
 
-export function isValidOutgoingMessage(payload: MessageSendPayload): boolean {
+export function isValidOutgoingMessage(payload: unknown): payload is MessageSendPayload {
+  if (
+    !isObject(payload) ||
+    typeof payload.chat_id !== 'string' ||
+    typeof payload.client_msg_id !== 'string' ||
+    typeof payload.body !== 'string'
+  ) {
+    return false
+  }
   if (hasUnpairedSurrogate(payload.body)) return false
   const codePoints = Array.from(payload.body).length
   return (
