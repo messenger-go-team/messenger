@@ -133,3 +133,23 @@ jobs:
           make proto
           git diff --exit-code -- api/gen
           test -z "$(git ls-files --others --exclude-standard api/gen)"
+
+  images:
+    name: Docker build (${{ matrix.service }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [auth, chat, history]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build image and verify runtime user
+        env:
+          MATRIX_SERVICE: ${{ matrix.service }}
+        run: |
+          image="messenger-${MATRIX_SERVICE}:ci"
+          docker build --file "services/${MATRIX_SERVICE}/Dockerfile" --tag "$image" .
+          test "$(docker image inspect --format '{{.Config.User}}' "$image")" = '65532:65532'

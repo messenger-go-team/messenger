@@ -120,6 +120,8 @@ paths:
                     unread_count: 1
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /chats/{chat_id}/messages:
     get:
@@ -223,6 +225,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /chats/{chat_id}/messages/{message_id}/context:
     get:
@@ -347,6 +351,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /later:
     post:
