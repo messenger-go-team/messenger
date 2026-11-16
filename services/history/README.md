@@ -4,6 +4,8 @@
 чата по REST и чтение текущего членства по внутреннему gRPC.
 [#29](https://github.com/messenger-go-team/messenger/issues/29): транзакционное
 сохранение сообщений через SaveMessage.
+[#31](https://github.com/messenger-go-team/messenger/issues/31): список чатов,
+курсорная история и приватная отметка прочтения по REST.
 Контракты: [History OpenAPI](../../api/openapi/history.yaml),
 [history.proto и правила ошибок](../../api/proto/README.md).
 Базовая схема принадлежит миграции #12; #86 добавляет личные записи миграцией
@@ -90,14 +92,15 @@ RPC доступны только доверенному Chat во внутре�
 в #38 повторить проверку на стенде.
 Порт gRPC не публиковать наружу или через Nginx. HTTP health/readiness/metrics
 также предназначены для внутренней сети. Публичный маршрут для #36:
-`POST /chats/personal` без замены исходного URI.
+`POST /chats/personal`, `GET /chats`, `GET /chats/{chat_id}/messages` и
+`POST /chats/{chat_id}/read` без замены исходного URI.
 
 ## Состояние, логи и завершение
 
 HTTP сохраняет request_id, panic recovery и /metrics из шаблона.
 /healthz проверяет процесс. /readyz проверяет схему четырёх таблиц и SELECT/INSERT,
-UPDATE(last_seq) для chats и UPDATE хотя бы одного столбца chat_members
-для блокировки членства; без миграции/прав даёт 503.
+UPDATE(last_seq) для chats и UPDATE(last_read_seq, last_delivered_seq)
+для chat_members; без миграции/прав даёт 503.
 Готовность восстанавливается после исправления БД без перезапуска.
 Auth вызывается при создании чата; его временный отказ отражается в ответе
 операции 503 и не блокирует чтение членства по gRPC.
@@ -145,8 +148,9 @@ sequence не используется. Ответ OK возвращается �
 Предварительный CheckMembership остаётся снимком. Для блокировки строки
 PostgreSQL требует UPDATE хотя бы одного столбца chat_members
 ([правила SELECT](https://www.postgresql.org/docs/18/sql-select.html)).
-Пример минимального дополнения к SELECT/INSERT: UPDATE(last_seq) для chats
-и UPDATE(role) для chat_members. Readiness проверяет эти возможности,
+Пример минимального дополнения к SELECT/INSERT после #31: UPDATE(last_seq)
+для chats и UPDATE(last_read_seq, last_delivered_seq) для chat_members. Эти права
+также позволяют блокировать членство в SaveMessage. Readiness проверяет их,
 а также наличие полей и SELECT/INSERT таблицы messages.
 
 Ошибки: INVALID_ARGUMENT для входных данных, NOT_FOUND для отсутствующего
@@ -164,7 +168,7 @@ PostgreSQL требует UPDATE хотя бы одного столбца chat_
 SaveMessage реализован в messages_grpc.go, правила входа - internal/messages,
 SQL - internal/postgres/messages.go. Сохранение и рассылка не атомарны:
 в #35 ack строится из подтверждённого ответа, а потеря рассылки восстанавливается
-историей. Список чатов, история и курсор прочтения остаются в #31.
+историей. Список чатов, история и курсор прочтения реализованы в #31, см. ниже.
 
 Дополнительные тесты #29: 100 новых сообщений, конкурентные одинаковые ключи
 и конфликты body, Unicode/границы, последняя seq и повтор на пределе,
