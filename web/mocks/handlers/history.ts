@@ -52,7 +52,8 @@ export const historyHandlers = [
   http.post('/chats/personal', async ({ request }) => {
     const currentUserId = await authenticateAccessToken(request)
 
-    if (!currentUserId) {
+    // Creating a pair requires the caller to exist in Auth, just as the real lookup does.
+    if (!currentUserId || !findUserById(currentUserId)) {
       return unauthorized()
     }
 

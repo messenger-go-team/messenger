@@ -1,0 +1,11 @@
+**
+!go.mod
+!go.sum
+!api/gen/**
+!internal/**
+!pkg/**
+!services/auth/**
+!services/chat/**
+!services/history/**
+**/.env
+**/.env.*

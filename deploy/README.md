@@ -116,18 +116,43 @@ docker compose logs --tail=100 postgres redis
 docker compose --env-file .env.example config --quiet
 ```
 
-## Следующие шаги
+## Образы Go-сервисов
 
-Образы Go-сервисов добавляются в
-[T26](https://github.com/messenger-go-team/messenger/issues/26), Nginx -
-в [T36](https://github.com/messenger-go-team/messenger/issues/36), автодеплой -
-в [T37](https://github.com/messenger-go-team/messenger/issues/37).
-Секреты staging и production передаются через переменные окружения
-и GitHub Secrets.
+Соберите образы из корня репозитория, чтобы сборке были доступны `go.mod`,
+общие Go-пакеты и сгенерированный gRPC-код.
+
+```bash
+for service in auth chat history; do
+  docker build -f "services/$service/Dockerfile" -t "messenger-$service:local" .
+done
+```
+
+В каждом образе находятся бинарник сервиса и корневые TLS-сертификаты.
+Сервисы запускаются с UID и GID `65532`, читают настройки из окружения и
+пишут логи в stdout/stderr. Переменные запуска описаны в README
+[Auth](../services/auth/README.md), [Chat](../services/chat/README.md) и
+[History](../services/history/README.md). Перед запуском Auth и History
+подготовьте БД и [примените миграции](../services/README.md).
+
+В CI образы собираются отдельно для каждого сервиса. Подключение Nginx
+предусмотрено в [#36](https://github.com/messenger-go-team/messenger/issues/36),
+автодеплой - в [#37](https://github.com/messenger-go-team/messenger/issues/37).
 
 Справка: [Compose include](https://docs.docker.com/compose/how-tos/multiple-compose-files/include/),
 [образ PostgreSQL](https://hub.docker.com/_/postgres),
 [Redis CLI](https://redis.io/docs/latest/develop/tools/cli/).
+
+### Проверки состояния Go-сервисов
+
+Compose выполняет `healthcheck.test` внутри проверяемого контейнера.
+Наши `scratch`-образы содержат бинарник сервиса и корневые TLS-сертификаты.
+[Документация Compose](https://docs.docker.com/reference/compose-file/services/#healthcheck).
+
+HTTP-пробы для этих образов настраиваются на уровне развёртывания. В
+[#37](https://github.com/messenger-go-team/messenger/issues/37) шаг деплоя
+после запуска проверяет `/healthz` каждого сервиса по внутренней сети с VPS
+или из отдельного контейнера с `curl` или `wget`. `/readyz` показывает
+готовность сервиса обслуживать запросы.
 
 ## Маршрутизация Auth для T36
 
