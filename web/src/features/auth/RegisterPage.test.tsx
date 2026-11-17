@@ -46,6 +46,6 @@ describe('RegisterPage', () => {
     await user.type(screen.getByLabelText('Повтор пароля'), 'correct-horse-battery')
     await user.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/занят/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Логин уже занят/)
   })
 })

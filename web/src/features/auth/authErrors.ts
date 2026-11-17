@@ -5,9 +5,9 @@ export function messageFromAuthError(error: unknown): string {
   if (error instanceof ApiError) {
     switch (error.code) {
       case 'invalid_credentials':
-        return 'Неверный username или пароль.'
+        return 'Неверный логин или пароль.'
       case 'username_taken':
-        return 'Username уже занят.'
+        return 'Логин уже занят.'
       case 'validation_error':
         return error.message.trim() || 'Проверьте поля формы.'
       default:

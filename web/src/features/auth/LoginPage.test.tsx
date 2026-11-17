@@ -58,6 +58,6 @@ describe('LoginPage', () => {
     await user.type(screen.getByLabelText('Пароль'), 'wrong-password')
     await user.click(screen.getByRole('button', { name: 'Войти' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/username|парол/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/логин или пароль/i)
   })
 })
