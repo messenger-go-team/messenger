@@ -1,0 +1,26 @@
+meta {
+  name: 04-contacts
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/contacts
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+tests {
+  const { responseValidator } = require("./contract.cjs");
+  test("authorized contacts status", () => expect(res.status).to.equal(200));
+  test("nested ref schema", () => {
+    const validate = responseValidator("/contacts", "get", 200);
+    expect(validate(res.body), JSON.stringify(validate.errors)).to.equal(true);
+    expect(res.body.contacts).to.have.lengthOf(1);
+    expect(validate({ contacts: [{ id: "broken", username: "trial" }] })).to.equal(false);
+  });
+}

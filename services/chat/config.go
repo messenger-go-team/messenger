@@ -13,12 +13,14 @@ import (
 )
 
 type config struct {
-	ServiceName     string
-	HTTPAddr        string
-	LogLevel        slog.Level
-	ShutdownTimeout time.Duration
-	JWTVerifier     *jwtauth.Verifier
-	AllowedOrigins  map[string]struct{}
+	ServiceName       string
+	HTTPAddr          string
+	LogLevel          slog.Level
+	ShutdownTimeout   time.Duration
+	JWTVerifier       *jwtauth.Verifier
+	AllowedOrigins    map[string]struct{}
+	HistoryGRPCAddr   string
+	HistoryRPCTimeout time.Duration
 }
 
 func loadConfig(lookup func(string) (string, bool)) (config, error) {
@@ -30,8 +32,9 @@ func loadConfig(lookup func(string) (string, bool)) (config, error) {
 	}
 
 	cfg := config{
-		ServiceName: value("SERVICE_NAME", "chat"),
-		HTTPAddr:    value("HTTP_ADDR", ":8080"),
+		ServiceName:     value("SERVICE_NAME", "chat"),
+		HTTPAddr:        value("HTTP_ADDR", ":8080"),
+		HistoryGRPCAddr: value("HISTORY_GRPC_ADDR", "history:9090"),
 	}
 	if strings.TrimSpace(cfg.ServiceName) == "" {
 		return config{}, fmt.Errorf("SERVICE_NAME must not be empty")
@@ -61,6 +64,18 @@ func loadConfig(lookup func(string) (string, bool)) (config, error) {
 	cfg.AllowedOrigins, err = parseAllowedOrigins(value("WS_ALLOWED_ORIGINS", ""))
 	if err != nil {
 		return config{}, err
+	}
+	historyHost, historyPort, err := net.SplitHostPort(cfg.HistoryGRPCAddr)
+	if err != nil || historyHost == "" || strings.ContainsAny(historyHost, "/?#@ \t\r\n") {
+		return config{}, fmt.Errorf("HISTORY_GRPC_ADDR must be host:port")
+	}
+	number, err = strconv.Atoi(historyPort)
+	if err != nil || number < 1 || number > 65535 {
+		return config{}, fmt.Errorf("HISTORY_GRPC_ADDR port must be an integer in 1..65535")
+	}
+	cfg.HistoryRPCTimeout, err = time.ParseDuration(value("HISTORY_RPC_TIMEOUT", "3s"))
+	if err != nil || cfg.HistoryRPCTimeout <= 0 {
+		return config{}, fmt.Errorf("HISTORY_RPC_TIMEOUT must be a positive duration")
 	}
 	return cfg, nil
 }

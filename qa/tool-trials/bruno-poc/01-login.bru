@@ -1,0 +1,30 @@
+meta {
+  name: 01-login
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {"username": "trial_user", "password": "fixture-password"}
+}
+
+tests {
+  const { responseValidator } = require("./contract.cjs");
+  test("login status", () => expect(res.status).to.equal(200));
+  test("AccessTokenResponse schema", () => {
+    const validate = responseValidator("/auth/login", "post", 200);
+    expect(validate(res.body), JSON.stringify(validate.errors)).to.equal(true);
+  });
+  test("refresh cookie attributes", () => {
+    expect(String(res.headers["set-cookie"])).to.include("HttpOnly").and.include("Path=/auth").and.include("SameSite=Lax");
+  });
+  bru.setVar("accessToken", res.body.access_token);
+  bru.setVar("firstAccessToken", res.body.access_token);
+  bru.setVar("firstCookie", String(res.headers["set-cookie"]));
+}

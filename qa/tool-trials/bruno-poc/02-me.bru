@@ -1,0 +1,30 @@
+meta {
+  name: 02-me
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/me
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+tests {
+  const { responseValidator } = require("./contract.cjs");
+  const validate = responseValidator("/me", "get", 200);
+  test("authorized me status", () => expect(res.status).to.equal(200));
+  test("User schema", () => expect(validate(res.body), JSON.stringify(validate.errors)).to.equal(true));
+  test("uuid format rejects malformed id", () => {
+    expect(validate({ ...res.body, id: "bad-uuid" })).to.equal(false);
+    expect(validate.errors.some(e => e.keyword === "format" && e.params.format === "uuid")).to.equal(true);
+  });
+  test("date-time format rejects malformed timestamp", () => {
+    expect(validate({ ...res.body, created_at: "yesterday" })).to.equal(false);
+    expect(validate.errors.some(e => e.keyword === "format" && e.params.format === "date-time")).to.equal(true);
+  });
+}

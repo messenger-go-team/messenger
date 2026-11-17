@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "T24 API trial",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}
