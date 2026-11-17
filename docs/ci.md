@@ -93,6 +93,10 @@ Workflow .github/workflows/ci.yml запускается на каждый PR в
   ./... ./services/_template.
 - **Go test**: сначала `make test-unit` с порогом 60% по каждому бизнес-пакету,
   затем make test, включая race detector и явную проверку шаблона.
+  После тестов Go выполняется `make test-nginx`: настоящий Nginx проверяет все
+  три конфигурации ingress, публичные маршруты HTTP/HTTPS (включая Later),
+  исходные URI/query, закрытые служебные пути, ACME и редирект. Изолированные
+  echo-backend не требуют БД или секретов; подробности в [nginx/README.md](../deploy/nginx/README.md).
   Отдельный PostgreSQL 18 и `AUTH_TEST_DATABASE_URL` включают Auth integration-тесты
   через HTTPS: регистрация, вход, cookie, ротация, выход и конкуренция транзакций.
   Тесты создают и удаляют собственные БД; локальный запуск описан в

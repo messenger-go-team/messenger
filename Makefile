@@ -12,7 +12,7 @@ SERVICE_UNIT_PACKAGES := ./services/auth/internal/auth \
 	./services/history/internal/chats ./services/history/internal/messages \
 	./services/history/internal/reading ./services/history/internal/later
 
-.PHONY: build lint test test-unit migrate-up migrate-down migrate-version
+.PHONY: build lint test test-unit test-nginx migrate-up migrate-down migrate-version
 
 build:
 	mkdir -p bin
@@ -23,6 +23,9 @@ lint:
 
 test:
 	CGO_ENABLED=1 $(GO) test -race -count=1 $(GO_PACKAGES)
+
+test-nginx:
+	python3 deploy/nginx/test_routing.py
 
 test-unit:
 	CGO_ENABLED=1 $(GO) test -race -count=1 -coverprofile=coverage.unit.out $(SERVICE_UNIT_PACKAGES)
