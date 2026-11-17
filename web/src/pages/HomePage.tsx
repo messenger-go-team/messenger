@@ -8,7 +8,7 @@ export function HomePage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-6">
       <section className="flex w-full max-w-md flex-col items-center gap-4 rounded-xl border bg-card p-8 text-card-foreground shadow-sm">
-        <h1 className="text-2xl font-bold">Messenger</h1>
+        <h1 className="text-2xl font-bold">Tiding</h1>
         <p className="text-center text-muted-foreground">
           Вы вошли как <span className="font-medium text-foreground">{user?.username}</span>
         </p>

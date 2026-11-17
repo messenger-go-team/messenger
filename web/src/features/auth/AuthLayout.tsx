@@ -15,9 +15,9 @@ export function AuthLayout({ title, children }: AuthLayoutProps) {
             className="flex size-16 items-center justify-center rounded-full bg-primary/15 text-2xl font-bold text-primary"
             aria-hidden
           >
-            M
+            T
           </div>
-          <p className="text-3xl font-bold tracking-tight text-primary">Messenger</p>
+          <p className="text-3xl font-bold tracking-tight text-primary">Tiding</p>
           <p className="text-sm text-muted-foreground">Личные чаты и важные сообщения</p>
         </header>
 
