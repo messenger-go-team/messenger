@@ -1,0 +1,23 @@
+meta {
+  name: 05-refresh
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/auth/refresh
+  body: none
+  auth: none
+}
+
+tests {
+  const { responseValidator } = require("./contract.cjs");
+  test("refresh status", () => expect(res.status).to.equal(200));
+  test("rotated AccessTokenResponse schema", () => {
+    const validate = responseValidator("/auth/refresh", "post", 200);
+    expect(validate(res.body), JSON.stringify(validate.errors)).to.equal(true);
+  });
+  test("access token rotated", () => expect(res.body.access_token).not.to.equal(bru.getVar("firstAccessToken")));
+  test("refresh cookie rotated", () => expect(String(res.headers["set-cookie"])).not.to.equal(bru.getVar("firstCookie")));
+  bru.setVar("accessToken", res.body.access_token);
+}

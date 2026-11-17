@@ -99,7 +99,7 @@ func (r *Repository) Members(ctx context.Context, chat, requester string) ([]str
 func (r *Repository) Ready(ctx context.Context) error {
 	for _, q := range []string{
 		`SELECT id,type,created_at,last_seq FROM history.chats LIMIT 0`,
-		`SELECT chat_id,user_id,role FROM history.chat_members LIMIT 0`,
+		`SELECT chat_id,user_id,role,last_read_seq,last_delivered_seq FROM history.chat_members LIMIT 0`,
 		`SELECT user_low_id,user_high_id,chat_id FROM history.personal_chat_pairs LIMIT 0`,
 		`SELECT id,chat_id,seq,sender_id,client_msg_id,body,created_at FROM history.messages LIMIT 0`,
 	} {
@@ -119,7 +119,7 @@ func (r *Repository) Ready(ctx context.Context) error {
 	if !allowed {
 		return chats.ErrUnavailable
 	}
-	err = r.DB.QueryRowContext(ctx, `SELECT has_column_privilege('history.chats','last_seq','UPDATE') AND has_any_column_privilege('history.chat_members','UPDATE')`).Scan(&allowed)
+	err = r.DB.QueryRowContext(ctx, `SELECT has_column_privilege('history.chats','last_seq','UPDATE') AND has_column_privilege('history.chat_members','last_read_seq','UPDATE') AND has_column_privilege('history.chat_members','last_delivered_seq','UPDATE')`).Scan(&allowed)
 	if err != nil {
 		return err
 	}

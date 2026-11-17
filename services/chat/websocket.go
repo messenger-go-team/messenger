@@ -8,8 +8,10 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gorilla/websocket"
+	historyv1 "github.com/messenger-go-team/messenger/api/gen/history/v1"
 	"github.com/messenger-go-team/messenger/pkg/jwtauth"
 )
 
@@ -23,19 +25,26 @@ type wsEndpoint struct {
 	timing   wsTiming
 	stopping chan struct{}
 
-	mu      sync.Mutex
-	active  sync.WaitGroup
-	sockets map[*websocket.Conn]struct{}
-	forced  bool
+	hub            *connectionHub
+	broker         Broker
+	history        historyv1.HistoryServiceClient
+	historyTimeout time.Duration
+
+	mu     sync.Mutex
+	active sync.WaitGroup
 }
 
-func newWSEndpoint(cfg config, ready *atomic.Bool, timing wsTiming) *wsEndpoint {
+func newWSEndpoint(cfg config, ready *atomic.Bool, timing wsTiming, history historyv1.HistoryServiceClient) *wsEndpoint {
+	hub := newConnectionHub()
 	return &wsEndpoint{
-		ready:    ready,
-		verifier: cfg.JWTVerifier,
-		timing:   timing,
-		stopping: make(chan struct{}),
-		sockets:  make(map[*websocket.Conn]struct{}),
+		ready:          ready,
+		verifier:       cfg.JWTVerifier,
+		timing:         timing,
+		stopping:       make(chan struct{}),
+		hub:            hub,
+		broker:         memoryBroker{hub: hub},
+		history:        history,
+		historyTimeout: cfg.HistoryRPCTimeout,
 		upgrader: websocket.Upgrader{
 			HandshakeTimeout: timing.writeTimeout,
 			CheckOrigin: func(r *http.Request) bool {
@@ -87,11 +96,12 @@ func (ws *wsEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = conn.Close() }()
-	if !ws.track(conn) {
+	socket := newSocketSession(conn, identity)
+	if !ws.hub.register(socket) {
 		return
 	}
-	defer ws.untrack(conn)
-	ws.serveSocket(conn, identity.ExpiresAt)
+	defer ws.hub.unregister(socket)
+	ws.serveSocket(socket)
 }
 
 // handshakeCredentials reads all offered protocol lines, including repeated headers.
@@ -148,22 +158,6 @@ func (ws *wsEndpoint) admit() bool {
 	return true
 }
 
-func (ws *wsEndpoint) track(conn *websocket.Conn) bool {
-	ws.mu.Lock()
-	defer ws.mu.Unlock()
-	if ws.forced {
-		return false
-	}
-	ws.sockets[conn] = struct{}{}
-	return true
-}
-
-func (ws *wsEndpoint) untrack(conn *websocket.Conn) {
-	ws.mu.Lock()
-	defer ws.mu.Unlock()
-	delete(ws.sockets, conn)
-}
-
 func (ws *wsEndpoint) stopAccepting() {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -182,14 +176,5 @@ func (ws *wsEndpoint) wait(ctx context.Context) error {
 		return nil
 	case <-ctx.Done():
 		return fmt.Errorf("shutdown WebSocket: %w", ctx.Err())
-	}
-}
-
-func (ws *wsEndpoint) forceClose() {
-	ws.mu.Lock()
-	defer ws.mu.Unlock()
-	ws.forced = true
-	for conn := range ws.sockets {
-		_ = conn.Close()
 	}
 }

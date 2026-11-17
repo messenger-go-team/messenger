@@ -24,6 +24,7 @@ import (
 	"github.com/messenger-go-team/messenger/services/history/internal/authclient"
 	"github.com/messenger-go-team/messenger/services/history/internal/chats"
 	"github.com/messenger-go-team/messenger/services/history/internal/postgres"
+	"github.com/messenger-go-team/messenger/services/history/internal/reading"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -130,7 +131,7 @@ func TestPersonalChatsIntegration(t *testing.T) {
 	var ready atomic.Bool
 	ready.Store(true)
 	logger := newLogger(io.Discard, "history", 0)
-	web := httptest.NewServer(newServiceHandlerWithReadiness(&ready, logger, chatRoutes(service, verifier), repo.Ready))
+	web := httptest.NewServer(newServiceHandlerWithReadiness(&ready, logger, chatRoutes(service, verifier, &reading.Service{Repo: repo, Users: service.Users}), repo.Ready))
 	defer web.Close()
 	call := func(owner, body string) (int, []byte, error) {
 		req, err := http.NewRequestWithContext(t.Context(), "POST", web.URL+"/chats/personal", strings.NewReader(body))
