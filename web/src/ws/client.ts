@@ -162,7 +162,6 @@ export class MessengerWebSocketClient {
     if (this.stopped || !this.history) return
     if (!this.isPageVisible()) {
       this.clearHistoryPeriodicTimer()
-      this.clearHistoryRetryTimer()
       return
     }
     if (this.canSynchronizeVisibleHistory()) void this.synchronizeHistory()
@@ -398,9 +397,9 @@ export class MessengerWebSocketClient {
       return
     }
     if (this.refreshPromise) return this.refreshPromise
-    this.refreshPromise = (async () => {
+    const refreshPromise = (async () => {
       try {
-        const result = await auth.refreshAccessToken()
+        const result = await Promise.resolve().then(() => auth.refreshAccessToken())
         if (this.stopped) return
         if (result.kind === 'success') {
           this.accessToken = result.accessToken
@@ -413,11 +412,14 @@ export class MessengerWebSocketClient {
         }
       } catch {
         if (!this.stopped) this.scheduleRefreshRetry()
-      } finally {
-        this.refreshPromise = null
       }
     })()
-    return this.refreshPromise
+    this.refreshPromise = refreshPromise
+    try {
+      await refreshPromise
+    } finally {
+      if (this.refreshPromise === refreshPromise) this.refreshPromise = null
+    }
   }
 
   private scheduleRefreshRetry(): void {
@@ -525,6 +527,7 @@ export class MessengerWebSocketClient {
       pending.status === 'sent' ||
       !pending.automaticRetry ||
       pending.sending ||
+      pending.retryTimer !== undefined ||
       pending.ackTimer !== undefined
     ) {
       return
@@ -536,8 +539,6 @@ export class MessengerWebSocketClient {
       this.emit()
       return
     }
-    if (pending.retryTimer) clearTimeout(pending.retryTimer)
-    pending.retryTimer = undefined
     const event = createMessageSendEvent(
       { chat_id: pending.chatId, client_msg_id: pending.clientMsgId, body: pending.body },
       this.createId(),
@@ -642,12 +643,12 @@ export class MessengerWebSocketClient {
 
   private scheduleHistoryRetry(): void {
     this.clearHistoryPeriodicTimer()
-    if (this.historyRetryTimer || !this.canSynchronizeVisibleHistory()) return
+    if (this.historyRetryTimer || !this.canSynchronizeHistory()) return
     const retryGeneration = this.historyGeneration
     const delay = this.historyRetryBackoff.nextDelay()
     this.historyRetryTimer = setTimeout(() => {
       this.historyRetryTimer = null
-      if (retryGeneration !== this.historyGeneration || !this.canSynchronizeVisibleHistory()) {
+      if (retryGeneration !== this.historyGeneration || !this.canSynchronizeHistory()) {
         return
       }
       void this.synchronizeHistory()
@@ -663,14 +664,17 @@ export class MessengerWebSocketClient {
     }, HISTORY_SYNC_INTERVAL_MS)
   }
 
-  private canSynchronizeVisibleHistory(): boolean {
+  private canSynchronizeHistory(): boolean {
     return (
       !this.stopped &&
       Boolean(this.history) &&
       this.transport === 'connected' &&
-      this.socket?.readyState === OPEN &&
-      this.isPageVisible()
+      this.socket?.readyState === OPEN
     )
+  }
+
+  private canSynchronizeVisibleHistory(): boolean {
+    return this.canSynchronizeHistory() && this.isPageVisible()
   }
 
   private isPageVisible(): boolean {

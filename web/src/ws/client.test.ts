@@ -951,6 +951,7 @@ describe('MessengerWebSocketClient reconnect and authorization', () => {
 
     client.start()
     await flushMicrotasks()
+    await flushMicrotasks()
 
     expect(refreshAccessToken).toHaveBeenCalledOnce()
     expect(vi.getTimerCount()).toBe(1)
@@ -999,12 +1000,13 @@ describe('MessengerWebSocketClient reconnect and authorization', () => {
     expect(latestConnection(server).protocols).toContain('bearer.new')
   })
 
-  it('treats a thrown refresh error as temporary and reconnects after recovery', async () => {
+  it('retries a synchronous refresh exception and reconnects after recovery', async () => {
     const server = new MockWebSocketServer({ senderId: USER_ID })
     const refreshAccessToken = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('network unavailable'))
-      .mockResolvedValueOnce({ kind: 'success', accessToken: 'new' })
+      .fn(() => Promise.resolve({ kind: 'success' as const, accessToken: 'new' }))
+      .mockImplementationOnce(() => {
+        throw new Error('network unavailable')
+      })
     const client = new MessengerWebSocketClient({
       wsOrigin: 'ws://localhost',
       accessToken: 'old',
@@ -1022,6 +1024,47 @@ describe('MessengerWebSocketClient reconnect and authorization', () => {
     expect(client.getSnapshot()).toMatchObject({ transport: 'disconnected' })
     expect(client.getSnapshot().authFailure).toBeUndefined()
 
+    await vi.advanceTimersByTimeAsync(999)
+    expect(refreshAccessToken).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(1)
+    await flushMicrotasks()
+    expect(refreshAccessToken).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(1_999)
+    expect(client.getSnapshot().transport).toBe('disconnected')
+    await vi.advanceTimersByTimeAsync(1)
+    await flushMicrotasks()
+    expect(latestConnection(server).protocols).toContain('bearer.new')
+    expect(client.getSnapshot().transport).toBe('connected')
+
+    client.stop()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('treats a rejected refresh Promise as temporary and reconnects after recovery', async () => {
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const refreshAccessToken = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('network unavailable'))
+      .mockResolvedValueOnce({ kind: 'success', accessToken: 'new' })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'old',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      auth: { refreshAccessToken },
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    latestConnection(server).serverClose(4401, 'expired')
+    await flushMicrotasks()
+
+    expect(refreshAccessToken).toHaveBeenCalledOnce()
+    expect(client.getSnapshot()).toMatchObject({ transport: 'disconnected' })
+    expect(client.getSnapshot().authFailure).toBeUndefined()
+
     await vi.advanceTimersByTimeAsync(1_000)
     await flushMicrotasks()
     expect(refreshAccessToken).toHaveBeenCalledTimes(2)
@@ -1030,6 +1073,53 @@ describe('MessengerWebSocketClient reconnect and authorization', () => {
     await flushMicrotasks()
     expect(latestConnection(server).protocols).toContain('bearer.new')
     expect(client.getSnapshot().transport).toBe('connected')
+
+    client.stop()
+  })
+
+  it('recovers after two consecutive synchronous refresh exceptions', async () => {
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const refreshAccessToken = vi
+      .fn(() => Promise.resolve({ kind: 'success' as const, accessToken: 'new' }))
+      .mockImplementationOnce(() => {
+        throw new Error('first network failure')
+      })
+      .mockImplementationOnce(() => {
+        throw new Error('second network failure')
+      })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'old',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      auth: { refreshAccessToken },
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    latestConnection(server).serverClose(4401, 'expired')
+    await flushMicrotasks()
+
+    expect(refreshAccessToken).toHaveBeenCalledOnce()
+    expect(client.getSnapshot()).toMatchObject({ transport: 'disconnected' })
+    expect(client.getSnapshot().authFailure).toBeUndefined()
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flushMicrotasks()
+    expect(refreshAccessToken).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(2_000)
+    await flushMicrotasks()
+    expect(refreshAccessToken).toHaveBeenCalledTimes(3)
+
+    await vi.advanceTimersByTimeAsync(4_000)
+    await flushMicrotasks()
+    expect(latestConnection(server).protocols).toContain('bearer.new')
+    expect(client.getSnapshot().transport).toBe('connected')
+
+    client.stop()
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('keeps refresh single-flight for concurrent 4401 and expired-token 1006 triggers', async () => {
