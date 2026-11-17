@@ -28,13 +28,16 @@ type authentication interface {
 
 type authAPI struct{ service authentication }
 
-func newAuthHandler(ready *atomic.Bool, logger *slog.Logger, service authentication, checkReady func(context.Context) error) http.Handler {
+func newAuthHandler(ready *atomic.Bool, logger *slog.Logger, service authentication, checkReady func(context.Context) error, extraRoutes ...http.Handler) http.Handler {
 	api := authAPI{service: service}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /auth/register", api.register)
 	mux.HandleFunc("POST /auth/login", api.login)
 	mux.HandleFunc("POST /auth/refresh", api.refresh)
 	mux.HandleFunc("POST /auth/logout", api.logout)
+	for _, extra := range extraRoutes {
+		mux.Handle("/", extra)
+	}
 	application := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -212,6 +215,11 @@ func writeAuthError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.As(err, &validation):
 		status, code, message = http.StatusUnprocessableEntity, "validation_error", "Запрос содержит некорректные поля."
 		response["details"] = validation.Details
+	case errors.Is(err, auth.ErrInvalidIdentity):
+		status, code, message = http.StatusUnauthorized, "unauthorized", "Требуется действующий пользователь."
+		w.Header().Set("WWW-Authenticate", "Bearer")
+	case errors.Is(err, auth.ErrUserNotFound):
+		status, code, message = http.StatusNotFound, "user_not_found", "Пользователь не найден."
 	case errors.Is(err, auth.ErrUsernameTaken):
 		status, code, message = http.StatusConflict, "username_taken", "Username уже занят."
 	case errors.Is(err, auth.ErrInvalidCredentials):

@@ -1,0 +1,30 @@
+{
+  "name": "tool-trials",
+  "version": "1.0.0",
+  "description": "T24 local fixture trials for Bruno, Playwright and k6",
+  "scripts": {
+    "test": "node verify-trials.cjs && node --test report-validation.test.cjs",
+    "trial:server": "node server.cjs",
+    "trial:bruno": "cd bruno && bru run --env local --reporter-json ../reports/bruno-pass.json --reporter-junit ../reports/bruno-pass.xml",
+    "trial:bruno:negative": "cd bruno && bru run --env negative --reporter-json ../reports/bruno-negative.json --reporter-junit ../reports/bruno-negative.xml",
+    "trial:all": "node run-trials.cjs",
+    "trial:playwright": "playwright test",
+    "trial:k6": "node run-k6.cjs",
+    "trial:k6:negative": "node run-k6.cjs --negative",
+    "trial:verify": "node verify-trials.cjs && node --test report-validation.test.cjs",
+    "trial:bruno:poc": "cd bruno-poc && bru run --env local --sandbox developer --reporter-json ../reports/bruno-poc.json --reporter-junit ../reports/bruno-poc.xml"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "@usebruno/cli": "4.3.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "fast-xml-parser": "5.12.1",
+    "yaml": "2.9.1"
+  },
+  "private": true
+}

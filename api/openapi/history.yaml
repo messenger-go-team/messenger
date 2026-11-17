@@ -1,9 +1,10 @@
 openapi: 3.1.0
 info:
   title: Messenger History API
-  version: 0.1.0
+  version: 0.2.0
   description: >-
-    Контракт history-сервиса для личных чатов и истории сообщений.
+    Контракт history-сервиса для личных чатов, истории сообщений и личного
+    списка «Требует внимания».
     Пользователь определяется по access JWT; права на чат проверяются
     по участию пользователя в chat_members.
 servers:
@@ -14,6 +15,16 @@ tags:
     description: Создание личного чата и список чатов текущего пользователя.
   - name: Messages
     description: История сообщений с курсорной пагинацией.
+  - name: Later
+    description: >-
+      Личные активные записи «Вернуться позже» по SPEC FR-LATER-1..5.
+      Владелец определяется только по access JWT. При каждой операции
+      History проверяет текущее членство в исходном чате и доступность
+      сообщения. Отметки не рассылаются по WebSocket и не меняют last_read_seq.
+      Ответы операций Later и getMessageContext отправляются с
+      Cache-Control: no-store. Клиент не показывает напоминание по устаревшей
+      локальной копии: при наступлении срока обновляет список и использует
+      только доступные записи из ответа. Push и фоновая очередь не требуются.
 
 paths:
   /chats/personal:
@@ -25,7 +36,10 @@ paths:
         Текущий пользователь определяется из access JWT. Между двумя
         пользователями существует не более одного личного чата. Если чат
         уже есть, возвращается он же со статусом 200; иначе создаётся новый
-        чат со статусом 201.
+        чат со статусом 201. Временный отказ БД или Auth, неверный служебный
+        credential и неконтрактный ответ Auth (включая закрытый Nginx маршрут)
+        возвращают 503 service_unavailable. Отсутствие собеседника считается
+        подтверждённым только по контрактному JSON 404 Auth с user_not_found.
       security:
         - accessToken: []
       requestBody:
@@ -55,6 +69,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /chats:
     get:
@@ -104,6 +120,8 @@ paths:
                     unread_count: 1
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /chats/{chat_id}/messages:
     get:
@@ -207,6 +225,90 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /chats/{chat_id}/messages/{message_id}/context:
+    get:
+      tags: [Messages]
+      operationId: getMessageContext
+      summary: Загрузить контекст вокруг конкретного сообщения
+      description: >-
+        Находит цель по стабильному message_id внутри указанного chat_id,
+        независимо от загруженной клиентом страницы. Сначала проверяется JWT,
+        затем текущее членство и доступность цели. Для отсутствующего чата,
+        сообщения, потери доступа или несовпадения chat_id/message_id ответ
+        одинаковый: 404 без данных сообщения. Здесь не применяется 403
+        обычной выдачи истории.
+        Ответ всегда включает цель ровно один раз; все сообщения принадлежат
+        указанному чату и упорядочены по seq по возрастанию. Из limit - 1
+        соседних мест floor((limit - 1) / 2) отводится ближайшим более старым
+        сообщениям, остальные - ближайшим более новым. У края истории
+        свободные места не переносятся на другую сторону; ответ может быть
+        короче limit. При limit=1 возвращается только цель. Числовые пропуски
+        seq не означают отсутствие более старых или новых сообщений.
+        Курсоры равны seq первого и последнего сообщения окна. Для продолжения
+        клиент вызывает обычный GET /chats/{chat_id}/messages с before_seq
+        либо after_seq соответственно. Флаги has_more описывают наличие
+        сообщений за границами окна на момент ответа. before_seq и after_seq
+        в самом запросе контекста не принимаются и дают 422.
+        Операция не меняет last_read_seq. Окно навигации не подтверждает
+        синхронизацию всей истории: клиент сохраняет отдельный курсор
+        восстановления, объединяет REST и WS по серверному ID или (chat_id, seq)
+        и не продвигает курсор синхронизации только по максимуму seq окна.
+      security:
+        - accessToken: []
+      parameters:
+        - $ref: '#/components/parameters/ContextChatId'
+        - $ref: '#/components/parameters/ContextMessageId'
+        - name: limit
+          in: query
+          required: false
+          description: Максимум сообщений вместе с целью; по умолчанию 50.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          example: 3
+      responses:
+        '200':
+          description: Непустое окно, содержащее целевое сообщение.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageContext'
+              example:
+                target_message_id: 6df63854-0a0a-43cb-b4d4-2fbc97ed7eb3
+                messages:
+                  - id: 9e1c3114-9dbc-4705-8257-4c86547952c6
+                    chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
+                    seq: 11
+                    sender_id: 23968cc7-c30c-47b0-a741-6b81249aa5e7
+                    body: Когда нужна проверка?
+                    created_at: '2026-11-14T10:00:00Z'
+                  - id: 6df63854-0a0a-43cb-b4d4-2fbc97ed7eb3
+                    chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
+                    seq: 12
+                    sender_id: 8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0
+                    body: Проверь PR вечером, пожалуйста.
+                    created_at: '2026-11-14T10:01:00Z'
+                  - id: 302483e9-3887-4783-83a2-e4c427da1a05
+                    chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
+                    seq: 13
+                    sender_id: 23968cc7-c30c-47b0-a741-6b81249aa5e7
+                    body: Хорошо.
+                    created_at: '2026-11-14T10:02:00Z'
+                next_before_seq: 11
+                next_after_seq: 13
+                has_more_before: true
+                has_more_after: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/LaterNotFound'
+        '422':
+          $ref: '#/components/responses/LaterValidationError'
 
   /chats/{chat_id}/read:
     post:
@@ -249,6 +351,240 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /later:
+    post:
+      tags: [Later]
+      operationId: saveForLater
+      summary: Сохранить сообщение или обновить его активную запись
+      description: >-
+        chat_id и message_id указывают исходное сохранённое сообщение.
+        Сообщение должно принадлежать указанному чату, а пользователь из JWT
+        должен состоять в нём сейчас. Отсутствующая или недоступная цель,
+        включая несовпадение chat_id/message_id, даёт одинаковый 404.
+        Атомарное сохранение гарантирует максимум одну активную запись на
+        пару (владелец, message_id), в том числе при конкурентных запросах.
+        Если запись уже активна, сохраняется её id и created_at, а due_at
+        заменяется переданным значением; ответ 200. Иначе создаётся новая
+        активная запись с новым id; ответ 201. Запись после «Готово» не мешает
+        сохранить сообщение снова. При конкурентных изменениях срока
+        применяется последнее сериализованное изменение в БД; более позднее
+        изменение может сделать уже полученный ответ устаревшим.
+        due_at обязателен: null означает «Просто сохранить». Клиент сам
+        рассчитывает «Через час», «Вечером» и выбранное время. До 19:00 по
+        времени устройства «Вечером» означает 19:00 сегодня, с 19:00
+        включительно - 19:00 следующего календарного дня, затем перевод в UTC.
+        Сервер принимает абсолютный срок, а не пресет или часовой пояс.
+        Смена часового пояса устройства после сохранения не меняет срок.
+        Корректный срок в прошлом разрешён и сразу даёт status=due: задержка
+        сети или повтор запроса не превращают его в ошибку валидации.
+      security:
+        - accessToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveForLaterRequest'
+            examples:
+              withoutDueDate:
+                summary: Просто сохранить
+                value:
+                  chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
+                  message_id: 6df63854-0a0a-43cb-b4d4-2fbc97ed7eb3
+                  due_at: null
+              withDueDate:
+                summary: Вечером, устройство UTC+03:00 выбрало 19:00
+                value:
+                  chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
+                  message_id: 6df63854-0a0a-43cb-b4d4-2fbc97ed7eb3
+                  due_at: '2026-11-14T16:00:00Z'
+      responses:
+        '200':
+          $ref: '#/components/responses/LaterEntryResult'
+        '201':
+          $ref: '#/components/responses/LaterEntryResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/LaterNotFound'
+        '422':
+          $ref: '#/components/responses/LaterValidationError'
+    get:
+      tags: [Later]
+      operationId: listLaterEntries
+      summary: Получить личный список «Требует внимания»
+      description: >-
+        Возвращает все активные записи только пользователя из JWT.
+        В MVP список не пагинируется и не усекается. Записи с удалённым
+        сообщением, удалённым чатом или без текущего членства исключаются
+        до формирования ответа. Скрытие из-за потери доступа не завершает
+        запись: если доступ восстановлен и запись ещё активна, она снова
+        видна. Завершённые записи не возвращаются.
+        server_time берётся из БД один раз для ответа. status вычисляется
+        относительно этого же момента для всех записей: due при due_at <=
+        server_time, scheduled при due_at > server_time, unscheduled при null.
+        Порядок: due, scheduled, unscheduled; внутри двух групп со сроком
+        due_at по возрастанию, затем created_at и id по возрастанию. В группе
+        без срока - created_at и id по возрастанию. UUID сравниваются по
+        значению. Это три состояния активной записи, а не хранимая очередь
+        или подтверждение показа напоминания. Пустой список - 200 с entries: [].
+        Пока авторизованное приложение находится в видимой активной вкладке,
+        клиент запрашивает список при открытии и возвращении в приложение,
+        при ближайшем известном сроке (с учётом server_time), а также
+        периодически: следующий запрос не позднее 30 секунд после завершения
+        предыдущего успешного запроса. Периодическое обновление работает
+        и для пустого списка, и когда все записи без срока: оно обнаруживает
+        изменения из другой вкладки или с другого устройства того же аккаунта.
+        После сетевой ошибки или ответа 5xx клиент повторяет запрос через
+        5 секунд, при повторных ошибках - через 10, 20 и далее 30 секунд
+        до успешного ответа, пока вкладка активна. После успеха задержка
+        сбрасывается. Одновременно выполняется не более одного GET /later;
+        срабатывания таймеров объединяются. При скрытии вкладки фоновые
+        запросы не обязательны; возвращение запускает свежий запрос.
+        Выход или смена аккаунта отменяют запросы и таймеры прежнего аккаунта;
+        его поздний ответ игнорируется. Ответ 401 обрабатывается через обычное
+        восстановление авторизации, а не повторяется как временная ошибка.
+        Ошибка не считается пустым списком. Напоминание показывается только
+        по доступной записи из свежего успешного ответа; по устаревшей копии
+        после ошибки новое напоминание не показывается.
+      security:
+        - accessToken: []
+      responses:
+        '200':
+          description: Полный доступный активный список на момент server_time.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaterList'
+              examples:
+                populated:
+                  summary: Три состояния активных записей; срок due равен server_time
+                  value:
+                    server_time: '2026-11-14T16:00:00Z'
+                    entries:
+                      - id: 98fcaed4-d453-4cba-b561-4100fe7aa314
+                        message:
+                          id: 6df63854-0a0a-43cb-b4d4-2fbc97ed7eb3
+                          chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
+                          seq: 12
+                          sender_id: 8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0
+                          body: Проверь PR вечером, пожалуйста.
+                          created_at: '2026-11-14T10:01:00Z'
+                        due_at: '2026-11-14T16:00:00Z'
+                        status: due
+                        created_at: '2026-11-14T10:05:00Z'
+                        updated_at: '2026-11-14T10:05:00Z'
+                      - id: a2e461f6-e1d8-44ec-b633-4debfda53b9f
+                        message:
+                          id: 302483e9-3887-4783-83a2-e4c427da1a05
+                          chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
+                          seq: 13
+                          sender_id: 23968cc7-c30c-47b0-a741-6b81249aa5e7
+                          body: Хорошо.
+                          created_at: '2026-11-14T10:02:00Z'
+                        due_at: '2026-11-15T09:00:00Z'
+                        status: scheduled
+                        created_at: '2026-11-14T10:06:00Z'
+                        updated_at: '2026-11-14T10:06:00Z'
+                      - id: b5ab7aaa-6a79-4e1a-a2db-0582d215fc4b
+                        message:
+                          id: 9e1c3114-9dbc-4705-8257-4c86547952c6
+                          chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
+                          seq: 11
+                          sender_id: 23968cc7-c30c-47b0-a741-6b81249aa5e7
+                          body: Когда нужна проверка?
+                          created_at: '2026-11-14T10:00:00Z'
+                        due_at: null
+                        status: unscheduled
+                        created_at: '2026-11-14T10:07:00Z'
+                        updated_at: '2026-11-14T10:07:00Z'
+                empty:
+                  summary: Нет доступных активных записей
+                  value:
+                    server_time: '2026-11-14T16:00:00Z'
+                    entries: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/LaterValidationError'
+        '503':
+          $ref: '#/components/responses/LaterUnavailable'
+
+  /later/{later_id}:
+    patch:
+      tags: [Later]
+      operationId: rescheduleLaterEntry
+      summary: Изменить срок собственной активной записи
+      description: >-
+        Принимает только due_at; поле обязательно, null убирает срок.
+        Проверяются владелец из JWT, активность записи и текущий доступ
+        к исходному сообщению. Отсутствующая, чужая, завершённая или
+        недоступная запись даёт одинаковый 404 без данных. id записи,
+        исходное сообщение и created_at не меняются. Прошедший корректный
+        срок разрешён; status вычисляется по server_time из БД. Конкурентное
+        изменение срока подчиняется тому же правилу, что и saveForLater.
+      security:
+        - accessToken: []
+      parameters:
+        - $ref: '#/components/parameters/LaterId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RescheduleLaterRequest'
+            examples:
+              moveDueDate:
+                summary: Перенести напоминание
+                value:
+                  due_at: '2026-11-15T09:00:00Z'
+              removeDueDate:
+                summary: Оставить без срока
+                value:
+                  due_at: null
+      responses:
+        '200':
+          $ref: '#/components/responses/LaterEntryResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/LaterNotFound'
+        '422':
+          $ref: '#/components/responses/LaterValidationError'
+
+  /later/{later_id}/done:
+    post:
+      tags: [Later]
+      operationId: completeLaterEntry
+      summary: Завершить собственную запись кнопкой «Готово»
+      description: >-
+        Убирает запись из активного списка, переводя её в done. Тело запроса
+        отсутствует. Повторное завершение той же собственной записи
+        возвращает 204, пока исходное сообщение доступно. Владелец и текущее
+        членство проверяются и для уже завершённой записи. Отсутствующая,
+        чужая или недоступная запись даёт одинаковый 404 без данных.
+        После нового сохранения того же сообщения создаётся другой id;
+        повтор «Готово» со старым id не завершает новую активную запись.
+        Если сохранение и «Готово» выполняются одновременно, результат
+        определяется их сериализацией в БД: сохранение после завершения
+        создаёт новую активную запись, завершение после обновления закрывает
+        прежнюю. Состояние прочтения и данные собеседника не меняются.
+      security:
+        - accessToken: []
+      parameters:
+        - $ref: '#/components/parameters/LaterId'
+      responses:
+        '204':
+          description: Запись завершена или уже была завершена; тело отсутствует.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/LaterNotFound'
+        '422':
+          $ref: '#/components/responses/LaterValidationError'
 
 components:
   securitySchemes:
@@ -259,6 +595,32 @@ components:
       description: >-
         Access JWT с подписью HS256; claims sub (UUID пользователя), iat и exp;
         срок действия около 15 минут. Проверка выполняется общим Go-пакетом.
+
+  parameters:
+    ContextChatId:
+      name: chat_id
+      in: path
+      required: true
+      description: UUID чата с исходным сообщением.
+      schema:
+        type: string
+        format: uuid
+    ContextMessageId:
+      name: message_id
+      in: path
+      required: true
+      description: Стабильный серверный UUID сообщения; не client_msg_id и не seq.
+      schema:
+        type: string
+        format: uuid
+    LaterId:
+      name: later_id
+      in: path
+      required: true
+      description: UUID личной записи, возвращённый History.
+      schema:
+        type: string
+        format: uuid
 
   schemas:
     CreatePersonalChatRequest:
@@ -403,6 +765,154 @@ components:
           type: boolean
         has_more_after:
           type: boolean
+    MessageContext:
+      type: object
+      additionalProperties: false
+      required: [target_message_id, messages, next_before_seq, next_after_seq, has_more_before, has_more_after]
+      properties:
+        target_message_id:
+          type: string
+          format: uuid
+          description: ID из запроса; присутствует в messages ровно один раз.
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 100
+          description: Ближайшие соседи и цель, без дублей, по seq по возрастанию.
+          items:
+            $ref: '#/components/schemas/Message'
+        next_before_seq:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+          description: seq первого сообщения; курсор before_seq обычной истории.
+        next_after_seq:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+          description: seq последнего сообщения; курсор after_seq обычной истории.
+        has_more_before:
+          type: boolean
+        has_more_after:
+          type: boolean
+    LaterTimestamp:
+      type: string
+      format: date-time
+      pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?Z$'
+      not:
+        pattern: '^0000-|[\r\n]'
+      description: >-
+        UTC RFC 3339 с заглавными T и Z, существующей календарной датой
+        и годом 0001..9999. Дробная часть секунды необязательна, от 1 до 6
+        цифр (точность PostgreSQL timestamptz). Час 24 и секунда 60
+        не принимаются. Смещение +00:00, локальное время без Z, числовой
+        Unix timestamp и некорректная дата дают 422. Срок в прошлом разрешён.
+        Обработчик обязан выполнить календарный разбор всей исходной строки
+        без trim, проверить год 0001..9999 и отсутствие символов после Z.
+        Одного pattern или format без включённой календарной проверки
+        недостаточно: например, 2026-02-30 должно давать 422.
+      examples:
+        - '2026-11-14T16:00:00Z'
+        - '2026-11-14T16:00:00.123456Z'
+    LaterDueAt:
+      description: Абсолютный срок в UTC либо null для записи без срока.
+      oneOf:
+        - $ref: '#/components/schemas/LaterTimestamp'
+        - type: 'null'
+    SaveForLaterRequest:
+      type: object
+      additionalProperties: false
+      required: [chat_id, message_id, due_at]
+      properties:
+        chat_id:
+          type: string
+          format: uuid
+        message_id:
+          type: string
+          format: uuid
+        due_at:
+          $ref: '#/components/schemas/LaterDueAt'
+    RescheduleLaterRequest:
+      type: object
+      additionalProperties: false
+      required: [due_at]
+      properties:
+        due_at:
+          $ref: '#/components/schemas/LaterDueAt'
+    LaterEntry:
+      description: >-
+        Только собственная доступная активная запись. message - исходное
+        сообщение, доступное сейчас. Поля владельца и хранимое active/done
+        наружу не передаются. status вычисляется относительно server_time
+        соответствующего ответа. created_at сохраняется при обновлении;
+        updated_at - время последнего сохранения или переноса по часам БД.
+      oneOf:
+        - $ref: '#/components/schemas/TimedLaterEntry'
+        - $ref: '#/components/schemas/UnscheduledLaterEntry'
+    TimedLaterEntry:
+      type: object
+      additionalProperties: false
+      required: [id, message, due_at, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        message:
+          $ref: '#/components/schemas/Message'
+        due_at:
+          $ref: '#/components/schemas/LaterTimestamp'
+        status:
+          type: string
+          enum: [due, scheduled]
+          description: >-
+            due - срок наступил, включая равенство server_time;
+            scheduled - срок позже server_time.
+        created_at:
+          $ref: '#/components/schemas/LaterTimestamp'
+        updated_at:
+          $ref: '#/components/schemas/LaterTimestamp'
+    UnscheduledLaterEntry:
+      type: object
+      additionalProperties: false
+      required: [id, message, due_at, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        message:
+          $ref: '#/components/schemas/Message'
+        due_at:
+          type: 'null'
+        status:
+          type: string
+          const: unscheduled
+        created_at:
+          $ref: '#/components/schemas/LaterTimestamp'
+        updated_at:
+          $ref: '#/components/schemas/LaterTimestamp'
+    LaterEntryResult:
+      type: object
+      additionalProperties: false
+      required: [server_time, entry]
+      properties:
+        server_time:
+          $ref: '#/components/schemas/LaterTimestamp'
+        entry:
+          $ref: '#/components/schemas/LaterEntry'
+    LaterList:
+      type: object
+      additionalProperties: false
+      required: [server_time, entries]
+      properties:
+        server_time:
+          $ref: '#/components/schemas/LaterTimestamp'
+        entries:
+          type: array
+          description: Все доступные активные записи; пустой список - [].
+          items:
+            $ref: '#/components/schemas/LaterEntry'
     ApiError:
       type: object
       additionalProperties: false
@@ -419,6 +929,102 @@ components:
           description: Идентификатор запроса для поиска в логах, если доступен.
 
   responses:
+    ServiceUnavailable:
+      description: >-
+        History или необходимая зависимость временно недоступны. Ошибка
+        служебного lookup, включая неконтрактный 404, не означает отсутствие
+        пользователя и не требует повторного пользовательского входа.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: service_unavailable
+            message: Сервис временно недоступен.
+    LaterEntryResult:
+      description: >-
+        Доступная активная запись после операции: 201 при создании,
+        200 при обновлении существующей записи. server_time взят из БД
+        и используется для вычисления status возвращённой записи.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LaterEntryResult'
+          examples:
+            scheduled:
+              summary: Запись со сроком в будущем
+              value:
+                server_time: '2026-11-14T10:05:00Z'
+                entry:
+                  id: 98fcaed4-d453-4cba-b561-4100fe7aa314
+                  message:
+                    id: 6df63854-0a0a-43cb-b4d4-2fbc97ed7eb3
+                    chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
+                    seq: 12
+                    sender_id: 8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0
+                    body: Проверь PR вечером, пожалуйста.
+                    created_at: '2026-11-14T10:01:00Z'
+                  due_at: '2026-11-14T16:00:00Z'
+                  status: scheduled
+                  created_at: '2026-11-14T10:05:00Z'
+                  updated_at: '2026-11-14T10:05:00Z'
+            unscheduled:
+              summary: Просто сохранить без напоминания
+              value:
+                server_time: '2026-11-14T10:05:00Z'
+                entry:
+                  id: 98fcaed4-d453-4cba-b561-4100fe7aa314
+                  message:
+                    id: 6df63854-0a0a-43cb-b4d4-2fbc97ed7eb3
+                    chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
+                    seq: 12
+                    sender_id: 8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0
+                    body: Проверь PR вечером, пожалуйста.
+                    created_at: '2026-11-14T10:01:00Z'
+                  due_at: null
+                  status: unscheduled
+                  created_at: '2026-11-14T10:05:00Z'
+                  updated_at: '2026-11-14T10:05:00Z'
+    LaterNotFound:
+      description: >-
+        Ресурс отсутствует или недоступен. Для чужой записи, потери членства,
+        удалённого сообщения/чата и несовпадения chat_id/message_id используются
+        одинаковые код и текст. Нет идентификаторов записи, чата или сообщения,
+        текста сообщения, срока и других данных записи. Причина не раскрывается.
+        Клиент убирает запись из устаревшего списка и показывает
+        «Сообщение недоступно».
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: not_found
+            message: Сообщение недоступно.
+    LaterUnavailable:
+      description: >-
+        Временная недоступность History или его зависимости. Ответ не является
+        пустым списком; клиент повторяет GET /later по описанному расписанию
+        и не показывает новое напоминание по устаревшим данным.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: service_unavailable
+            message: Список временно недоступен. Повторите запрос позже.
+    LaterValidationError:
+      description: >-
+        Некорректный UUID, JSON, неизвестные поля или параметры, отсутствующий
+        обязательный due_at, неверный формат срока либо недопустимый limit.
+        Для новых операций JWT проверяется до обращения к данным.
+        Неизвестный ресурс с корректным UUID обрабатывается как 404.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: invalid_request
+            message: Проверьте формат параметров запроса.
     Unauthorized:
       description: Access-токен отсутствует, истёк или недействителен.
       content:
