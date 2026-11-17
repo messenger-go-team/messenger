@@ -12,7 +12,7 @@ import { hasFieldErrors, validateCredentials } from '@/features/auth/validation'
 
 /**
  * Экран регистрации по username и паролю (SPEC FR-AUTH-1).
- * Поле Email есть в макете; в OpenAPI его нет — валидируем на клиенте и не отправляем.
+ * Поле Email в макете опционально для MVP: OpenAPI его не принимает и не валидирует.
  */
 export function RegisterPage() {
   const { register, isAuthenticated, isReady } = useAuth()
@@ -45,9 +45,8 @@ export function RegisterPage() {
     event.preventDefault()
     setFormError(null)
 
+    // Email в макете есть, но для MVP не обязателен и в API не отправляется (SPEC / OpenAPI).
     const errors = validateCredentials(username, password, {
-      requireEmail: true,
-      email,
       requirePasswordConfirm: true,
       passwordConfirm,
     })

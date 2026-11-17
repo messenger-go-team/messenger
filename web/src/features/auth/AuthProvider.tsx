@@ -26,6 +26,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const epochRef = useRef(0)
   const refreshInFlightRef = useRef<Promise<AccessTokenResponse> | null>(null)
+  const credentialInFlightRef = useRef(new Set<Promise<unknown>>())
   const applySessionRef = useRef<
     (token: string, expiresInSeconds: number, epoch: number) => Promise<void>
   >(async () => undefined)
@@ -53,6 +54,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
       await pending
     } catch {
       // Устаревший ответ не меняет сессию: решение принимает вызывающий код по epoch.
+    }
+  }, [])
+
+  const trackCredential = useCallback((operation: Promise<unknown>) => {
+    credentialInFlightRef.current.add(operation)
+    // finally-цепочка тоже реджектится — глушим только её, исходный operation ждут вызывающие.
+    void operation
+      .finally(() => {
+        credentialInFlightRef.current.delete(operation)
+      })
+      .catch(() => undefined)
+    return operation
+  }, [])
+
+  const settleInFlightCredentials = useCallback(async () => {
+    while (credentialInFlightRef.current.size > 0) {
+      await Promise.allSettled([...credentialInFlightRef.current])
+    }
+  }, [])
+
+  /** Поздний login/register уже успел выставить Set-Cookie — отзываем его logout'ом. */
+  const revokeStaleSessionCookie = useCallback(async () => {
+    try {
+      await logoutRequest()
+    } catch {
+      // Cookie могла уже быть недействительной.
     }
   }, [])
 
@@ -145,18 +172,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return
       }
 
-      const session = await loginRequest(credentials)
-      if (epochRef.current !== epoch) {
-        return
-      }
-      await applySession(session.access_token, session.expires_in, epoch)
+      await trackCredential(
+        (async () => {
+          const session = await loginRequest(credentials)
+          if (epochRef.current !== epoch) {
+            await revokeStaleSessionCookie()
+            return
+          }
+          await applySession(session.access_token, session.expires_in, epoch)
+        })(),
+      )
     },
-    [applySession, clearRefreshTimer, settleInFlightRefresh],
+    [
+      applySession,
+      clearRefreshTimer,
+      revokeStaleSessionCookie,
+      settleInFlightRefresh,
+      trackCredential,
+    ],
   )
 
   const register = useCallback(
     async (data: RegisterRequest) => {
-      await registerRequest(data)
       const epoch = ++epochRef.current
       clearRefreshTimer()
       await settleInFlightRefresh()
@@ -164,13 +201,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return
       }
 
-      const session = await loginRequest(data)
-      if (epochRef.current !== epoch) {
-        return
-      }
-      await applySession(session.access_token, session.expires_in, epoch)
+      await trackCredential(
+        (async () => {
+          await registerRequest(data)
+          if (epochRef.current !== epoch) {
+            return
+          }
+
+          const session = await loginRequest(data)
+          if (epochRef.current !== epoch) {
+            await revokeStaleSessionCookie()
+            return
+          }
+          await applySession(session.access_token, session.expires_in, epoch)
+        })(),
+      )
     },
-    [applySession, clearRefreshTimer, settleInFlightRefresh],
+    [
+      applySession,
+      clearRefreshTimer,
+      revokeStaleSessionCookie,
+      settleInFlightRefresh,
+      trackCredential,
+    ],
   )
 
   const logout = useCallback(async () => {
@@ -179,6 +232,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setAccessToken(null)
     setUser(null)
     await settleInFlightRefresh()
+    // Дожидаемся login/register: их Set-Cookie успеет прийти и будет отозван внутри операции или ниже.
+    await settleInFlightCredentials()
     if (epochRef.current !== epoch) {
       return
     }
@@ -190,7 +245,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         clearSession()
       }
     }
-  }, [clearRefreshTimer, clearSession, settleInFlightRefresh])
+  }, [clearRefreshTimer, clearSession, settleInFlightCredentials, settleInFlightRefresh])
 
   const value = useMemo<AuthContextValue>(
     () => ({

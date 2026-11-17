@@ -38,19 +38,19 @@ describe('validateCredentials', () => {
     expect(hasFieldErrors(errors)).toBe(true)
   })
 
-  it('validates email when required by the registration mockup', () => {
+  it('optionally validates email without blocking MVP registration by default', () => {
+    expect(validateCredentials('alice_1', 'correct-horse-battery')).toEqual({})
     expect(
       validateCredentials('alice_1', 'correct-horse-battery', {
         requireEmail: true,
         email: 'bad',
       }).email,
     ).toBeTruthy()
-    expect(
-      validateCredentials('alice_1', 'correct-horse-battery', {
-        requireEmail: true,
-        email: 'alice@example.com',
-      }),
-    ).toEqual({})
+  })
+
+  it('ignores undefined error placeholders when checking field errors', () => {
+    expect(hasFieldErrors({ password: undefined, passwordConfirm: undefined })).toBe(false)
+    expect(hasFieldErrors({ password: 'x' })).toBe(true)
   })
 })
 

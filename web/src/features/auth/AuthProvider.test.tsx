@@ -5,11 +5,12 @@ import type { AccessTokenResponse, User } from '@/api/auth'
 import { AuthProvider } from '@/features/auth/AuthProvider'
 import { useAuth } from '@/features/auth/useAuth'
 
-const { refresh, login, logout, getMe } = vi.hoisted(() => ({
+const { refresh, login, logout, getMe, register } = vi.hoisted(() => ({
   refresh: vi.fn(),
   login: vi.fn(),
   logout: vi.fn(),
   getMe: vi.fn(),
+  register: vi.fn(),
 }))
 
 vi.mock('@/api/auth', () => ({
@@ -17,7 +18,7 @@ vi.mock('@/api/auth', () => ({
   login,
   logout,
   getMe,
-  register: vi.fn(),
+  register,
 }))
 
 const session: AccessTokenResponse = {
@@ -39,6 +40,7 @@ function SessionProbe() {
     <div>
       <p>{auth.isReady ? 'ready' : 'booting'}</p>
       <p>{auth.isAuthenticated ? 'in' : 'out'}</p>
+      <p>{auth.user?.username ?? 'nobody'}</p>
       <button type="button" onClick={() => void auth.logout()}>
         Выйти
       </button>
@@ -47,6 +49,12 @@ function SessionProbe() {
         onClick={() => void auth.login({ username: 'alice_1', password: 'correct-horse-battery' })}
       >
         Войти
+      </button>
+      <button
+        type="button"
+        onClick={() => void auth.register({ username: 'bob_2', password: 'correct-horse-battery' })}
+      >
+        Регистрация
       </button>
     </div>
   )
@@ -137,5 +145,69 @@ describe('AuthProvider session races', () => {
 
     expect(await screen.findByText('in')).toBeInTheDocument()
     expect(screen.getByText('ready')).toBeInTheDocument()
+  })
+
+  it('does not auto-login after a late register that finished after logout', async () => {
+    const lateRegister = deferred<User>()
+    refresh.mockRejectedValue(new Error('no session'))
+    register.mockImplementationOnce(() => lateRegister.promise)
+    login.mockResolvedValue({ ...session, access_token: 'access-bob' })
+    getMe.mockResolvedValue({ ...profile, id: 'bob', username: 'bob_2' })
+    logout.mockResolvedValue(undefined)
+
+    render(
+      <AuthProvider>
+        <SessionProbe />
+      </AuthProvider>,
+    )
+
+    expect(await screen.findByText('ready')).toBeInTheDocument()
+    screen.getByRole('button', { name: 'Регистрация' }).click()
+
+    login.mockResolvedValueOnce(session)
+    getMe.mockResolvedValueOnce(profile)
+    screen.getByRole('button', { name: 'Войти' }).click()
+    expect(await screen.findByText('alice_1')).toBeInTheDocument()
+
+    screen.getByRole('button', { name: 'Выйти' }).click()
+    expect(await screen.findByText('out')).toBeInTheDocument()
+
+    lateRegister.resolve({ id: 'bob', username: 'bob_2', created_at: profile.created_at })
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText('out')).toBeInTheDocument()
+    expect(screen.getByText('nobody')).toBeInTheDocument()
+  })
+
+  it('revokes a late login cookie that arrives after logout', async () => {
+    const lateLogin = deferred<AccessTokenResponse>()
+    refresh.mockRejectedValue(new Error('no session'))
+    login.mockImplementationOnce(() => lateLogin.promise)
+    logout.mockResolvedValue(undefined)
+
+    render(
+      <AuthProvider>
+        <SessionProbe />
+      </AuthProvider>,
+    )
+
+    expect(await screen.findByText('ready')).toBeInTheDocument()
+    screen.getByRole('button', { name: 'Войти' }).click()
+
+    const logoutClick = screen.getByRole('button', { name: 'Выйти' }).click()
+    lateLogin.resolve({ ...session, access_token: 'access-late' })
+
+    await act(async () => {
+      await logoutClick
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText('out')).toBeInTheDocument()
+    expect(logout.mock.calls.length).toBeGreaterThanOrEqual(1)
   })
 })

@@ -67,5 +67,5 @@ export function validateEmail(email: string): FieldErrors {
 }
 
 export function hasFieldErrors(errors: FieldErrors): boolean {
-  return Object.keys(errors).length > 0
+  return Object.values(errors).some(Boolean)
 }
