@@ -26,7 +26,7 @@ describe('LoginPage', () => {
 
     await screen.findByRole('heading', { name: 'Вход' })
 
-    await user.type(screen.getByLabelText('Username'), 'ab')
+    await user.type(screen.getByLabelText('Логин'), 'ab')
     await user.type(screen.getByLabelText('Пароль'), 'correct-horse-battery')
     await user.click(screen.getByRole('button', { name: 'Войти' }))
 
@@ -39,7 +39,7 @@ describe('LoginPage', () => {
 
     await screen.findByRole('heading', { name: 'Вход' })
 
-    await user.type(screen.getByLabelText('Username'), 'alice_1')
+    await user.type(screen.getByLabelText('Логин'), 'alice_1')
     await user.type(screen.getByLabelText('Пароль'), 'correct-horse-battery')
     await user.click(screen.getByRole('button', { name: 'Войти' }))
 
@@ -54,7 +54,7 @@ describe('LoginPage', () => {
 
     await screen.findByRole('heading', { name: 'Вход' })
 
-    await user.type(screen.getByLabelText('Username'), 'alice_1')
+    await user.type(screen.getByLabelText('Логин'), 'alice_1')
     await user.type(screen.getByLabelText('Пароль'), 'wrong-password')
     await user.click(screen.getByRole('button', { name: 'Войти' }))
 

@@ -54,7 +54,7 @@ export function LoginPage() {
       <form className="flex flex-col gap-6" onSubmit={onSubmit} noValidate>
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
-            <Label htmlFor={usernameId}>Username</Label>
+            <Label htmlFor={usernameId}>Логин</Label>
             <Input
               id={usernameId}
               name="username"

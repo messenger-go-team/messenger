@@ -22,7 +22,7 @@ describe('App', () => {
     )
 
     expect(await screen.findByRole('heading', { name: 'Вход' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Username')).toBeInTheDocument()
+    expect(screen.getByLabelText('Логин')).toBeInTheDocument()
     expect(screen.getByLabelText('Пароль')).toBeInTheDocument()
   })
 

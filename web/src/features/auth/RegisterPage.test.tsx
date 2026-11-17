@@ -25,7 +25,7 @@ describe('RegisterPage', () => {
 
     await screen.findByRole('heading', { name: 'Регистрация' })
 
-    await user.type(screen.getByLabelText('Username'), 'carol_3')
+    await user.type(screen.getByLabelText('Логин'), 'carol_3')
     await user.type(screen.getByLabelText('Пароль'), 'correct-horse-battery')
     await user.type(screen.getByLabelText('Повтор пароля'), 'correct-horse-battery')
     await user.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
@@ -41,7 +41,7 @@ describe('RegisterPage', () => {
 
     await screen.findByRole('heading', { name: 'Регистрация' })
 
-    await user.type(screen.getByLabelText('Username'), 'alice_1')
+    await user.type(screen.getByLabelText('Логин'), 'alice_1')
     await user.type(screen.getByLabelText('Пароль'), 'correct-horse-battery')
     await user.type(screen.getByLabelText('Повтор пароля'), 'correct-horse-battery')
     await user.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
