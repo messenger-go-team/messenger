@@ -8,8 +8,8 @@ import (
 	"github.com/messenger-go-team/messenger/services/history/internal/later"
 )
 
-// LaterRepository is not registered as an HTTP endpoint in #86. Owner IDs must
-// come from a verified identity when #87 wires these operations into the API.
+// LaterRepository owns private saved entries. HTTP callers supply owner IDs
+// only from the shared JWT verifier, never from a client-controlled body.
 type LaterRepository struct{ DB *sql.DB }
 
 var _ later.Repository = (*LaterRepository)(nil)
@@ -69,6 +69,11 @@ func scanLater(row *sql.Row) (later.Entry, error) {
 }
 
 func (r *LaterRepository) Save(ctx context.Context, in later.SaveInput) (later.Entry, bool, error) {
+	return r.save(ctx, in, nil)
+}
+
+// project runs before commit while source and entry locks are still held.
+func (r *LaterRepository) save(ctx context.Context, in later.SaveInput, project func(*sql.Tx, later.Entry) error) (later.Entry, bool, error) {
 	ids, err := later.NormalizeIDs(in.UserID, in.ChatID, in.MessageID)
 	if err != nil {
 		return later.Entry{}, false, err
@@ -99,6 +104,11 @@ func (r *LaterRepository) Save(ctx context.Context, in later.SaveInput) (later.E
  RETURNING id,user_id,message_id,due_at,state,created_at,updated_at`, candidate, in.UserID, in.MessageID, in.DueAt))
 	if err != nil {
 		return later.Entry{}, false, err
+	}
+	if project != nil {
+		if err = project(tx, e); err != nil {
+			return later.Entry{}, false, err
+		}
 	}
 	if err = tx.Commit(); err != nil {
 		return later.Entry{}, false, err
@@ -148,8 +158,7 @@ func (r *LaterRepository) Complete(ctx context.Context, user, id string) error {
 	return tx.Commit()
 }
 
-// Ready validates storage requirements without adding Later to the running
-// service's readiness before the #87 endpoints are implemented.
+// Ready validates the schema and runtime privileges required by the Later API.
 func (r *LaterRepository) Ready(ctx context.Context) error {
 	rows, err := r.DB.QueryContext(ctx, `SELECT id,user_id,message_id,due_at,state,created_at,updated_at FROM history.later_entries LIMIT 0`)
 	if err != nil {
