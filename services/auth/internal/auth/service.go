@@ -15,6 +15,7 @@ type Service struct {
 	key       []byte
 	passwords passwords
 	dummyHash string
+	clock     clock
 }
 
 type AccessToken struct {
@@ -33,7 +34,7 @@ func NewService(repo Repository, secret string) (*Service, error) {
 	if _, err := jwtauth.New(secret); err != nil {
 		return nil, err
 	}
-	s := &Service{repo: repo, key: []byte(secret), passwords: passwords{slots: make(chan struct{}, 4)}}
+	s := &Service{repo: repo, key: []byte(secret), passwords: passwords{slots: make(chan struct{}, 4)}, clock: wallClock{}}
 	var err error
 	// A dummy hash hides the cheap unknown-username path from login requests.
 	s.dummyHash, err = s.passwords.hash(context.Background(), "dummy password never used to authenticate")
@@ -118,7 +119,7 @@ func (s *Service) Logout(ctx context.Context, raw string) error {
 }
 
 func (s *Service) issue(userID string) (AccessToken, error) {
-	now := time.Now().UTC().Truncate(time.Second)
+	now := s.clock.Now().UTC().Truncate(time.Second)
 	claims := jwt.RegisteredClaims{Subject: userID, IssuedAt: jwt.NewNumericDate(now), ExpiresAt: jwt.NewNumericDate(now.Add(AccessLifetime))}
 	raw, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.key)
 	if err != nil {
