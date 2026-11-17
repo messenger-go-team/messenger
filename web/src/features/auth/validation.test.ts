@@ -15,6 +15,19 @@ describe('validateCredentials', () => {
     expect(validateCredentials('alice_1', 'short').password).toBeTruthy()
   })
 
+  it('counts password length in Unicode code points', () => {
+    expect(validateCredentials('alice_1', '😀😀😀😀').password).toBeTruthy()
+    expect(validateCredentials('alice_1', '😀😀😀😀😀😀😀😀')).toEqual({})
+  })
+
+  it('does not trim or normalize the password before measuring it', () => {
+    expect(validateCredentials('alice_1', '1234567 ')).toEqual({})
+    expect(validateCredentials('alice_1', '  123456')).toEqual({})
+    expect(validateCredentials('alice_1', 'ééééééé')).toEqual({
+      password: 'Пароль не короче 8 символов',
+    })
+  })
+
   it('checks password confirmation when required', () => {
     const errors = validateCredentials('alice_1', 'correct-horse-battery', {
       requirePasswordConfirm: true,

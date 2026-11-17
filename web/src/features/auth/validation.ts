@@ -23,7 +23,9 @@ export function validateCredentials(
     errors.username = USERNAME_HINT
   }
 
-  if (password.length < 8) {
+  // OpenAPI minLength считает Unicode code points, не единицы UTF-16.
+  // Пароль не обрезаем и не нормализуем: пробелы и составные символы входят в длину как есть.
+  if (Array.from(password).length < 8) {
     errors.password = PASSWORD_HINT
   }
 

@@ -1,0 +1,141 @@
+import { act, render, screen } from '@testing-library/react'
+import { StrictMode } from 'react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { AccessTokenResponse, User } from '@/api/auth'
+import { AuthProvider } from '@/features/auth/AuthProvider'
+import { useAuth } from '@/features/auth/useAuth'
+
+const { refresh, login, logout, getMe } = vi.hoisted(() => ({
+  refresh: vi.fn(),
+  login: vi.fn(),
+  logout: vi.fn(),
+  getMe: vi.fn(),
+}))
+
+vi.mock('@/api/auth', () => ({
+  refresh,
+  login,
+  logout,
+  getMe,
+  register: vi.fn(),
+}))
+
+const session: AccessTokenResponse = {
+  token_type: 'Bearer',
+  access_token: 'access-1',
+  expires_in: 900,
+}
+
+const profile: User = {
+  id: '00000000-0000-4000-8000-000000000001',
+  username: 'alice_1',
+  created_at: '2026-01-01T00:00:00Z',
+}
+
+function SessionProbe() {
+  const auth = useAuth()
+
+  return (
+    <div>
+      <p>{auth.isReady ? 'ready' : 'booting'}</p>
+      <p>{auth.isAuthenticated ? 'in' : 'out'}</p>
+      <button type="button" onClick={() => void auth.logout()}>
+        Выйти
+      </button>
+      <button
+        type="button"
+        onClick={() => void auth.login({ username: 'alice_1', password: 'correct-horse-battery' })}
+      >
+        Войти
+      </button>
+    </div>
+  )
+}
+
+function deferred<T>() {
+  let resolvePromise: (value: T) => void = () => undefined
+  let rejectPromise: (error: unknown) => void = () => undefined
+  const promise = new Promise<T>((resolve, reject) => {
+    resolvePromise = resolve
+    rejectPromise = reject
+  })
+
+  return { promise, resolve: resolvePromise, reject: rejectPromise }
+}
+
+describe('AuthProvider session races', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.clearAllMocks()
+  })
+
+  it('shares one bootstrap refresh across StrictMode remounts', async () => {
+    refresh.mockResolvedValue(session)
+    getMe.mockResolvedValue(profile)
+
+    render(
+      <StrictMode>
+        <AuthProvider>
+          <SessionProbe />
+        </AuthProvider>
+      </StrictMode>,
+    )
+
+    expect(await screen.findByText('in')).toBeInTheDocument()
+    expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores a refresh that resolves after logout', async () => {
+    vi.useFakeTimers()
+    const lateRefresh = deferred<AccessTokenResponse>()
+    refresh.mockResolvedValueOnce(session).mockImplementationOnce(() => lateRefresh.promise)
+    getMe.mockResolvedValue(profile)
+    logout.mockResolvedValue(undefined)
+
+    render(
+      <AuthProvider>
+        <SessionProbe />
+      </AuthProvider>,
+    )
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(screen.getByText('in')).toBeInTheDocument()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(840_000)
+    })
+
+    screen.getByRole('button', { name: 'Выйти' }).click()
+    lateRefresh.resolve({ ...session, access_token: 'access-2' })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+
+    expect(screen.getByText('out')).toBeInTheDocument()
+    expect(logout).toHaveBeenCalledTimes(1)
+    expect(getMe).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a newer login when the bootstrap refresh fails later', async () => {
+    const bootstrap = deferred<AccessTokenResponse>()
+    refresh.mockImplementationOnce(() => bootstrap.promise)
+    login.mockResolvedValue(session)
+    getMe.mockResolvedValue(profile)
+
+    render(
+      <AuthProvider>
+        <SessionProbe />
+      </AuthProvider>,
+    )
+
+    expect(screen.getByText('booting')).toBeInTheDocument()
+    screen.getByRole('button', { name: 'Войти' }).click()
+    bootstrap.reject(new Error('invalid_refresh_token'))
+
+    expect(await screen.findByText('in')).toBeInTheDocument()
+    expect(screen.getByText('ready')).toBeInTheDocument()
+  })
+})
