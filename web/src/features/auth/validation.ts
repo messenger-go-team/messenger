@@ -1,8 +1,7 @@
 /** Правила username из auth OpenAPI: `^[A-Za-z0-9_]{3,32}$`. */
 export const USERNAME_PATTERN = /^[A-Za-z0-9_]{3,32}$/
 
-export const USERNAME_HINT =
-  '3–32 символа: латинские буквы, цифры и подчёркивание'
+export const USERNAME_HINT = '3–32 символа: латинские буквы, цифры и подчёркивание'
 
 export const PASSWORD_HINT = 'Пароль не короче 8 символов'
 
