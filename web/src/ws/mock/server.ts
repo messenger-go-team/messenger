@@ -124,29 +124,37 @@ export class MockWebSocketServer {
       })
       return
     }
+    const command = isObject(event) ? event : null
+    const requestType = command && typeof command.type === 'string' ? command.type : null
+    const errorId =
+      command && typeof command.id === 'string' && isValidUuid(command.id)
+        ? command.id
+        : this.createId()
+    if (requestType !== null && requestType !== 'message.send') {
+      this.sendError(socket, errorId, {
+        code: 'unsupported_type',
+        message: 'Unsupported command type',
+        retryable: false,
+        request_type: requestType,
+        client_msg_id: null,
+      })
+      return
+    }
     if (!this.isMessageSend(event)) {
-      const command = isObject(event) ? event : null
       const payload = command && isObject(command.payload) ? command.payload : null
-      const requestType = command && typeof command.type === 'string' ? command.type : null
       const clientMsgId = payload?.client_msg_id
-      this.sendError(
-        socket,
-        command && typeof command.id === 'string' && isValidUuid(command.id)
-          ? command.id
-          : this.createId(),
-        {
-          code: 'invalid_payload',
-          message: 'Invalid message.send',
-          retryable: false,
-          request_type: requestType,
-          client_msg_id:
-            requestType === 'message.send' &&
-            typeof clientMsgId === 'string' &&
-            isValidUuid(clientMsgId)
-              ? clientMsgId
-              : null,
-        },
-      )
+      this.sendError(socket, errorId, {
+        code: 'invalid_payload',
+        message: 'Invalid message.send',
+        retryable: false,
+        request_type: requestType,
+        client_msg_id:
+          requestType === 'message.send' &&
+          typeof clientMsgId === 'string' &&
+          isValidUuid(clientMsgId)
+            ? clientMsgId
+            : null,
+      })
       return
     }
     this.received.push(event)

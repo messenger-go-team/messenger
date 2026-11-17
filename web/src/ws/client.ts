@@ -31,12 +31,12 @@ const OPEN = 1
 const HISTORY_SYNC_INTERVAL_MS = 30_000
 const NON_RETRYABLE_PROTOCOL_CLOSES = new Set([1000, 1002, 1003, 1007, 1009])
 
-function isAccessTokenExpired(token: string): boolean {
+function accessTokenExpiresAt(token: string): number | null {
   try {
     const parts = token.split('.')
-    if (parts.length !== 3) return false
+    if (parts.length !== 3) return null
     const payload = parts[1]
-    if (!payload || !/^[A-Za-z0-9_-]+$/.test(payload) || payload.length % 4 === 1) return false
+    if (!payload || !/^[A-Za-z0-9_-]+$/.test(payload) || payload.length % 4 === 1) return null
 
     const base64 = payload.replace(/-/g, '+').replace(/_/g, '/')
     const paddedBase64 = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
@@ -50,17 +50,20 @@ function isAccessTokenExpired(token: string): boolean {
       Array.isArray(decoded) ||
       !('exp' in decoded)
     ) {
-      return false
+      return null
     }
 
     const expiresAt = decoded.exp
 
-    return (
-      typeof expiresAt === 'number' && Number.isFinite(expiresAt) && expiresAt <= Date.now() / 1000
-    )
+    return typeof expiresAt === 'number' && Number.isFinite(expiresAt) ? expiresAt : null
   } catch {
-    return false
+    return null
   }
+}
+
+function isAccessTokenExpired(token: string): boolean {
+  const expiresAt = accessTokenExpiresAt(token)
+  return expiresAt !== null && expiresAt <= Date.now() / 1000
 }
 
 export interface WebSocketClientOptions {
@@ -151,6 +154,7 @@ export class MessengerWebSocketClient {
   private stopped = false
   private refreshPromise: Promise<void> | null = null
   private refreshGuard = false
+  private refreshedTokenLifetime: { accessToken: string; expiresAt: number } | null = null
   private historyGeneration = 0
   private historyPromise: Promise<void> | null = null
   private historyRetryTimer: ReturnType<typeof setTimeout> | null = null
@@ -336,6 +340,7 @@ export class MessengerWebSocketClient {
       this.stableTimer = setTimeout(() => {
         this.reconnectBackoff.reset()
         this.refreshGuard = false
+        this.refreshedTokenLifetime = null
       }, this.stableConnectionMs)
       if (this.history) void this.synchronizeHistory()
       else this.resendPendingAfterReconnect()
@@ -392,7 +397,7 @@ export class MessengerWebSocketClient {
       this.setAuthFailed('missing_refresh_adapter')
       return
     }
-    if (this.refreshGuard) {
+    if (this.refreshGuard && !this.hasRefreshedTokenNaturallyExpired()) {
       this.setAuthFailed('refreshed_token_rejected')
       return
     }
@@ -404,6 +409,11 @@ export class MessengerWebSocketClient {
         if (result.kind === 'success') {
           this.accessToken = result.accessToken
           this.refreshGuard = true
+          const expiresAt = accessTokenExpiresAt(result.accessToken)
+          this.refreshedTokenLifetime =
+            expiresAt !== null && expiresAt > Date.now() / 1000
+              ? { accessToken: result.accessToken, expiresAt }
+              : null
           this.scheduleReconnect()
         } else if (result.kind === 'temporary_failure') {
           this.scheduleRefreshRetry()
@@ -420,6 +430,15 @@ export class MessengerWebSocketClient {
     } finally {
       if (this.refreshPromise === refreshPromise) this.refreshPromise = null
     }
+  }
+
+  private hasRefreshedTokenNaturallyExpired(): boolean {
+    const lifetime = this.refreshedTokenLifetime
+    return (
+      lifetime !== null &&
+      lifetime.accessToken === this.accessToken &&
+      lifetime.expiresAt <= Date.now() / 1000
+    )
   }
 
   private scheduleRefreshRetry(): void {

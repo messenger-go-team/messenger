@@ -896,8 +896,11 @@ describe('MessengerWebSocketClient reconnect and authorization', () => {
   })
 
   it('refreshes once on 4401 and reconnects with the new access token', async () => {
+    const refreshedToken = jwtWithPayload({ exp: Math.floor(Date.now() / 1000) + 60 })
     const server = new MockWebSocketServer({ senderId: USER_ID })
-    const refreshAccessToken = vi.fn().mockResolvedValue({ kind: 'success', accessToken: 'new' })
+    const refreshAccessToken = vi
+      .fn()
+      .mockResolvedValue({ kind: 'success', accessToken: refreshedToken })
     const client = new MessengerWebSocketClient({
       wsOrigin: 'ws://localhost',
       accessToken: 'old',
@@ -913,7 +916,7 @@ describe('MessengerWebSocketClient reconnect and authorization', () => {
     await vi.advanceTimersByTimeAsync(1_000)
     await flushMicrotasks()
     expect(refreshAccessToken).toHaveBeenCalledOnce()
-    expect(latestConnection(server).protocols).toContain('bearer.new')
+    expect(latestConnection(server).protocols).toContain(`bearer.${refreshedToken}`)
 
     latestConnection(server).serverClose(4401, 'still rejected')
     await flushMicrotasks()
@@ -928,7 +931,129 @@ describe('MessengerWebSocketClient reconnect and authorization', () => {
     expect(server.connections.size).toBe(0)
   })
 
-  it('stops after a refreshed expired JWT is rejected with 1006', async () => {
+  it('refreshes again when a refreshed JWT expires during a prolonged outage', async () => {
+    vi.setSystemTime(new Date('2026-11-17T12:00:00Z'))
+    const initialExpiredToken = jwtWithPayload({ exp: Math.floor(Date.now() / 1000) - 60 })
+    const firstRefreshedToken = jwtWithPayload({ exp: Math.floor(Date.now() / 1000) + 5 })
+    const latestRefreshedToken = jwtWithPayload({ exp: Math.floor(Date.now() / 1000) + 120 })
+    const refreshAccessToken = vi
+      .fn()
+      .mockResolvedValueOnce({ kind: 'success', accessToken: firstRefreshedToken })
+      .mockResolvedValueOnce({ kind: 'success', accessToken: latestRefreshedToken })
+    const unavailableServer = new MockWebSocketServer({
+      senderId: USER_ID,
+      expectedAccessToken: 'chat-unavailable',
+    })
+    const recoveredServer = new MockWebSocketServer({
+      senderId: USER_ID,
+      expectedAccessToken: latestRefreshedToken,
+    })
+    let chatAvailable = false
+    const webSocketFactory = vi.fn<WebSocketFactory>((url, protocols) =>
+      (chatAvailable ? recoveredServer : unavailableServer).webSocketFactory(url, protocols),
+    )
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: initialExpiredToken,
+      currentUserId: USER_ID,
+      webSocketFactory,
+      auth: { refreshAccessToken },
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+
+    expect(refreshAccessToken).toHaveBeenCalledOnce()
+    expect(client.getSnapshot().transport).toBe('disconnected')
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flushMicrotasks()
+    await vi.advanceTimersByTimeAsync(2_000)
+    await flushMicrotasks()
+
+    expect(refreshAccessToken).toHaveBeenCalledOnce()
+    expect(webSocketFactory).toHaveBeenCalledTimes(3)
+    expect(webSocketFactory.mock.calls[1]?.[1]).toContain(`bearer.${firstRefreshedToken}`)
+    expect(webSocketFactory.mock.calls[2]?.[1]).toContain(`bearer.${firstRefreshedToken}`)
+    expect(client.getSnapshot().transport).toBe('disconnected')
+
+    await vi.advanceTimersByTimeAsync(4_000)
+    await flushMicrotasks()
+
+    expect(refreshAccessToken).toHaveBeenCalledTimes(2)
+    expect(webSocketFactory).toHaveBeenCalledTimes(4)
+    expect(webSocketFactory.mock.calls[3]?.[1]).toContain(`bearer.${firstRefreshedToken}`)
+    expect(client.getSnapshot().transport).toBe('disconnected')
+
+    chatAvailable = true
+    await vi.advanceTimersByTimeAsync(8_000)
+    await flushMicrotasks()
+
+    expect(webSocketFactory).toHaveBeenCalledTimes(5)
+    expect(webSocketFactory.mock.calls[4]?.[1]).toContain(`bearer.${latestRefreshedToken}`)
+    expect(refreshAccessToken).toHaveBeenCalledTimes(2)
+    expect(client.getSnapshot()).toMatchObject({
+      transport: 'connected',
+      authFailure: undefined,
+    })
+
+    client.stop()
+    expect(vi.getTimerCount()).toBe(0)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(webSocketFactory).toHaveBeenCalledTimes(5)
+    expect(refreshAccessToken).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not refresh again after an immediate 1006 with a still-valid refreshed JWT', async () => {
+    vi.setSystemTime(new Date('2026-11-17T12:00:00Z'))
+    const initialExpiredToken = jwtWithPayload({ exp: Math.floor(Date.now() / 1000) - 60 })
+    const refreshedToken = jwtWithPayload({ exp: Math.floor(Date.now() / 1000) + 60 })
+    const refreshAccessToken = vi.fn().mockResolvedValue({
+      kind: 'success',
+      accessToken: refreshedToken,
+    })
+    const server = new MockWebSocketServer({
+      senderId: USER_ID,
+      expectedAccessToken: 'chat-unavailable',
+    })
+    const webSocketFactory = vi.fn(server.webSocketFactory)
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: initialExpiredToken,
+      currentUserId: USER_ID,
+      webSocketFactory,
+      auth: { refreshAccessToken },
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flushMicrotasks()
+
+    expect(refreshAccessToken).toHaveBeenCalledOnce()
+    expect(webSocketFactory).toHaveBeenCalledTimes(2)
+    expect(webSocketFactory.mock.calls[1]?.[1]).toContain(`bearer.${refreshedToken}`)
+    expect(client.getSnapshot()).toMatchObject({ transport: 'disconnected' })
+    expect(client.getSnapshot().authFailure).toBeUndefined()
+    expect(vi.getTimerCount()).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(2_000)
+    await flushMicrotasks()
+
+    expect(refreshAccessToken).toHaveBeenCalledOnce()
+    expect(webSocketFactory).toHaveBeenCalledTimes(3)
+    expect(webSocketFactory.mock.calls[2]?.[1]).toContain(`bearer.${refreshedToken}`)
+    expect(client.getSnapshot()).toMatchObject({ transport: 'disconnected' })
+    expect(client.getSnapshot().authFailure).toBeUndefined()
+    expect(vi.getTimerCount()).toBe(1)
+
+    client.stop()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('stops when AuthAdapter returns an already expired JWT rejected with 1006', async () => {
     const initialExpiredToken = jwtWithPayload({ exp: Math.floor(Date.now() / 1000) - 60 })
     const refreshedExpiredToken = jwtWithPayload({ exp: Math.floor(Date.now() / 1000) - 30 })
     const refreshAccessToken = vi.fn().mockResolvedValue({
