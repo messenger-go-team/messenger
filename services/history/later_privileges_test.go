@@ -77,6 +77,16 @@ func TestLaterLeastPrivileges(t *testing.T) {
 	if err != nil || !created {
 		t.Fatal(entry, created, err)
 	}
+	view, created, err := repo.SaveRecord(t.Context(), input)
+	if err != nil || created || view.Entry.ID != entry.ID {
+		t.Fatal("API upsert requires excessive grants", view, created, err)
+	}
+	if _, err = repo.Reschedule(t.Context(), userB, entry.ID, nil); err != nil {
+		t.Fatal("API reschedule requires excessive grants", err)
+	}
+	if list, err := repo.ListRecords(t.Context(), userB); err != nil || len(list.Entries) != 1 {
+		t.Fatal("API list requires excessive grants", list, err)
+	}
 	for _, column := range []string{"due_at", "state", "updated_at"} {
 		if _, err = db.Exec(`REVOKE UPDATE(` + column + `) ON history.later_entries FROM ` + quoted); err != nil {
 			t.Fatal(err)
