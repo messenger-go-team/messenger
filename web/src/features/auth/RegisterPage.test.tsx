@@ -25,6 +25,7 @@ describe('RegisterPage', () => {
 
     await screen.findByRole('heading', { name: 'Регистрация' })
 
+    await user.type(screen.getByLabelText('Email'), 'carol@example.com')
     await user.type(screen.getByLabelText('Логин'), 'carol_3')
     await user.type(screen.getByLabelText('Пароль'), 'correct-horse-battery')
     await user.type(screen.getByLabelText('Повторите пароль'), 'correct-horse-battery')
@@ -41,6 +42,7 @@ describe('RegisterPage', () => {
 
     await screen.findByRole('heading', { name: 'Регистрация' })
 
+    await user.type(screen.getByLabelText('Email'), 'alice@example.com')
     await user.type(screen.getByLabelText('Логин'), 'alice_1')
     await user.type(screen.getByLabelText('Пароль'), 'correct-horse-battery')
     await user.type(screen.getByLabelText('Повторите пароль'), 'correct-horse-battery')

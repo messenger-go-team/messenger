@@ -10,20 +10,26 @@ import { messageFromAuthError } from '@/features/auth/authErrors'
 import { AuthLayout } from '@/features/auth/AuthLayout'
 import { hasFieldErrors, validateCredentials } from '@/features/auth/validation'
 
-/** Экран регистрации по username и паролю (SPEC FR-AUTH-1, FR-WEB-1). */
+/**
+ * Экран регистрации по username и паролю (SPEC FR-AUTH-1).
+ * Поле Email есть в макете; в OpenAPI его нет — валидируем на клиенте и не отправляем.
+ */
 export function RegisterPage() {
   const { register, isAuthenticated, isReady } = useAuth()
   const navigate = useNavigate()
+  const emailId = useId()
   const usernameId = useId()
   const passwordId = useId()
   const passwordConfirmId = useId()
 
+  const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<{
+    email?: string
     username?: string
     password?: string
     passwordConfirm?: string
@@ -40,6 +46,8 @@ export function RegisterPage() {
     setFormError(null)
 
     const errors = validateCredentials(username, password, {
+      requireEmail: true,
+      email,
       requirePasswordConfirm: true,
       passwordConfirm,
     })
@@ -66,6 +74,26 @@ export function RegisterPage() {
     >
       <form className="flex flex-col gap-8" onSubmit={onSubmit} noValidate>
         <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor={emailId}>Email</Label>
+            <Input
+              id={emailId}
+              name="email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              aria-invalid={Boolean(fieldErrors.email)}
+              aria-describedby={fieldErrors.email ? `${emailId}-error` : undefined}
+              disabled={submitting}
+            />
+            {fieldErrors.email ? (
+              <p id={`${emailId}-error`} className="text-xs text-destructive" role="alert">
+                {fieldErrors.email}
+              </p>
+            ) : null}
+          </div>
+
           <div className="flex flex-col gap-1">
             <Label htmlFor={usernameId}>Логин</Label>
             <Input

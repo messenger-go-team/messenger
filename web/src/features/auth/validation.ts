@@ -5,7 +5,13 @@ export const USERNAME_HINT = '3–32 символа: латинские букв
 
 export const PASSWORD_HINT = 'Пароль не короче 8 символов'
 
+export const EMAIL_HINT = 'Укажите корректный email'
+
+/** Простая проверка формата email для UI макета (API email не принимает). */
+export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 export interface FieldErrors {
+  email?: string
   username?: string
   password?: string
   passwordConfirm?: string
@@ -15,9 +21,21 @@ export interface FieldErrors {
 export function validateCredentials(
   username: string,
   password: string,
-  options: { requirePasswordConfirm?: boolean; passwordConfirm?: string } = {},
+  options: {
+    requirePasswordConfirm?: boolean
+    passwordConfirm?: string
+    requireEmail?: boolean
+    email?: string
+  } = {},
 ): FieldErrors {
   const errors: FieldErrors = {}
+
+  if (options.requireEmail) {
+    const email = options.email?.trim() ?? ''
+    if (!EMAIL_PATTERN.test(email)) {
+      errors.email = EMAIL_HINT
+    }
+  }
 
   if (!USERNAME_PATTERN.test(username)) {
     errors.username = USERNAME_HINT
@@ -38,6 +56,14 @@ export function validateCredentials(
   }
 
   return errors
+}
+
+export function validateEmail(email: string): FieldErrors {
+  const trimmed = email.trim()
+  if (!EMAIL_PATTERN.test(trimmed)) {
+    return { email: EMAIL_HINT }
+  }
+  return {}
 }
 
 export function hasFieldErrors(errors: FieldErrors): boolean {

@@ -1,4 +1,6 @@
-import { Button } from '@/components/ui/button'
+import { Link } from 'react-router'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { useAuth } from '@/features/auth/useAuth'
 
 /** Временная домашняя страница после входа до экранов чатов. */
@@ -12,9 +14,17 @@ export function HomePage() {
         <p className="text-center text-muted-foreground">
           Вы вошли как <span className="font-medium text-foreground">{user?.username}</span>
         </p>
-        <Button type="button" variant="outline" onClick={() => void logout()}>
-          Выйти
-        </Button>
+        <div className="flex w-full flex-col gap-2">
+          <Link
+            to="/change-password"
+            className={cn(buttonVariants({ variant: 'outline' }), 'w-full')}
+          >
+            Сменить пароль
+          </Link>
+          <Button type="button" variant="outline" onClick={() => void logout()}>
+            Выйти
+          </Button>
+        </div>
       </section>
     </main>
   )

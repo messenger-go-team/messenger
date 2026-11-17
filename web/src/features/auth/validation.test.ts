@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hasFieldErrors, validateCredentials } from './validation'
+import { hasFieldErrors, validateCredentials, validateEmail } from './validation'
 
 describe('validateCredentials', () => {
   it('accepts OpenAPI-compliant username and password', () => {
@@ -36,5 +36,27 @@ describe('validateCredentials', () => {
 
     expect(errors.passwordConfirm).toBeTruthy()
     expect(hasFieldErrors(errors)).toBe(true)
+  })
+
+  it('validates email when required by the registration mockup', () => {
+    expect(
+      validateCredentials('alice_1', 'correct-horse-battery', {
+        requireEmail: true,
+        email: 'bad',
+      }).email,
+    ).toBeTruthy()
+    expect(
+      validateCredentials('alice_1', 'correct-horse-battery', {
+        requireEmail: true,
+        email: 'alice@example.com',
+      }),
+    ).toEqual({})
+  })
+})
+
+describe('validateEmail', () => {
+  it('accepts a simple email and rejects an empty value', () => {
+    expect(validateEmail('alice@example.com')).toEqual({})
+    expect(validateEmail('')).toMatchObject({ email: expect.any(String) })
   })
 })

@@ -60,4 +60,15 @@ describe('LoginPage', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/логин или пароль/i)
   })
+
+  it('exposes remember-me and forgot-password controls from the mockup', async () => {
+    renderLogin()
+
+    await screen.findByRole('heading', { name: 'Вход' })
+    expect(screen.getByRole('checkbox', { name: 'Запомнить меня' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Забыли пароль' })).toHaveAttribute(
+      'href',
+      '/forgot-password',
+    )
+  })
 })
