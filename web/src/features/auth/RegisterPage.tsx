@@ -22,6 +22,7 @@ export function RegisterPage() {
   const [password, setPassword] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<{
     username?: string
     password?: string
@@ -59,8 +60,11 @@ export function RegisterPage() {
   }
 
   return (
-    <AuthLayout title="Регистрация">
-      <form className="flex flex-col gap-6" onSubmit={onSubmit} noValidate>
+    <AuthLayout
+      title="Регистрация"
+      footer="Регистрируясь вы соглашаетесь с политикой конфиденциальности и политикой обработки персональных данных"
+    >
+      <form className="flex flex-col gap-8" onSubmit={onSubmit} noValidate>
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
             <Label htmlFor={usernameId}>Логин</Label>
@@ -98,7 +102,7 @@ export function RegisterPage() {
               />
               <button
                 type="button"
-                className="absolute top-1/2 right-2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground"
+                className="absolute top-1/2 right-3 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground"
                 onClick={() => setShowPassword((value) => !value)}
                 aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
               >
@@ -113,20 +117,35 @@ export function RegisterPage() {
           </div>
 
           <div className="flex flex-col gap-1">
-            <Label htmlFor={passwordConfirmId}>Повтор пароля</Label>
-            <Input
-              id={passwordConfirmId}
-              name="passwordConfirm"
-              type={showPassword ? 'text' : 'password'}
-              autoComplete="new-password"
-              value={passwordConfirm}
-              onChange={(event) => setPasswordConfirm(event.target.value)}
-              aria-invalid={Boolean(fieldErrors.passwordConfirm)}
-              aria-describedby={
-                fieldErrors.passwordConfirm ? `${passwordConfirmId}-error` : undefined
-              }
-              disabled={submitting}
-            />
+            <Label htmlFor={passwordConfirmId}>Повторите пароль</Label>
+            <div className="relative">
+              <Input
+                id={passwordConfirmId}
+                name="passwordConfirm"
+                type={showPasswordConfirm ? 'text' : 'password'}
+                autoComplete="new-password"
+                value={passwordConfirm}
+                onChange={(event) => setPasswordConfirm(event.target.value)}
+                aria-invalid={Boolean(fieldErrors.passwordConfirm)}
+                aria-describedby={
+                  fieldErrors.passwordConfirm ? `${passwordConfirmId}-error` : undefined
+                }
+                disabled={submitting}
+                className="pr-10"
+              />
+              <button
+                type="button"
+                className="absolute top-1/2 right-3 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground"
+                onClick={() => setShowPasswordConfirm((value) => !value)}
+                aria-label={showPasswordConfirm ? 'Скрыть повтор пароля' : 'Показать повтор пароля'}
+              >
+                {showPasswordConfirm ? (
+                  <EyeOffIcon className="size-5" />
+                ) : (
+                  <EyeIcon className="size-5" />
+                )}
+              </button>
+            </div>
             {fieldErrors.passwordConfirm ? (
               <p
                 id={`${passwordConfirmId}-error`}
@@ -145,15 +164,18 @@ export function RegisterPage() {
           </p>
         ) : null}
 
-        <div className="flex flex-col gap-3">
-          <Button type="submit" size="lg" className="h-10 w-full" disabled={submitting}>
+        <div className="flex flex-col items-center gap-6">
+          <Button type="submit" size="lg" className="w-full rounded-lg" disabled={submitting}>
             {submitting ? 'Регистрация…' : 'Зарегистрироваться'}
           </Button>
-          <p className="text-center text-sm text-muted-foreground">
+          <p className="text-center text-sm leading-5 text-muted-foreground">
             Уже есть аккаунт?{' '}
             <Link
               to="/login"
-              className={cn(buttonVariants({ variant: 'link' }), 'inline h-auto p-0')}
+              className={cn(
+                buttonVariants({ variant: 'link' }),
+                'inline h-auto p-0 text-sm font-medium',
+              )}
             >
               Войти
             </Link>

@@ -50,8 +50,11 @@ export function LoginPage() {
   }
 
   return (
-    <AuthLayout title="Вход">
-      <form className="flex flex-col gap-6" onSubmit={onSubmit} noValidate>
+    <AuthLayout
+      title="Вход"
+      footer="Нажимая «Вход» вы принимаете политику конфиденциальности, пользовательское соглашение и правило персональных рекомендаций"
+    >
+      <form className="flex flex-col gap-8" onSubmit={onSubmit} noValidate>
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
             <Label htmlFor={usernameId}>Логин</Label>
@@ -89,7 +92,7 @@ export function LoginPage() {
               />
               <button
                 type="button"
-                className="absolute top-1/2 right-2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground"
+                className="absolute top-1/2 right-3 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground"
                 onClick={() => setShowPassword((value) => !value)}
                 aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
               >
@@ -110,14 +113,14 @@ export function LoginPage() {
           </p>
         ) : null}
 
-        <div className="flex flex-col gap-3">
-          <Button type="submit" size="lg" className="h-10 w-full" disabled={submitting}>
+        <div className="flex flex-col items-center gap-1">
+          <Button type="submit" size="lg" className="w-full rounded-lg" disabled={submitting}>
             {submitting ? 'Вход…' : 'Войти'}
           </Button>
-          <p className="text-center text-xs text-muted-foreground">или</p>
+          <p className="text-xs leading-4 tracking-[0.024px] text-muted-foreground">или</p>
           <Link
             to="/register"
-            className={cn(buttonVariants({ variant: 'outline', size: 'lg' }), 'h-10 w-full')}
+            className={cn(buttonVariants({ variant: 'outline', size: 'lg' }), 'w-full rounded-lg')}
           >
             Зарегистрироваться
           </Link>
