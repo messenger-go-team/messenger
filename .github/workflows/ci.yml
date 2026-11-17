@@ -78,6 +78,9 @@ jobs:
       - name: Download modules
         run: go mod download
 
+      - name: Check service unit coverage without external dependencies
+        run: make test-unit
+
       - name: Run tests with race detector
         run: make test
 
