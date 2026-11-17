@@ -81,6 +81,9 @@ func TestServiceAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Exact claims are deterministic even when CI pauses this goroutine.
+	issuedAt := time.Now().UTC().Truncate(time.Second)
+	s.clock = fixedClock{at: issuedAt}
 	created, err := s.Register(ctx, user.Username, password)
 	if err != nil || created != user {
 		t.Fatalf("register: %v", err)
@@ -99,8 +102,7 @@ func TestServiceAuthentication(t *testing.T) {
 		if err != nil || identity.UserID != user.ID || session.Access.TokenType != "Bearer" || session.Access.ExpiresIn != 900 {
 			t.Fatal("JWT incompatible with shared verifier", err)
 		}
-		remaining := time.Until(identity.ExpiresAt)
-		if remaining < 898*time.Second || remaining > 900*time.Second {
+		if !identity.ExpiresAt.Equal(issuedAt.Add(AccessLifetime)) {
 			t.Fatal("invalid JWT lifetime")
 		}
 		digest, err := HashRefresh(session.Refresh)
