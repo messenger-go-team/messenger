@@ -112,9 +112,12 @@ func TestLaterRESTLifecycleAndOwnership(t *testing.T) {
 			}
 		}
 	}
-	var spoofed later.List
-	if err := json.Unmarshal(f.request(t, "GET", "/later?user_id="+userA, userB, "", 200), &spoofed); err != nil || len(spoofed.Entries) != 1 || spoofed.Entries[0].ID != id {
-		t.Fatal("query changed JWT owner", spoofed, err)
+	f.request(t, "GET", "/later?user_id="+userA, userB, "", 422)
+	if out := getLaterList(t, f, userB); len(out.Entries) != 1 || out.Entries[0].ID != id {
+		t.Fatal("rejected query changed JWT owner's list", out)
+	}
+	if out := getLaterList(t, f, userA); len(out.Entries) != 1 || out.Entries[0].ID != own.Entry.ID {
+		t.Fatal("rejected query changed peer's list", out)
 	}
 	f.request(t, "POST", "/later/"+id+"/done", userB, "", 204)
 	f.request(t, "POST", "/later/"+id+"/done", userB, "", 204)
@@ -227,6 +230,9 @@ func TestLaterRESTOutageAndReadiness(t *testing.T) {
 	}
 	for _, req := range []struct{ method, path, body string }{{"GET", "/later", ""}, {"POST", "/later", laterBody(chat, message, "null")}, {"PATCH", "/later/" + entry.ID, `{"due_at":null}`}, {"POST", "/later/" + entry.ID + "/done", ""}} {
 		data := f.request(t, req.method, req.path, userB, req.body, 503)
+		// Input rejection must still win over a real storage outage.
+		f.request(t, req.method, req.path+"?limit=1", userB, req.body, 422)
+		f.request(t, req.method, req.path+"?due_at=%zz", userB, req.body, 422)
 		var out map[string]string
 		if json.Unmarshal(data, &out) != nil || out["code"] != "service_unavailable" || len(out) != 3 {
 			t.Fatal(string(data))

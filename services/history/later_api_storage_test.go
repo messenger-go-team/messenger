@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -32,10 +31,8 @@ func TestLaterListOrderingAndNoHiddenLimit(t *testing.T) {
 	if len(out.Entries) != 140 {
 		t.Fatal("list was truncated", len(out.Entries))
 	}
-	var untruncated later.List
-	if err := json.Unmarshal(f.request(t, "GET", "/later?limit=1", userB, "", 200), &untruncated); err != nil || len(untruncated.Entries) != 140 {
-		t.Fatal("undeclared limit truncated the MVP list", untruncated, err)
-	}
+	// The plain GET above proves the full list; no query limit exists in MVP.
+	f.request(t, "GET", "/later?limit=1", userB, "", 422)
 	rank := map[string]int{"due": 0, "scheduled": 1, "unscheduled": 2}
 	for i, entry := range out.Entries {
 		want := "unscheduled"

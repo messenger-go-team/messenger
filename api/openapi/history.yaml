@@ -412,6 +412,8 @@ paths:
           $ref: '#/components/responses/LaterNotFound'
         '422':
           $ref: '#/components/responses/LaterValidationError'
+        '503':
+          $ref: '#/components/responses/LaterWriteUnavailable'
     get:
       tags: [Later]
       operationId: listLaterEntries
@@ -554,6 +556,8 @@ paths:
           $ref: '#/components/responses/LaterNotFound'
         '422':
           $ref: '#/components/responses/LaterValidationError'
+        '503':
+          $ref: '#/components/responses/LaterWriteUnavailable'
 
   /later/{later_id}/done:
     post:
@@ -585,6 +589,8 @@ paths:
           $ref: '#/components/responses/LaterNotFound'
         '422':
           $ref: '#/components/responses/LaterValidationError'
+        '503':
+          $ref: '#/components/responses/LaterWriteUnavailable'
 
 components:
   securitySchemes:
@@ -1012,11 +1018,25 @@ components:
           example:
             code: service_unavailable
             message: Список временно недоступен. Повторите запрос позже.
+    LaterWriteUnavailable:
+      description: >-
+        History или его хранилище временно недоступны. Успешное изменение
+        записи не подтверждено. Ответ не раскрывает SQL и данные записи.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: service_unavailable
+            message: Сервис временно недоступен.
     LaterValidationError:
       description: >-
         Некорректный UUID, JSON, неизвестные поля или параметры, отсутствующий
         обязательный due_at, неверный формат срока либо недопустимый limit.
-        Для новых операций JWT проверяется до обращения к данным.
+        Для POST/GET /later, PATCH /later/{later_id} и
+        POST /later/{later_id}/done query-параметры не предусмотрены:
+        непустая query string, включая limit и некорректный percent-encoding,
+        даёт 422. JWT проверяется раньше параметров и до обращения к данным.
         Неизвестный ресурс с корректным UUID обрабатывается как 404.
       content:
         application/json:

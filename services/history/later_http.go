@@ -8,7 +8,6 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"net/url"
 	"time"
 	"unicode/utf8"
 
@@ -21,6 +20,12 @@ func laterRoutes(mux *http.ServeMux, service *later.Service, verifier *jwtauth.V
 	handle := func(pattern string, next func(http.ResponseWriter, *http.Request, string) error) {
 		mux.Handle(pattern, verifier.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
+			// None of the Later routes declares query parameters. Check RawQuery
+			// directly so unknown keys and malformed escapes cannot reach storage.
+			if r.URL.RawQuery != "" {
+				writeLaterError(w, r, later.ErrInvalid)
+				return
+			}
 			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 			defer cancel()
 			r = r.WithContext(ctx)
@@ -55,9 +60,6 @@ func laterRoutes(mux *http.ServeMux, service *later.Service, verifier *jwtauth.V
 		return nil
 	})
 	handle("GET /later", func(w http.ResponseWriter, r *http.Request, owner string) error {
-		if _, err := url.ParseQuery(r.URL.RawQuery); err != nil {
-			return later.ErrInvalid
-		}
 		out, err := service.List(r.Context(), owner)
 		if err != nil {
 			return err
