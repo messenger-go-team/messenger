@@ -11,9 +11,10 @@ import (
 
 	"github.com/messenger-go-team/messenger/pkg/jwtauth"
 	"github.com/messenger-go-team/messenger/services/history/internal/chats"
+	"github.com/messenger-go-team/messenger/services/history/internal/reading"
 )
 
-func chatRoutes(service *chats.Service, verifier *jwtauth.Verifier) http.Handler {
+func chatRoutes(service *chats.Service, verifier *jwtauth.Verifier, reader *reading.Service) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("POST /chats/personal", verifier.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -36,37 +37,48 @@ func chatRoutes(service *chats.Service, verifier *jwtauth.Verifier) http.Handler
 		}
 		writeChatJSON(w, code, chat)
 	})))
+	readingRoutes(mux, reader, verifier)
 	return mux
 }
 func readPeer(w http.ResponseWriter, r *http.Request) (string, error) {
+	var id string
+	err := readChatField(w, r, "user_id", &id)
+	return id, err
+}
+
+// readChatField requires exactly one non-null field and a single JSON object.
+func readChatField(w http.ResponseWriter, r *http.Request, name string, value any) error {
 	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || media != "application/json" {
-		return "", chats.ErrInvalid
+		return chats.ErrInvalid
 	}
 	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	token, err := d.Token()
 	if err != nil || token != json.Delim('{') {
-		return "", chats.ErrInvalid
+		return chats.ErrInvalid
 	}
 	found := false
-	var id string
 	for d.More() {
 		key, err := d.Token()
-		if err != nil || key != "user_id" || found {
-			return "", chats.ErrInvalid
+		if err != nil || key != name || found {
+			return chats.ErrInvalid
 		}
-		if err = d.Decode(&id); err != nil {
-			return "", chats.ErrInvalid
+		var raw json.RawMessage
+		if err = d.Decode(&raw); err != nil || string(raw) == "null" {
+			return chats.ErrInvalid
+		}
+		if err = json.Unmarshal(raw, value); err != nil {
+			return chats.ErrInvalid
 		}
 		found = true
 	}
 	if _, err = d.Token(); err != nil || !found {
-		return "", chats.ErrInvalid
+		return chats.ErrInvalid
 	}
 	if err = d.Decode(new(any)); err != io.EOF {
-		return "", chats.ErrInvalid
+		return chats.ErrInvalid
 	}
-	return id, nil
+	return nil
 }
 func writeChatJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")

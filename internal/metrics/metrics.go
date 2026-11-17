@@ -10,8 +10,10 @@ import (
 )
 
 // NewHandler creates an endpoint with its own registry. Call it once per service.
-func NewHandler() http.Handler {
-	return promhttp.HandlerFor(newRegistry(), promhttp.HandlerOpts{})
+func NewHandler(additionalCollectors ...prometheus.Collector) http.Handler {
+	registry := newRegistry()
+	registry.MustRegister(additionalCollectors...)
+	return promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
 }
 
 func newRegistry() *prometheus.Registry {

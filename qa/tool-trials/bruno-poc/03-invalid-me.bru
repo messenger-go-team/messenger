@@ -1,0 +1,27 @@
+meta {
+  name: 03-invalid-me
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/me?invalid=1
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+tests {
+  const { responseValidator } = require("./contract.cjs");
+  test("invalid response status", () => expect(res.status).to.equal(200));
+  test("invalid User schema rejected", () => {
+    const validate = responseValidator("/me", "get", 200);
+    expect(validate(res.body)).to.equal(false);
+    for (const keyword of ["required", "additionalProperties", "type", "format"]) {
+      expect(validate.errors.some(e => e.keyword === keyword), keyword).to.equal(true);
+    }
+  });
+}

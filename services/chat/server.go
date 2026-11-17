@@ -9,18 +9,37 @@ import (
 	"net/http"
 	"sync/atomic"
 	"time"
+
+	historyv1 "github.com/messenger-go-team/messenger/api/gen/history/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func run(ctx context.Context, cfg config, logger *slog.Logger) error {
+	history, err := newHistoryConn(cfg.HistoryGRPCAddr)
+	if err != nil {
+		return fmt.Errorf("create History client: %w", err)
+	}
+	defer func() { _ = history.Close() }()
+
 	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", cfg.HTTPAddr)
 	if err != nil {
 		return fmt.Errorf("listen HTTP: %w", err)
 	}
 	var ready atomic.Bool
-	ws := newWSEndpoint(cfg, &ready, defaultWSTiming())
+	ws := newWSEndpoint(cfg, &ready, defaultWSTiming(), historyv1.NewHistoryServiceClient(history))
 	handler := newServiceHandler(&ready, logger, ws)
 	server := newHTTPServer(cfg, handler, logger)
 	return serve(ctx, server, listener, ws, cfg.ShutdownTimeout, logger)
+}
+
+func newHistoryConn(address string) (*grpc.ClientConn, error) {
+	// Resolve the private History address directly without a proxy or DNS service config.
+	return grpc.NewClient(address,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithNoProxy(),
+		grpc.WithDisableServiceConfig(),
+	)
 }
 
 func newHTTPServer(cfg config, handler http.Handler, logger *slog.Logger) *http.Server {
@@ -53,7 +72,7 @@ func serve(ctx context.Context, server *http.Server, listener net.Listener,
 	case <-ctx.Done():
 	}
 	ws.stopAccepting()
-	defer ws.forceClose()
+	defer ws.hub.forceClose()
 	logger.Info("shutdown started")
 
 	// The signal context is already cancelled; draining needs its own deadline.

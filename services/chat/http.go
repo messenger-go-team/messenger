@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/messenger-go-team/messenger/internal/metrics"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type requestLoggerKey struct{}
@@ -52,9 +53,13 @@ func requestLogging(logger *slog.Logger, next http.Handler) http.Handler {
 }
 
 // WebSocket authentication runs inside the endpoint, before the HTTP upgrade.
-func newServiceHandler(ready *atomic.Bool, logger *slog.Logger, ws http.Handler) http.Handler {
+func newServiceHandler(ready *atomic.Bool, logger *slog.Logger, ws *wsEndpoint) http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("GET /metrics", metrics.NewHandler())
+	connections := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "chat_active_websocket_connections",
+		Help: "Number of WebSocket connections registered in the Chat hub.",
+	}, func() float64 { return float64(ws.hub.size()) })
+	mux.Handle("GET /metrics", metrics.NewHandler(connections))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeHealth(w, r, http.StatusOK, "{\"status\":\"ok\"}\n")
 	})

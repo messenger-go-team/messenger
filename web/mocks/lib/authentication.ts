@@ -1,8 +1,8 @@
-import { findUserById } from '../data/auth'
 import { verifyAccessToken } from './tokens'
 
 /**
- * Извлекает Bearer JWT, проверяет подпись/срок и существование `sub` в mock Auth store.
+ * Извлекает Bearer JWT и проверяет подпись, claims и срок по общим правилам History.
+ * Существование пользователя в Auth проверяет только операция, которой нужен lookup.
  * Возвращает ID аутентифицированного пользователя; handler преобразует `null` в HTTP 401.
  */
 export async function authenticateAccessToken(request: Request): Promise<string | null> {
@@ -12,7 +12,5 @@ export async function authenticateAccessToken(request: Request): Promise<string 
     return null
   }
 
-  const userId = await verifyAccessToken(authorization.slice('Bearer '.length))
-
-  return userId && findUserById(userId) ? userId : null
+  return verifyAccessToken(authorization.slice('Bearer '.length))
 }

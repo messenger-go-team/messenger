@@ -100,6 +100,13 @@ func assertMigrationTestInt(t *testing.T, db *sql.DB, query string, want int) {
 	}
 }
 
+func migrationTestVersion(service string) int {
+	if service == "history" {
+		return 2
+	}
+	return 1
+}
+
 func TestMigrationsIntegration(t *testing.T) {
 	if os.Getenv("MIGRATE_TEST_DATABASE_URL") == "" {
 		t.Skip("set MIGRATE_TEST_DATABASE_URL to run PostgreSQL migration tests")
@@ -110,7 +117,11 @@ func TestMigrationsIntegration(t *testing.T) {
 		config, db := newMigrationTestDatabase(t)
 		apply := func(service, direction string) {
 			t.Helper()
-			if err := migrateService(service, direction, 1, config); err != nil {
+			steps := 1
+			if service == "history" && direction == directionDown {
+				steps = 2
+			}
+			if err := migrateService(service, direction, steps, config); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -118,9 +129,9 @@ func TestMigrationsIntegration(t *testing.T) {
 		apply("auth", directionUp)
 		assertMigrationTestInt(t, db, "SELECT count(*) FROM pg_class WHERE relname = 'history_schema_migrations'", 0)
 		apply("history", directionUp)
-		assertMigrationTestInt(t, db, "SELECT count(*) FROM information_schema.tables WHERE table_schema IN ('auth', 'history')", 7)
+		assertMigrationTestInt(t, db, "SELECT count(*) FROM information_schema.tables WHERE table_schema IN ('auth', 'history')", 8)
 		for _, service := range services {
-			assertMigrationTestInt(t, db, "SELECT count(*) FROM "+service+"_schema_migrations WHERE version = 1 AND NOT dirty", 1)
+			assertMigrationTestInt(t, db, fmt.Sprintf("SELECT count(*) FROM %s_schema_migrations WHERE version = %d AND NOT dirty", service, migrationTestVersion(service)), 1)
 		}
 		assertMigrationTestInt(t, db, "SELECT count(*) FROM pg_attribute a JOIN pg_collation c ON c.oid = a.attcollation WHERE a.attrelid = 'auth.users'::regclass AND a.attname = 'username_normalized' AND c.collname = 'C'", 1)
 		for _, index := range []string{"messages_chat_seq_uq", "messages_idempotency_uq", "chat_members_user_chat_idx"} {
@@ -206,12 +217,12 @@ WHERE c.user_id = '00000000-0000-4000-8000-000000000001'`).Scan(&usernames); err
 
 		apply("auth", directionDown)
 		assertMigrationTestInt(t, db, "SELECT count(*) FROM history.messages", 2)
-		assertMigrationTestInt(t, db, "SELECT count(*) FROM history_schema_migrations WHERE version = 1 AND NOT dirty", 1)
+		assertMigrationTestInt(t, db, "SELECT count(*) FROM history_schema_migrations WHERE version = 2 AND NOT dirty", 1)
 		apply("history", directionDown)
 		assertMigrationTestInt(t, db, "SELECT count(*) FROM information_schema.tables WHERE table_schema IN ('auth', 'history')", 0)
 		for _, service := range services {
 			apply(service, directionUp)
-			assertMigrationTestInt(t, db, "SELECT count(*) FROM "+service+"_schema_migrations WHERE version = 1 AND NOT dirty", 1)
+			assertMigrationTestInt(t, db, fmt.Sprintf("SELECT count(*) FROM %s_schema_migrations WHERE version = %d AND NOT dirty", service, migrationTestVersion(service)), 1)
 		}
 	})
 
@@ -221,7 +232,7 @@ WHERE c.user_id = '00000000-0000-4000-8000-000000000001'`).Scan(&usernames); err
 			t.Fatal(err)
 		}
 		execMigrationTestSQL(t, db, "CREATE TABLE history.unrelated (id integer)")
-		if err := migrateService("history", directionDown, 1, config); err == nil {
+		if err := migrateService("history", directionDown, 2, config); err == nil {
 			t.Fatal("down must fail rather than cascade to an unexpected object")
 		}
 		assertMigrationTestInt(t, db, "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'history'", 5)
@@ -242,7 +253,7 @@ WHERE c.user_id = '00000000-0000-4000-8000-000000000001'`).Scan(&usernames); err
 			}
 			execMigrationTestSQL(t, db, "ALTER DATABASE "+pq.QuoteIdentifier(config.name)+" SET search_path TO alternate, public")
 			output, err := captureMigrationOutput(t, func() error { return migrateService(service, directionVersion, 1, config) })
-			if err != nil || !strings.Contains(output, "version=1 dirty=false") {
+			if err != nil || !strings.Contains(output, fmt.Sprintf("version=%d dirty=false", migrationTestVersion(service))) {
 				t.Fatalf("version = %q, %v", output, err)
 			}
 			output, err = captureMigrationOutput(t, func() error { return migrateService(service, directionUp, 1, config) })
@@ -262,10 +273,10 @@ WHERE c.user_id = '00000000-0000-4000-8000-000000000001'`).Scan(&usernames); err
 		}
 		execMigrationTestSQL(t, db, "INSERT INTO auth.users(username, username_normalized, password_hash) VALUES ('alice', 'alice', 'hash')")
 		for _, service := range services {
-			if err := migrateService(service, directionDown, 2, config); err == nil {
+			if err := migrateService(service, directionDown, 3, config); err == nil {
 				t.Fatal("too many steps must fail")
 			}
-			assertMigrationTestInt(t, db, "SELECT count(*) FROM public."+service+"_schema_migrations WHERE version=1 AND NOT dirty", 1)
+			assertMigrationTestInt(t, db, fmt.Sprintf("SELECT count(*) FROM public.%s_schema_migrations WHERE version=%d AND NOT dirty", service, migrationTestVersion(service)), 1)
 		}
 		assertMigrationTestInt(t, db, "SELECT count(*) FROM auth.users", 1)
 		// all must preflight history before deleting the valid auth target.
@@ -333,7 +344,11 @@ WHERE c.user_id = '00000000-0000-4000-8000-000000000001'`).Scan(&usernames); err
 		t.Chdir(dir)
 		for _, service := range services {
 			for _, direction := range []string{directionUp, directionVersion, directionDown} {
-				if err := migrateService(service, direction, 1, config); err != nil {
+				steps := 1
+				if service == "history" && direction == directionDown {
+					steps = 2
+				}
+				if err := migrateService(service, direction, steps, config); err != nil {
 					t.Fatal(err)
 				}
 			}
