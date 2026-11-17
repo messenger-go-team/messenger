@@ -1,5 +1,5 @@
-// Package later defines persistence types for private saved-message entries.
-// HTTP, JWT extraction, strict RFC3339 parsing and response projections belong to #87.
+// Package later defines rules, storage types and public projections for private
+// saved-message entries. The HTTP adapter supplies the verified owner identity.
 package later
 
 import (

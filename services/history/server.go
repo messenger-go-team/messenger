@@ -15,6 +15,7 @@ import (
 	historyv1 "github.com/messenger-go-team/messenger/api/gen/history/v1"
 	"github.com/messenger-go-team/messenger/services/history/internal/authclient"
 	"github.com/messenger-go-team/messenger/services/history/internal/chats"
+	"github.com/messenger-go-team/messenger/services/history/internal/later"
 	"github.com/messenger-go-team/messenger/services/history/internal/messages"
 	"github.com/messenger-go-team/messenger/services/history/internal/postgres"
 	"github.com/messenger-go-team/messenger/services/history/internal/reading"
@@ -38,6 +39,7 @@ func run(ctx context.Context, c config, logger *slog.Logger) error {
 		return errors.New("connect to history database failed")
 	}
 	repo := &postgres.Repository{DB: db}
+	savedRepo := &postgres.LaterRepository{DB: db}
 	service := &chats.Service{Repo: repo, Users: authclient.New(c.AuthURL, c.InternalToken)}
 	httpListener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", c.HTTPAddr)
 	if err != nil {
@@ -50,7 +52,7 @@ func run(ctx context.Context, c config, logger *slog.Logger) error {
 	}
 	defer func() { _ = grpcListener.Close() }()
 	var ready atomic.Bool
-	web := &http.Server{Handler: newServiceHandlerWithReadiness(&ready, logger, chatRoutes(service, c.JWTVerifier, &reading.Service{Repo: repo, Users: service.Users}), repo.Ready), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError)}
+	web := &http.Server{Handler: newServiceHandlerWithReadiness(&ready, logger, chatRoutes(service, c.JWTVerifier, &reading.Service{Repo: repo, Users: service.Users}, &later.Service{Repo: savedRepo}), historyReadiness(repo, savedRepo)), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError)}
 	rpc := grpc.NewServer(grpc.UnaryInterceptor(rpcLogging(logger)), grpc.MaxRecvMsgSize(1<<20))
 	historyv1.RegisterHistoryServiceServer(rpc, &historyGRPC{repo: repo, messages: messages.New(repo)})
 	return serveHistory(ctx, web, rpc, httpListener, grpcListener, &ready, c.ShutdownTimeout, logger)
@@ -112,4 +114,15 @@ func serveHistory(ctx context.Context, web *http.Server, rpc *grpc.Server, httpL
 	}
 	logger.Info("servers stopped")
 	return first
+}
+
+// Publishing the new endpoints also makes migration v2 and Later grants required.
+// Keep the checks on the same runtime role rather than a migration-owner DSN.
+func historyReadiness(repo *postgres.Repository, saved *postgres.LaterRepository) func(context.Context) error {
+	return func(ctx context.Context) error {
+		if err := repo.Ready(ctx); err != nil {
+			return err
+		}
+		return saved.Ready(ctx)
+	}
 }

@@ -11,10 +11,11 @@ import (
 
 	"github.com/messenger-go-team/messenger/pkg/jwtauth"
 	"github.com/messenger-go-team/messenger/services/history/internal/chats"
+	"github.com/messenger-go-team/messenger/services/history/internal/later"
 	"github.com/messenger-go-team/messenger/services/history/internal/reading"
 )
 
-func chatRoutes(service *chats.Service, verifier *jwtauth.Verifier, reader *reading.Service) http.Handler {
+func chatRoutes(service *chats.Service, verifier *jwtauth.Verifier, reader *reading.Service, saved *later.Service) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("POST /chats/personal", verifier.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -38,6 +39,7 @@ func chatRoutes(service *chats.Service, verifier *jwtauth.Verifier, reader *read
 		writeChatJSON(w, code, chat)
 	})))
 	readingRoutes(mux, reader, verifier)
+	laterRoutes(mux, saved, verifier)
 	return mux
 }
 func readPeer(w http.ResponseWriter, r *http.Request) (string, error) {

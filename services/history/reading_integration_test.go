@@ -17,6 +17,7 @@ import (
 	"github.com/messenger-go-team/messenger/pkg/jwtauth"
 	"github.com/messenger-go-team/messenger/services/history/internal/authclient"
 	"github.com/messenger-go-team/messenger/services/history/internal/chats"
+	"github.com/messenger-go-team/messenger/services/history/internal/later"
 	"github.com/messenger-go-team/messenger/services/history/internal/messages"
 	"github.com/messenger-go-team/messenger/services/history/internal/postgres"
 	"github.com/messenger-go-team/messenger/services/history/internal/reading"
@@ -59,7 +60,7 @@ func newReadingFixture(t *testing.T) *readingFixture {
 	}
 	var ready atomic.Bool
 	ready.Store(true)
-	f.web = httptest.NewServer(newServiceHandlerWithReadiness(&ready, newLogger(&f.logs, "history", 0), chatRoutes(&chats.Service{Repo: f.repo, Users: users}, verifier, &reading.Service{Repo: f.repo, Users: users}), f.repo.Ready))
+	f.web = httptest.NewServer(newServiceHandlerWithReadiness(&ready, newLogger(&f.logs, "history", 0), chatRoutes(&chats.Service{Repo: f.repo, Users: users}, verifier, &reading.Service{Repo: f.repo, Users: users}, &later.Service{Repo: &postgres.LaterRepository{DB: f.db}}), f.repo.Ready))
 	t.Cleanup(f.web.Close)
 	return f
 }
