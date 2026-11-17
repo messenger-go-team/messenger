@@ -2,8 +2,11 @@ package messages
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 const chat = "23968cc7-c30c-47b0-a741-6b81249aa5e7"
@@ -67,5 +70,37 @@ func TestServicePreservesExactBody(t *testing.T) {
 	in.Body = "\x00"
 	if _, err := service.Save(t.Context(), in); err != ErrInvalid || r.calls != 1 {
 		t.Fatal("invalid message reached storage")
+	}
+}
+
+// The service must preserve repository error identity for the gRPC mapping.
+// SQL idempotency/authorization is verified separately against PostgreSQL.
+type saveFunc func(context.Context, Input) (Saved, error)
+
+func (f saveFunc) Save(ctx context.Context, in Input) (Saved, error) { return f(ctx, in) }
+
+func TestSaveRepositoryBoundary(t *testing.T) {
+	for _, failure := range []error{nil, ErrChatNotFound, ErrNotMember, ErrConflict, ErrSeqExhausted, context.Canceled, context.DeadlineExceeded} {
+		t.Run(fmt.Sprint(failure), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			in := Input{chat, user, client, "  exact original 🙂  "}
+			want := Saved{ID: client, Seq: MaxSeq, CreatedAt: time.Date(2026, 11, 17, 0, 0, 0, 123456000, time.UTC), Duplicate: true}
+			if failure != nil {
+				want = Saved{}
+			}
+			calls := 0
+			s := New(saveFunc(func(got context.Context, input Input) (Saved, error) {
+				calls++
+				if got != ctx || input != in {
+					t.Fatal("save changed context or input")
+				}
+				return want, failure
+			}))
+			out, err := s.Save(ctx, in)
+			if !errors.Is(err, failure) || out != want || calls != 1 {
+				t.Fatal(out, err, calls)
+			}
+		})
 	}
 }

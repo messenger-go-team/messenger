@@ -6,8 +6,13 @@ MIGRATE_STEPS ?= 1
 GOLANGCI_LINT ?= $(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 # Go's ./... skips directories beginning with "_".
 GO_PACKAGES := ./... ./services/_template
+# Business packages only: adapters, transports and integration tests cannot raise
+# the unit-only coverage figure. Extend this list when adding a business package.
+SERVICE_UNIT_PACKAGES := ./services/auth/internal/auth \
+	./services/history/internal/chats ./services/history/internal/messages \
+	./services/history/internal/reading ./services/history/internal/later
 
-.PHONY: build lint test migrate-up migrate-down migrate-version
+.PHONY: build lint test test-unit migrate-up migrate-down migrate-version
 
 build:
 	mkdir -p bin
@@ -18,6 +23,11 @@ lint:
 
 test:
 	CGO_ENABLED=1 $(GO) test -race -count=1 $(GO_PACKAGES)
+
+test-unit:
+	CGO_ENABLED=1 $(GO) test -race -count=1 -coverprofile=coverage.unit.out $(SERVICE_UNIT_PACKAGES)
+	$(GO) tool cover -func=coverage.unit.out
+	$(GO) run ./cmd/checkcoverage -profile=coverage.unit.out -min=60 $(SERVICE_UNIT_PACKAGES)
 
 migrate-up:
 	$(GO) run ./cmd/migrate -service=$(MIGRATE_SERVICE) -direction=up
