@@ -1,8 +1,13 @@
 import { AppRouter } from '@/app/AppRouter'
+import { AuthProvider } from '@/features/auth/AuthProvider'
 
-/** Корневой компонент приложения, делегирующий выбор экрана router. */
+/** Корневой компонент приложения: сессия и маршруты. */
 function App() {
-  return <AppRouter />
+  return (
+    <AuthProvider>
+      <AppRouter />
+    </AuthProvider>
+  )
 }
 
 export default App
