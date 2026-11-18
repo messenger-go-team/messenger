@@ -70,34 +70,18 @@ func (r *Repository) History(ctx context.Context, chat, user string, q reading.Q
 	if !member {
 		return reading.Page{}, chats.ErrForbidden
 	}
-	query := `SELECT id,chat_id,seq,sender_id,body,created_at FROM history.messages WHERE chat_id=$1 AND seq<$2 ORDER BY seq DESC LIMIT $3`
 	cursor := messages.MaxSeq + 1 // MaxSeq+1 includes the last permissible seq.
 	if q.Before != nil {
 		cursor = *q.Before
 	}
 	if q.After != nil {
 		cursor = *q.After
-		query = `SELECT id,chat_id,seq,sender_id,body,created_at FROM history.messages WHERE chat_id=$1 AND seq>$2 ORDER BY seq ASC LIMIT $3`
 	}
-	rows, err := tx.QueryContext(ctx, query, chat, cursor, q.Limit)
+	items, err := readMessagePage(ctx, tx, chat, cursor, q.Limit, q.After != nil)
 	if err != nil {
 		return reading.Page{}, err
 	}
-	page := reading.Page{Messages: []reading.Message{}}
-	for rows.Next() {
-		var m reading.Message
-		if err = rows.Scan(&m.ID, &m.ChatID, &m.Seq, &m.SenderID, &m.Body, &m.CreatedAt); err != nil {
-			_ = rows.Close()
-			return reading.Page{}, err
-		}
-		m.CreatedAt = m.CreatedAt.UTC()
-		page.Messages = append(page.Messages, m)
-	}
-	err = rows.Err()
-	closeErr := rows.Close()
-	if err != nil || closeErr != nil {
-		return reading.Page{}, errors.Join(err, closeErr)
-	}
+	page := reading.Page{Messages: items}
 	if q.After == nil {
 		slices.Reverse(page.Messages)
 	}
@@ -113,6 +97,35 @@ func (r *Repository) History(ctx context.Context, chat, user string, q reading.Q
 		return reading.Page{}, err
 	}
 	return page, nil
+}
+
+// readMessagePage returns neighbors nearest to the cursor first in the chosen direction.
+func readMessagePage(ctx context.Context, tx *sql.Tx, chat string, cursor int64, limit int, after bool) ([]reading.Message, error) {
+	query := `SELECT id,chat_id,seq,sender_id,body,created_at FROM history.messages WHERE chat_id=$1 AND seq<$2 ORDER BY seq DESC LIMIT $3`
+	if after {
+		query = `SELECT id,chat_id,seq,sender_id,body,created_at FROM history.messages WHERE chat_id=$1 AND seq>$2 ORDER BY seq ASC LIMIT $3`
+	}
+	rows, err := tx.QueryContext(ctx, query, chat, cursor, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	items := []reading.Message{}
+	for rows.Next() {
+		item, err := scanHistoryMessage(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func scanHistoryMessage(scan func(...any) error) (reading.Message, error) {
+	var item reading.Message
+	err := scan(&item.ID, &item.ChatID, &item.Seq, &item.SenderID, &item.Body, &item.CreatedAt)
+	item.CreatedAt = item.CreatedAt.UTC()
+	return item, err
 }
 
 func (r *Repository) MarkRead(ctx context.Context, chat, user string, seq int64) error {

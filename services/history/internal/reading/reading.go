@@ -3,6 +3,7 @@ package reading
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/messenger-go-team/messenger/services/history/internal/chats"
@@ -24,6 +25,18 @@ type Page struct {
 	MoreBefore bool      `json:"has_more_before"`
 	MoreAfter  bool      `json:"has_more_after"`
 }
+
+var ErrMessageNotFound = errors.New("message not found or inaccessible")
+
+type MessageContext struct {
+	TargetMessageID string    `json:"target_message_id"`
+	Messages        []Message `json:"messages"`
+	Before          int64     `json:"next_before_seq"`
+	After           int64     `json:"next_after_seq"`
+	MoreBefore      bool      `json:"has_more_before"`
+	MoreAfter       bool      `json:"has_more_after"`
+}
+
 type Query struct {
 	Before, After *int64
 	Limit         int
@@ -53,6 +66,7 @@ type ChatItem struct {
 type Repository interface {
 	List(context.Context, string) ([]ChatItem, error)
 	History(context.Context, string, string, Query) (Page, error)
+	MessageContext(ctx context.Context, chat, user, target string, limit int) (MessageContext, error)
 	MarkRead(context.Context, string, string, int64) error
 }
 type Service struct {
@@ -107,6 +121,22 @@ func (s *Service) History(ctx context.Context, chat, user string, q Query) (Page
 	}
 	return s.Repo.History(ctx, chat, user, q)
 }
+func (s *Service) MessageContext(ctx context.Context, chat, user, target string, limit int) (MessageContext, error) {
+	user, err := identity(user)
+	if err != nil {
+		return MessageContext{}, err
+	}
+	chat, err = chats.NormalizeID(chat)
+	if err != nil {
+		return MessageContext{}, err
+	}
+	target, err = chats.NormalizeID(target)
+	if err != nil || limit < 1 || limit > 100 {
+		return MessageContext{}, chats.ErrInvalid
+	}
+	return s.Repo.MessageContext(ctx, chat, user, target, limit)
+}
+
 func (s *Service) MarkRead(ctx context.Context, chat, user string, seq int64) error {
 	user, err := identity(user)
 	if err != nil {
