@@ -14,7 +14,7 @@ import { hasFieldErrors, validateCredentials } from '@/features/auth/validation'
 
 /** Экран входа по username и паролю (SPEC FR-AUTH / FR-WEB-1). */
 export function LoginPage() {
-  const { login, isAuthenticated, isReady } = useAuth()
+  const { login, logout, logoutError, isAuthenticated, isReady } = useAuth()
   const navigate = useNavigate()
   const usernameId = useId()
   const passwordId = useId()
@@ -28,6 +28,16 @@ export function LoginPage() {
   const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [retryingLogout, setRetryingLogout] = useState(false)
+
+  async function onRetryLogout() {
+    setRetryingLogout(true)
+    try {
+      await logout()
+    } finally {
+      setRetryingLogout(false)
+    }
+  }
 
   if (isReady && isAuthenticated) {
     return <Navigate to="/" replace />
@@ -64,6 +74,21 @@ export function LoginPage() {
       footer="Нажимая «Вход» вы принимаете политику конфиденциальности, пользовательское соглашение и правило персональных рекомендаций"
     >
       <form className="flex flex-col gap-8" onSubmit={onSubmit} noValidate>
+        {logoutError ? (
+          <div className="flex flex-col gap-2" role="alert">
+            <p className="text-sm text-destructive">{logoutError}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="w-full rounded-lg"
+              onClick={() => void onRetryLogout()}
+              disabled={retryingLogout}
+            >
+              {retryingLogout ? 'Выход…' : 'Повторить выход'}
+            </Button>
+          </div>
+        ) : null}
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
             <Label htmlFor={usernameId}>Логин</Label>

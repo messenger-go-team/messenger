@@ -12,6 +12,14 @@ export function isAuthFlowCancelled(error: unknown): boolean {
   return error instanceof AuthFlowCancelledError
 }
 
+/** Текст, когда выход не подтверждён сервером и сессию ещё можно восстановить. */
+export const LOGOUT_FAILED_MESSAGE = 'Не удалось выйти. Повторите попытку.'
+
+/** 401 на logout значит, что refresh-cookie уже нет. */
+export function isLogoutSettled(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401
+}
+
 /** Понятный русский текст для UI по контрактным кодам Auth API. */
 export function messageFromAuthError(error: unknown): string {
   if (error instanceof ApiError) {

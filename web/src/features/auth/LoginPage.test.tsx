@@ -1,7 +1,9 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { AuthContext } from '@/features/auth/auth-context'
+import { LOGOUT_FAILED_MESSAGE } from '@/features/auth/authErrors'
 import { AuthProvider } from '@/features/auth/AuthProvider'
 import { LoginPage } from '@/features/auth/LoginPage'
 
@@ -70,5 +72,33 @@ describe('LoginPage', () => {
       'href',
       '/forgot-password',
     )
+  })
+
+  it('offers a retry when the previous logout did not finish', async () => {
+    const user = userEvent.setup()
+    const logout = vi.fn().mockResolvedValue(undefined)
+
+    render(
+      <AuthContext.Provider
+        value={{
+          user: null,
+          accessToken: null,
+          isReady: true,
+          isAuthenticated: false,
+          logoutError: LOGOUT_FAILED_MESSAGE,
+          login: vi.fn(),
+          register: vi.fn(),
+          logout,
+        }}
+      >
+        <MemoryRouter>
+          <LoginPage />
+        </MemoryRouter>
+      </AuthContext.Provider>,
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent(LOGOUT_FAILED_MESSAGE)
+    await user.click(screen.getByRole('button', { name: 'Повторить выход' }))
+    expect(logout).toHaveBeenCalledTimes(1)
   })
 })

@@ -7,6 +7,8 @@ export interface AuthContextValue {
   /** false пока не завершена попытка восстановить сессию через refresh. */
   isReady: boolean
   isAuthenticated: boolean
+  /** Задан, если выход не подтверждён и cookie могла сохраниться. */
+  logoutError: string | null
   login: (credentials: LoginRequest) => Promise<void>
   register: (data: RegisterRequest) => Promise<void>
   logout: () => Promise<void>
