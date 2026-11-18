@@ -48,6 +48,18 @@ func readingRoutes(mux *http.ServeMux, service *reading.Service, verifier *jwtau
 		writeChatJSON(w, http.StatusOK, page)
 		return nil
 	})
+	handle("GET /chats/{chat_id}/messages/{message_id}/context", func(w http.ResponseWriter, r *http.Request, user string) error {
+		limit, err := readContextLimit(r.URL.RawQuery)
+		if err != nil {
+			return err
+		}
+		window, err := service.MessageContext(r.Context(), r.PathValue("chat_id"), user, r.PathValue("message_id"), limit)
+		if err != nil {
+			return err
+		}
+		writeChatJSON(w, http.StatusOK, window)
+		return nil
+	})
 	handle("POST /chats/{chat_id}/read", func(w http.ResponseWriter, r *http.Request, user string) error {
 		var seq int64
 		if err := readChatField(w, r, "seq", &seq); err != nil {
@@ -72,17 +84,9 @@ func readPageQuery(raw string) (reading.Query, error) {
 		if !ok {
 			continue
 		}
-		if len(entries) != 1 || entries[0] == "" {
-			return q, chats.ErrInvalid
-		}
-		for _, c := range entries[0] {
-			if c < '0' || c > '9' {
-				return q, chats.ErrInvalid
-			}
-		}
-		n, err := strconv.ParseInt(entries[0], 10, 64)
+		n, err := readQueryInteger(entries)
 		if err != nil {
-			return q, chats.ErrInvalid
+			return q, err
 		}
 		switch name {
 		case "before_seq":
@@ -99,6 +103,37 @@ func readPageQuery(raw string) (reading.Query, error) {
 	return q, q.Validate()
 }
 
+func readContextLimit(raw string) (int, error) {
+	if raw == "" {
+		return 50, nil
+	}
+	values, err := url.ParseQuery(raw)
+	if err != nil || len(values) != 1 {
+		return 0, chats.ErrInvalid
+	}
+	limit, err := readQueryInteger(values["limit"])
+	if err != nil || limit < 1 || limit > 100 {
+		return 0, chats.ErrInvalid
+	}
+	return int(limit), nil
+}
+
+func readQueryInteger(entries []string) (int64, error) {
+	if len(entries) != 1 || entries[0] == "" {
+		return 0, chats.ErrInvalid
+	}
+	for _, c := range entries[0] {
+		if c < '0' || c > '9' {
+			return 0, chats.ErrInvalid
+		}
+	}
+	n, err := strconv.ParseInt(entries[0], 10, 64)
+	if err != nil {
+		return 0, chats.ErrInvalid
+	}
+	return n, nil
+}
+
 func writeReadingError(w http.ResponseWriter, r *http.Request, err error) {
 	status, key, message := 503, "service_unavailable", "Сервис временно недоступен."
 	switch {
@@ -109,6 +144,8 @@ func writeReadingError(w http.ResponseWriter, r *http.Request, err error) {
 		w.Header().Set("WWW-Authenticate", "Bearer")
 	case errors.Is(err, chats.ErrForbidden):
 		status, key, message = 403, "chat_membership_required", "Доступ разрешён только участникам чата."
+	case errors.Is(err, reading.ErrMessageNotFound):
+		status, key, message = 404, "not_found", "Сообщение недоступно."
 	case errors.Is(err, chats.ErrNotFound):
 		status, key, message = 404, "not_found", "Чат не найден."
 	default:

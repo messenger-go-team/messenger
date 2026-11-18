@@ -18,6 +18,10 @@ func (r *fakeRepo) History(context.Context, string, string, Query) (Page, error)
 	r.calls++
 	return Page{Messages: []Message{}}, nil
 }
+func (r *fakeRepo) MessageContext(context.Context, string, string, string, int) (MessageContext, error) {
+	r.calls++
+	return MessageContext{}, nil
+}
 func (r *fakeRepo) MarkRead(context.Context, string, string, int64) error { r.calls++; return nil }
 
 type fakeUsers struct {
