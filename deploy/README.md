@@ -138,6 +138,9 @@ done
 предусмотрено в [#36](https://github.com/messenger-go-team/messenger/issues/36),
 автодеплой - в [#37](https://github.com/messenger-go-team/messenger/issues/37).
 
+Порядок ручного запуска скрипта выката и отката для #37 описан в
+[staging-release.md](staging-release.md).
+
 Справка: [Compose include](https://docs.docker.com/compose/how-tos/multiple-compose-files/include/),
 [образ PostgreSQL](https://hub.docker.com/_/postgres),
 [Redis CLI](https://redis.io/docs/latest/develop/tools/cli/).
