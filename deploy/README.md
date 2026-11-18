@@ -140,6 +140,7 @@ done
 
 Порядок ручного запуска скрипта выката и отката для #37 описан в
 [staging-release.md](staging-release.md).
+Настройка GitHub Actions и окружения описана в [staging-actions.md](staging-actions.md).
 
 Справка: [Compose include](https://docs.docker.com/compose/how-tos/multiple-compose-files/include/),
 [образ PostgreSQL](https://hub.docker.com/_/postgres),

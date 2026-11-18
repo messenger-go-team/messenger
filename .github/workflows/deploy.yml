@@ -1,0 +1,90 @@
+name: Deploy staging
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Go CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  staging:
+    name: Release to staging
+    if: >-
+      ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+          || (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    environment: staging
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    steps:
+      - name: Check the exact commit and required CI runs
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          STAGING_DEPLOY_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+        run: |
+          if [[ "$STAGING_DEPLOY_ENABLED" != true ]]; then
+            echo "Staging deploy is disabled until the SSH access is configured"
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          workflow_result() {
+            gh api "repos/$GH_REPO/actions/workflows/$1/runs?branch=main&event=push&head_sha=$RELEASE_SHA&per_page=1" \
+              --jq '.workflow_runs[0] | if .status == "completed" then .conclusion else "pending" end'
+          }
+          for attempt in {1..30}; do
+            main_sha=$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq '.object.sha')
+            if [[ "$main_sha" != "$RELEASE_SHA" ]]; then
+              echo "Skipping superseded commit $RELEASE_SHA"
+              echo "deploy=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            go_ci=$(workflow_result ci.yml)
+            frontend_ci=$(workflow_result frontend-ci.yml)
+            for result in "$go_ci" "$frontend_ci"; do
+              case "$result" in
+                ''|pending|success) ;;
+                *) echo "Required CI did not pass (Go=$go_ci, frontend=$frontend_ci)" >&2; exit 1 ;;
+              esac
+            done
+            if [[ $go_ci == success && $frontend_ci == success ]]; then
+              echo "deploy=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for required CI on $RELEASE_SHA" >&2
+          exit 1
+
+      - name: Build and deploy on the staging host
+        if: steps.gate.outputs.deploy == 'true'
+        env:
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          STAGING_SSH_HOST: ${{ vars.STAGING_SSH_HOST }}
+          STAGING_KNOWN_HOSTS: ${{ vars.STAGING_KNOWN_HOSTS }}
+          STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+        run: |
+          : "${STAGING_SSH_KEY:?missing staging deployment key}"
+          : "${STAGING_KNOWN_HOSTS:?missing pinned staging host key}"
+          [[ "$STAGING_SSH_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]
+          umask 077
+          key_dir=$(mktemp -d)
+          trap 'rm -rf "$key_dir"' EXIT
+          printf '%s\n' "$STAGING_SSH_KEY" > "$key_dir/id"
+          printf '%s\n' "$STAGING_KNOWN_HOSTS" > "$key_dir/known_hosts"
+          unset STAGING_SSH_KEY
+          ssh -n -T -i "$key_dir/id" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$key_dir/known_hosts" -o ConnectTimeout=15 \
+            -o ServerAliveInterval=20 -o ServerAliveCountMax=3 \
+            "root@$STAGING_SSH_HOST" "deploy $RELEASE_SHA"
