@@ -250,8 +250,9 @@ paths:
         Курсоры равны seq первого и последнего сообщения окна. Для продолжения
         клиент вызывает обычный GET /chats/{chat_id}/messages с before_seq
         либо after_seq соответственно. Флаги has_more описывают наличие
-        сообщений за границами окна на момент ответа. before_seq и after_seq
-        в самом запросе контекста не принимаются и дают 422.
+        сообщений за границами окна на момент ответа. Единственный допустимый
+        query-параметр — limit, не более одного значения. before_seq, after_seq
+        и другие параметры в запросе контекста дают 422.
         Операция не меняет last_read_seq. Окно навигации не подтверждает
         синхронизацию всей истории: клиент сохраняет отдельный курсор
         восстановления, объединяет REST и WS по серверному ID или (chat_id, seq)
@@ -308,7 +309,9 @@ paths:
         '404':
           $ref: '#/components/responses/LaterNotFound'
         '422':
-          $ref: '#/components/responses/LaterValidationError'
+          $ref: '#/components/responses/ContextValidationError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /chats/{chat_id}/read:
     post:
@@ -1029,6 +1032,15 @@ components:
           example:
             code: service_unavailable
             message: Сервис временно недоступен.
+    ContextValidationError:
+      description: Некорректный UUID, limit, неизвестный query-параметр или неверное кодирование query.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: validation_error
+            message: Некорректный запрос.
     LaterValidationError:
       description: >-
         Некорректный UUID, JSON, неизвестные поля или параметры, отсутствующий
