@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/features/auth/useAuth'
-import { messageFromAuthError } from '@/features/auth/authErrors'
+import { isAuthFlowCancelled, messageFromAuthError } from '@/features/auth/authErrors'
 import { AuthLayout } from '@/features/auth/AuthLayout'
 import { hasFieldErrors, validateCredentials } from '@/features/auth/validation'
 
@@ -60,6 +60,9 @@ export function RegisterPage() {
       await register({ username, password })
       void navigate('/', { replace: true })
     } catch (error) {
+      if (isAuthFlowCancelled(error)) {
+        return
+      }
       setFormError(messageFromAuthError(error))
     } finally {
       setSubmitting(false)

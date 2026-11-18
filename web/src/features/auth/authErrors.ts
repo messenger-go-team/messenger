@@ -1,5 +1,17 @@
 import { ApiError } from '@/api/client'
 
+/** Вход или регистрация устарели, потому что следом начался logout или другой вход. */
+export class AuthFlowCancelledError extends Error {
+  constructor() {
+    super('Auth flow cancelled')
+    this.name = 'AuthFlowCancelledError'
+  }
+}
+
+export function isAuthFlowCancelled(error: unknown): boolean {
+  return error instanceof AuthFlowCancelledError
+}
+
 /** Понятный русский текст для UI по контрактным кодам Auth API. */
 export function messageFromAuthError(error: unknown): string {
   if (error instanceof ApiError) {

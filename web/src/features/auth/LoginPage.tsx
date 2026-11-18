@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/features/auth/useAuth'
-import { messageFromAuthError } from '@/features/auth/authErrors'
+import { isAuthFlowCancelled, messageFromAuthError } from '@/features/auth/authErrors'
 import { AuthLayout } from '@/features/auth/AuthLayout'
 import { readRememberedUsername, writeRememberedUsername } from '@/features/auth/rememberUsername'
 import { hasFieldErrors, validateCredentials } from '@/features/auth/validation'
@@ -49,6 +49,9 @@ export function LoginPage() {
       writeRememberedUsername(username, rememberMe)
       void navigate('/', { replace: true })
     } catch (error) {
+      if (isAuthFlowCancelled(error)) {
+        return
+      }
       setFormError(messageFromAuthError(error))
     } finally {
       setSubmitting(false)
