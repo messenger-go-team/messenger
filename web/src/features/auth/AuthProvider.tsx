@@ -108,16 +108,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   /**
    * Вход записал cookie, но его профиль так и не стал текущей сессией.
-   * Отметка ставится сразу, а сам logout ещё раз проверяет владельца:
-   * успешный более новый вход уже мог записать свою cookie.
+   * Отметка ставится синхронно, в момент отмены, и logout встаёт в очередь
+   * сразу — старый GET /me её не задерживает. Перед самим logout владелец
+   * проверяется ещё раз: успешный более новый вход уже мог записать свою cookie.
    */
   const abandonOwnedCookie = useCallback(
-    async (epoch: number) => {
-      if (cookieOwnerRef.current !== epoch) return
-      if (publishedEpochRef.current === epoch) return
+    (epoch: number): Promise<void> => {
+      if (cookieOwnerRef.current !== epoch) return Promise.resolve()
+      if (publishedEpochRef.current === epoch) return Promise.resolve()
       writeLogoutPending(true)
       clearSession()
-      await enqueue(async () => {
+      return enqueue(async () => {
         if (cookieOwnerRef.current !== epoch) return
         cookieOwnerRef.current = null
         await settleLogout()
@@ -143,10 +144,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       try {
         profile = await getMe(token)
       } catch (error) {
-        if (epochRef.current !== epoch) {
-          await abandonOwnedCookie(epoch)
-          return
-        }
+        await abandonOwnedCookie(epoch)
+        if (epochRef.current !== epoch) return
         throw error
       }
       if (epochRef.current !== epoch) {
@@ -257,8 +256,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const login = useCallback(
     async (credentials: LoginRequest) => {
+      const previousOwner = cookieOwnerRef.current
       const epoch = ++epochRef.current
       clearRefreshTimer()
+      // Отмена предыдущего входа не ждёт его GET /me: cookie отзывается сразу.
+      if (previousOwner !== null) void abandonOwnedCookie(previousOwner)
       const session = await enqueue(async () => {
         if (epochRef.current !== epoch) throw new AuthFlowCancelledError()
 
@@ -273,13 +275,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
       await acceptSession(session.access_token, session.expires_in, epoch)
       if (epochRef.current !== epoch) throw new AuthFlowCancelledError()
     },
-    [acceptSession, claimCookie, clearRefreshTimer, enqueue, revokeIfCurrentCookieIsStale],
+    [
+      abandonOwnedCookie,
+      acceptSession,
+      claimCookie,
+      clearRefreshTimer,
+      enqueue,
+      revokeIfCurrentCookieIsStale,
+    ],
   )
 
   const register = useCallback(
     async (data: RegisterRequest) => {
+      const previousOwner = cookieOwnerRef.current
       const epoch = ++epochRef.current
       clearRefreshTimer()
+      if (previousOwner !== null) void abandonOwnedCookie(previousOwner)
       const session = await enqueue(async () => {
         if (epochRef.current !== epoch) throw new AuthFlowCancelledError()
 
@@ -297,7 +308,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
       await acceptSession(session.access_token, session.expires_in, epoch)
       if (epochRef.current !== epoch) throw new AuthFlowCancelledError()
     },
-    [acceptSession, claimCookie, clearRefreshTimer, enqueue, revokeIfCurrentCookieIsStale],
+    [
+      abandonOwnedCookie,
+      acceptSession,
+      claimCookie,
+      clearRefreshTimer,
+      enqueue,
+      revokeIfCurrentCookieIsStale,
+    ],
   )
 
   const logout = useCallback(async () => {
