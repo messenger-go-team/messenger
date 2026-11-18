@@ -163,6 +163,42 @@ describe('MockWebSocketServer input validation', () => {
     expect(socket.readyState).toBe(1)
   })
 
+  it.each(['[]', 'null', '42', 'true', '"text"'])(
+    'rejects non-object JSON %s and keeps the socket usable',
+    async (input) => {
+      const server = new MockWebSocketServer({
+        senderId: USER_ID,
+        createId: () => GENERATED_ERROR_ID,
+      })
+      const { socket, received } = await connect(server)
+
+      socket.send(input)
+      expect(received).toEqual([
+        expect.objectContaining({
+          type: 'error',
+          id: GENERATED_ERROR_ID,
+          payload: expect.objectContaining({
+            code: 'invalid_json',
+            retryable: false,
+            request_type: null,
+            client_msg_id: null,
+          }),
+        }),
+      ])
+      expect(server.received).toHaveLength(0)
+      expect(server.storedMessages).toHaveLength(0)
+      expect(socket.readyState).toBe(1)
+
+      socket.send(JSON.stringify(validMessageSend()))
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(received).toContainEqual(
+        expect.objectContaining({ type: 'message.ack', id: VALID_ENVELOPE_ID }),
+      )
+      expect(server.storedMessages).toHaveLength(1)
+    },
+  )
+
   it('accepts message.send on the same socket after unsupported_type', async () => {
     const server = new MockWebSocketServer({ senderId: USER_ID })
     const { socket, received } = await connect(server)

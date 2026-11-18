@@ -267,6 +267,59 @@ describe('MessengerWebSocketClient connection and events', () => {
     client.stop()
   })
 
+  it('keeps repeated start calls from bypassing refresh or its retry timer', async () => {
+    let finishRefresh: ((result: { kind: 'temporary_failure' }) => void) | undefined
+    const refreshAccessToken = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ kind: 'temporary_failure' }>((resolve) => {
+            finishRefresh = resolve
+          }),
+      )
+      .mockResolvedValueOnce({ kind: 'success', accessToken: 'fresh-access' })
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const factory = vi.fn(server.webSocketFactory)
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'old-access',
+      currentUserId: USER_ID,
+      webSocketFactory: factory,
+      auth: { refreshAccessToken },
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    const unsubscribe = client.subscribe(({ transport }) => {
+      if (transport === 'disconnected') client.start()
+    })
+    server.disconnectAll(4401, 'JWT expired')
+    await flushMicrotasks()
+    expect(refreshAccessToken).toHaveBeenCalledOnce()
+    client.start()
+    expect(factory).toHaveBeenCalledOnce()
+    if (!finishRefresh) throw new Error('Expected an in-flight refresh')
+    finishRefresh({ kind: 'temporary_failure' })
+    await flushMicrotasks()
+    client.start()
+    await vi.advanceTimersByTimeAsync(999)
+    expect(refreshAccessToken).toHaveBeenCalledOnce()
+    expect(factory).toHaveBeenCalledOnce()
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(refreshAccessToken).toHaveBeenCalledTimes(2)
+    client.start()
+    expect(factory).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(factory).toHaveBeenCalledTimes(2)
+    expect(factory.mock.calls[1]?.[1]).toEqual(['messenger.v1', 'bearer.fresh-access'])
+    expect(client.getSnapshot().transport).toBe('connected')
+
+    unsubscribe()
+    client.stop()
+  })
+
   it('does not reconnect after stop while an expired-token refresh is pending', async () => {
     const expiredToken = jwtWithPayload({ exp: Math.floor(Date.now() / 1000) - 60 })
     let resolveRefresh: ((result: { kind: 'success'; accessToken: string }) => void) | undefined
@@ -1247,7 +1300,7 @@ describe('MessengerWebSocketClient reconnect and authorization', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('keeps refresh single-flight for concurrent 4401 and expired-token 1006 triggers', async () => {
+  it('ignores a stale expired-token 1006 notification while refreshing after 4401', async () => {
     const expiredToken = jwtWithPayload({ exp: Math.floor(Date.now() / 1000) - 60 })
     let resolveRefresh!: (result: { kind: 'success'; accessToken: string }) => void
     const refreshAccessToken = vi.fn(
@@ -1267,14 +1320,17 @@ describe('MessengerWebSocketClient reconnect and authorization', () => {
     })
     client.start()
     await flushMicrotasks()
-    latestConnection(server).serverClose(4401, 'expired')
+    const connection = latestConnection(server)
+    const onClose = connection.onclose
+    expect(onClose).not.toBeNull()
+    connection.serverClose(4401, 'expired')
     await flushMicrotasks()
 
     client.start()
-    await flushMicrotasks()
-    latestConnection(server).serverClose(1006, 'handshake rejected')
+    onClose?.({ code: 1006, reason: 'handshake rejected', wasClean: false })
     await flushMicrotasks()
 
+    expect(server.connections.size).toBe(0)
     expect(refreshAccessToken).toHaveBeenCalledOnce()
 
     resolveRefresh({ kind: 'success', accessToken: 'new' })

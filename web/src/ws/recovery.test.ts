@@ -286,6 +286,62 @@ describe('automatic history retry', () => {
     client.stop()
   })
 
+  it('queues messages sent after reconnect until History has caught up', async () => {
+    const delayed = deferred<HistoryPage>()
+    const getMessages = vi.fn().mockReturnValueOnce(delayed.promise)
+    const listChats = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([{ id: CHAT_ID }])
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      history: { listChats, getMessages },
+      random: () => 0.5,
+    })
+    client.start()
+    await flushMicrotasks()
+    server.disconnectAll(1013)
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(client.getSnapshot()).toMatchObject({ transport: 'connected', history: 'syncing' })
+
+    client.sendMessage(CHAT_ID, 'queued while catching up', CLIENT_ID)
+    expect(server.received).toHaveLength(0)
+    expect(client.getSnapshot().pending[0]).toMatchObject({ status: 'pending', attempts: 0 })
+
+    delayed.resolve({ messages: [], next_after_seq: null, has_more_after: false })
+    await flushMicrotasks()
+    expect(client.getSnapshot().history).toBe('ready')
+    expect(server.received).toHaveLength(1)
+    expect(server.received[0]?.payload.client_msg_id).toBe(CLIENT_ID)
+    client.stop()
+  })
+
+  it('does not fetch History pages if listChats resolves after stop', async () => {
+    const delayed = deferred<readonly { id: string }[]>()
+    const listChats = vi.fn().mockReturnValue(delayed.promise)
+    const getMessages = vi.fn().mockResolvedValue({
+      messages: [message(1)],
+      next_after_seq: 1,
+      has_more_after: false,
+    })
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const client = createClient({ listChats, getMessages }, server)
+    client.start()
+    await flushMicrotasks()
+    expect(listChats).toHaveBeenCalledOnce()
+
+    client.stop()
+    delayed.resolve([{ id: CHAT_ID }])
+    await flushMicrotasks()
+    expect(getMessages).not.toHaveBeenCalled()
+    expect(client.getSyncedCursor(CHAT_ID)).toBe(0)
+    expect(client.getSnapshot().messages).toEqual([])
+  })
+
   it('keeps a scheduled History recovery retry when the tab becomes hidden', async () => {
     let visibilityState: DocumentVisibilityState = 'visible'
     vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibilityState)
@@ -712,6 +768,41 @@ describe('message retry backoff during History synchronization', () => {
     expect(server.received).toHaveLength(1)
     expect(client.getSnapshot().pending[0]?.attempts).toBe(1)
 
+    client.stop()
+  })
+
+  it('keeps the scheduled send backoff across a reconnect and completed recovery', async () => {
+    const history: HistoryAdapter = {
+      listChats: vi.fn().mockResolvedValue([]),
+      getMessages: vi.fn(),
+    }
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      history,
+      random: () => 0.5,
+    })
+    client.start()
+    await flushMicrotasks()
+
+    rateLimitNextMessage(server)
+    client.sendMessage(CHAT_ID, 'wait for retry', CLIENT_ID)
+    rateLimitNextMessage(server)
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(server.received).toHaveLength(2)
+    server.disconnectAll(1013)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(client.getSnapshot()).toMatchObject({ transport: 'connected', history: 'ready' })
+    expect(server.received).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(999)
+    expect(server.received).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(server.received).toHaveLength(3)
+    expect(server.received[2]?.payload.client_msg_id).toBe(CLIENT_ID)
     client.stop()
   })
 

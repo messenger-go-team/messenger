@@ -147,6 +147,7 @@ export class MessengerWebSocketClient {
   private socket: WebSocketLike | null = null
   private transport: TransportState = 'idle'
   private historyState: HistorySyncState = 'not_started'
+  private recoveringHistory = false
   private authFailure: AuthFailureReason | undefined
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private stableTimer: ReturnType<typeof setTimeout> | null = null
@@ -197,12 +198,12 @@ export class MessengerWebSocketClient {
     this.attachVisibilityListener()
     if (
       this.socket ||
-      this.transport === 'connecting' ||
-      this.transport === 'reconnecting' ||
-      this.transport === 'auth_failed'
+      this.refreshPromise ||
+      this.reconnectTimer !== null ||
+      (this.transport !== 'idle' && this.transport !== 'disconnected')
     )
       return
-    this.openSocket(false)
+    this.openSocket(this.transport === 'disconnected')
   }
 
   stop(): void {
@@ -314,6 +315,7 @@ export class MessengerWebSocketClient {
     if (this.stopped || this.socket) return
     this.clearReconnectTimer()
     this.setTransport(reconnecting ? 'reconnecting' : 'connecting')
+    if (this.stopped) return
     const generation = ++this.generation
     let socket: WebSocketLike
     try {
@@ -322,8 +324,8 @@ export class MessengerWebSocketClient {
         `bearer.${this.accessToken}`,
       ])
     } catch {
-      this.setTransport('disconnected')
       this.scheduleReconnect()
+      if (!this.stopped) this.setTransport('disconnected')
       return
     }
     this.socket = socket
@@ -334,8 +336,11 @@ export class MessengerWebSocketClient {
         socket.close(1000, 'unexpected subprotocol')
         return
       }
-      this.setTransport('connected')
+      // A replacement socket must catch up with History before sending queued messages.
+      this.recoveringHistory = reconnecting && this.history !== undefined
       this.authFailure = undefined
+      this.setTransport('connected')
+      if (!this.isCurrent(socket, generation)) return
       this.clearStableTimer()
       this.stableTimer = setTimeout(() => {
         this.reconnectBackoff.reset()
@@ -359,7 +364,11 @@ export class MessengerWebSocketClient {
       if (!this.isCurrent(socket, generation)) return
       this.socket = null
       this.clearStableTimer()
-      this.clearPendingTimers()
+      const shouldRefresh =
+        event.code === 4401 || (event.code === 1006 && isAccessTokenExpired(this.accessToken))
+      const shouldReconnect = !NON_RETRYABLE_PROTOCOL_CLOSES.has(event.code)
+      // ACK timers belong to the old socket. Send backoff survives a recoverable close.
+      this.clearPendingTimers(shouldRefresh || shouldReconnect)
       this.historyGeneration++
       this.historyPromise = null
       this.clearHistoryRetryTimer()
@@ -368,12 +377,10 @@ export class MessengerWebSocketClient {
       if (this.bufferingMessages) this.commitBufferedMessages()
       if (historyWasSyncing) this.setHistoryState('error')
       if (this.stopped) return
-      this.setTransport('disconnected')
-      if (event.code === 4401 || (event.code === 1006 && isAccessTokenExpired(this.accessToken))) {
-        void this.refreshAndReconnect()
-      } else if (!NON_RETRYABLE_PROTOCOL_CLOSES.has(event.code)) {
-        this.scheduleReconnect()
-      }
+      // Arm recovery before notifying subscribers that the socket is disconnected.
+      if (shouldRefresh) void this.refreshAndReconnect()
+      else if (shouldReconnect) this.scheduleReconnect()
+      if (this.transport !== 'auth_failed') this.setTransport('disconnected')
     }
   }
 
@@ -543,6 +550,7 @@ export class MessengerWebSocketClient {
       !socket ||
       socket.readyState !== OPEN ||
       this.transport !== 'connected' ||
+      this.recoveringHistory ||
       pending.status === 'sent' ||
       !pending.automaticRetry ||
       pending.sending ||
@@ -624,6 +632,7 @@ export class MessengerWebSocketClient {
     const stagedCursors = new Map(this.syncedCursors)
     try {
       const chats = await this.history.listChats(this.accessToken)
+      if (syncGeneration !== this.historyGeneration || this.stopped) return
       for (const chat of chats) {
         let cursor = stagedCursors.get(chat.id) ?? 0
         let hasMore = true
@@ -648,6 +657,7 @@ export class MessengerWebSocketClient {
       this.commitBufferedMessages()
       this.syncedCursors.clear()
       for (const [chatId, cursor] of stagedCursors) this.syncedCursors.set(chatId, cursor)
+      this.recoveringHistory = false
       this.setHistoryState('ready')
       this.historyRetryBackoff.reset()
       this.resendPendingAfterReconnect()
@@ -754,16 +764,18 @@ export class MessengerWebSocketClient {
     this.messageIdBySequence.set(sequenceKey, message.id)
   }
 
-  private clearMessageTimers(pending: MutablePending): void {
+  private clearMessageTimers(pending: MutablePending, preserveRetry = false): void {
     if (pending.ackTimer) clearTimeout(pending.ackTimer)
-    if (pending.retryTimer) clearTimeout(pending.retryTimer)
     pending.ackTimer = undefined
-    pending.retryTimer = undefined
     pending.sending = false
+    if (!preserveRetry && pending.retryTimer !== undefined) {
+      clearTimeout(pending.retryTimer)
+      pending.retryTimer = undefined
+    }
   }
 
-  private clearPendingTimers(): void {
-    for (const pending of this.pending.values()) this.clearMessageTimers(pending)
+  private clearPendingTimers(preserveRetries = false): void {
+    for (const pending of this.pending.values()) this.clearMessageTimers(pending, preserveRetries)
   }
 
   private clearReconnectTimer(): void {
@@ -801,6 +813,7 @@ export class MessengerWebSocketClient {
   private setAuthFailed(reason: AuthFailureReason): void {
     this.clearReconnectTimer()
     this.clearStableTimer()
+    this.clearPendingTimers()
     this.authFailure = reason
     this.setTransport('auth_failed')
   }

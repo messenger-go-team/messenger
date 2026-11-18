@@ -115,6 +115,9 @@ export class MockWebSocketServer {
     try {
       event = JSON.parse(data)
     } catch {
+      event = undefined
+    }
+    if (!isObject(event)) {
       this.sendError(socket, this.createId(), {
         code: 'invalid_json',
         message: 'Invalid JSON',
@@ -124,12 +127,9 @@ export class MockWebSocketServer {
       })
       return
     }
-    const command = isObject(event) ? event : null
-    const requestType = command && typeof command.type === 'string' ? command.type : null
+    const requestType = typeof event.type === 'string' ? event.type : null
     const errorId =
-      command && typeof command.id === 'string' && isValidUuid(command.id)
-        ? command.id
-        : this.createId()
+      typeof event.id === 'string' && isValidUuid(event.id) ? event.id : this.createId()
     if (requestType !== null && requestType !== 'message.send') {
       this.sendError(socket, errorId, {
         code: 'unsupported_type',
@@ -141,7 +141,7 @@ export class MockWebSocketServer {
       return
     }
     if (!this.isMessageSend(event)) {
-      const payload = command && isObject(command.payload) ? command.payload : null
+      const payload = isObject(event.payload) ? event.payload : null
       const clientMsgId = payload?.client_msg_id
       this.sendError(socket, errorId, {
         code: 'invalid_payload',
