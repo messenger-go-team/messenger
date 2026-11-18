@@ -1,0 +1,24 @@
+events {}
+
+http {
+    include /etc/nginx/messenger/snippets/backends.conf;
+
+    server {
+        listen 80;
+        server_name staging.example.com;
+        include /etc/nginx/messenger/snippets/acme-location.conf;
+
+        location / {
+            return 308 https://staging.example.com$request_uri;
+        }
+    }
+
+    server {
+        listen 443 ssl;
+        server_name staging.example.com;
+        ssl_certificate /etc/letsencrypt/live/staging.example.com/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/staging.example.com/privkey.pem;
+
+        include /etc/nginx/messenger/snippets/public-locations.conf;
+    }
+}
