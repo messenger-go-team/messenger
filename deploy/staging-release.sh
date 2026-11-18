@@ -254,7 +254,7 @@ if [[ -f $state/current ]]; then
     valid_ref "$current" || die 'invalid current release'
     if [[ $(<"$state/$current/REVISION") == "$sha" ]]; then
         verify_runtime "$state/$current"
-        printf 'STAGING_RESULT already_active %s\n' "$sha"
+        printf 'STAGING_RESULT already_active %s %s\n' "$sha" "$current"
         exit 0
     fi
 fi
@@ -319,4 +319,4 @@ migrate "$release"
 log "switching staging services to $sha"
 switch_to "$id/next"
 log "deployed $sha; rollback snapshot is $run/previous"
-printf 'STAGING_RESULT deployed %s\n' "$sha"
+printf 'STAGING_RESULT deployed %s %s/next\n' "$sha" "$id"

@@ -192,11 +192,16 @@ http {{
                 return result.stdout
 
             db_container = out(*compose, "ps", "-q", "postgres")
-            assert f"STAGING_RESULT deployed {A}" in deploy(A, a, 0)
-            assert f"STAGING_RESULT deployed {B}" in deploy(B, b, 0)
+            a_log = deploy(A, a, 0)
+            a_activation = (state / "current").read_text().strip()
+            assert a_log.splitlines()[-1] == f"STAGING_RESULT deployed {A} {a_activation}"
+            b_log = deploy(B, b, 0)
             b_pointer = (state / "current").read_text()
+            b_activation = b_pointer.strip()
+            assert b_activation != a_activation
+            assert b_log.splitlines()[-1] == f"STAGING_RESULT deployed {B} {b_activation}"
             b_container = out(*compose, "ps", "-q", "history")
-            assert f"STAGING_RESULT already_active {B}" in deploy(B, b, 0)
+            assert deploy(B, b, 0).splitlines()[-1] == f"STAGING_RESULT already_active {B} {b_activation}"
             assert out(*compose, "ps", "-q", "history") == b_container
             assert (state / "current").read_text() == b_pointer
             assert "invalid_staging_test_directive" in deploy(C, c, 1)
@@ -204,7 +209,7 @@ http {{
             assert "public WSS returned HTTP 404" in deploy(D, d, 1)
             assert (state / "current").read_text() == b_pointer
             assert not (state / "pending").exists()
-            assert f"STAGING_RESULT already_active {B}" in deploy(B, b, 0)
+            assert deploy(B, b, 0).splitlines()[-1] == f"STAGING_RESULT already_active {B} {b_activation}"
             run(*script, "rollback", env=env)
             active_container = out(*compose, "ps", "-q", "history")
             assert out("docker", "inspect", "--format", '{{index .Config.Labels "org.opencontainers.image.revision"}}',

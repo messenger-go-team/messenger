@@ -56,14 +56,16 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     permissions:
+      actions: read
       contents: read
       deployments: write
     environment:
       name: staging
       deployment: false
     concurrency:
-      # A superseded SHA cannot cancel the pending job for another SHA.
-      group: deploy-staging-${{ needs.preflight.outputs.sha }}
+      # Hold the staging slot through both the SSH switch and status publication.
+      # A replacement pending job rechecks the current main, even if its event is old.
+      group: deploy-staging
       cancel-in-progress: false
     steps:
       - name: Run the restricted staging deploy command
@@ -83,9 +85,18 @@ jobs:
             exit 0
           fi
           main_sha=$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq '.object.sha')
+          [[ "$main_sha" =~ ^[0-9a-f]{40}$ ]]
           if [[ "$main_sha" != "$RELEASE_SHA" ]]; then
-            echo "Skipping superseded commit $RELEASE_SHA after waiting in queue"
-            exit 0
+            echo "Queued commit $RELEASE_SHA was superseded, checking current main $main_sha"
+            RELEASE_SHA=$main_sha
+            for workflow in ci.yml frontend-ci.yml; do
+              result=$(gh api "repos/$GH_REPO/actions/workflows/$workflow/runs?branch=main&event=push&head_sha=$RELEASE_SHA&per_page=1" \
+                --jq '.workflow_runs[0] | if .status == "completed" then .conclusion else "pending" end')
+              if [[ "$result" != success ]]; then
+                echo "Skipping $RELEASE_SHA: $workflow is ${result:-pending}"
+                exit 0
+              fi
+            done
           fi
           : "${STAGING_SSH_KEY:?missing staging deployment key}"
           : "${STAGING_KNOWN_HOSTS:?missing pinned staging host key}"
@@ -103,27 +114,45 @@ jobs:
             -o ServerAliveInterval=20 -o ServerAliveCountMax=3 \
             "messenger-stage@$STAGING_SSH_HOST" "deploy $RELEASE_SHA" |
             tee "$key_dir/result"
-          case "$(tail -n 1 "$key_dir/result")" in
-            "STAGING_RESULT deployed $RELEASE_SHA")
-              echo "deployed_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT" ;;
-            "STAGING_RESULT already_active $RELEASE_SHA"|"STAGING_RESULT skipped $RELEASE_SHA")
-              ;;
-            *)
-              echo "VPS did not confirm the release result" >&2
-              exit 1 ;;
-          esac
+          receipt=$(tail -n 1 "$key_dir/result")
+          if [[ $receipt == "STAGING_RESULT skipped $RELEASE_SHA" ]]; then
+            exit 0
+          fi
+          pattern='^STAGING_RESULT (deployed|already_active) ([a-f0-9]{40}) (rel\.[a-zA-Z0-9]+/(next|previous))$'
+          if [[ $receipt =~ $pattern && ${BASH_REMATCH[2]} == "$RELEASE_SHA" ]]; then
+            printf 'sha=%s\n' "$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+            printf 'activation=%s\n' "${BASH_REMATCH[3]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "VPS did not confirm the release result" >&2
+            exit 1
+          fi
 
       - name: Record the confirmed staging deployment
-        if: steps.release.outputs.deployed_sha != ''
+        if: steps.release.outputs.activation != ''
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_SHA: ${{ steps.release.outputs.deployed_sha }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+          ACTIVATION: ${{ steps.release.outputs.activation }}
         run: |
           set -o pipefail
-          deployment_id=$(jq -nc --arg ref "$RELEASE_SHA" \
-            '{ref:$ref,environment:"staging",auto_merge:false,required_contexts:[],production_environment:false}' |
-            gh api -X POST "repos/$GH_REPO/deployments" --input - --jq '.id')
-          gh api -X POST "repos/$GH_REPO/deployments/$deployment_id/statuses" \
+          deployments="repos/$GH_REPO/deployments"
+          # A previous job may have created the deployment but lost its response.
+          deployment_id=$(gh api --paginate "$deployments?sha=$RELEASE_SHA&environment=staging&per_page=100" |
+            jq -sr --arg activation "$ACTIVATION" \
+              '[.[][] | select(.payload.staging_activation? == $activation)][0].id // empty')
+          if [[ -z $deployment_id ]]; then
+            deployment_id=$(jq -nc --arg ref "$RELEASE_SHA" --arg activation "$ACTIVATION" \
+              '{ref:$ref,environment:"staging",auto_merge:false,required_contexts:[],production_environment:false,payload:{staging_activation:$activation}}' |
+              gh api -X POST "$deployments" --input - --jq '.id')
+          fi
+          [[ $deployment_id =~ ^[0-9]+$ ]]
+          statuses="$deployments/$deployment_id/statuses"
+          latest_status=$(gh api "$statuses?per_page=1" --jq '.[0].state // ""')
+          if [[ $latest_status == success ]]; then
+            echo "Deployment $deployment_id is already recorded"
+            exit 0
+          fi
+          gh api -X POST "$statuses" \
             -f state=success -f environment_url=https://staging.tidingm.ru \
             -f log_url="$GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID" --silent
