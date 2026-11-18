@@ -37,7 +37,15 @@ export function RegisterPage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  if (isReady && isAuthenticated) {
+  if (!isReady) {
+    return (
+      <p role="status" className="p-8 text-center text-sm text-muted-foreground">
+        Проверяем сессию…
+      </p>
+    )
+  }
+
+  if (isAuthenticated) {
     return <Navigate to="/" replace />
   }
 

@@ -26,7 +26,7 @@ describe('LoginPage', () => {
     const user = userEvent.setup()
     renderLogin()
 
-    await screen.findByRole('heading', { name: 'Вход' })
+    await screen.findByLabelText('Логин')
 
     await user.type(screen.getByLabelText('Логин'), 'ab')
     await user.type(screen.getByLabelText('Пароль'), 'correct-horse-battery')
@@ -39,7 +39,7 @@ describe('LoginPage', () => {
     const user = userEvent.setup()
     renderLogin()
 
-    await screen.findByRole('heading', { name: 'Вход' })
+    await screen.findByLabelText('Логин')
 
     await user.type(screen.getByLabelText('Логин'), 'alice_1')
     await user.type(screen.getByLabelText('Пароль'), 'correct-horse-battery')
@@ -54,7 +54,7 @@ describe('LoginPage', () => {
     const user = userEvent.setup()
     renderLogin()
 
-    await screen.findByRole('heading', { name: 'Вход' })
+    await screen.findByLabelText('Логин')
 
     await user.type(screen.getByLabelText('Логин'), 'alice_1')
     await user.type(screen.getByLabelText('Пароль'), 'wrong-password')
@@ -66,7 +66,7 @@ describe('LoginPage', () => {
   it('exposes remember-me and forgot-password controls from the mockup', async () => {
     renderLogin()
 
-    await screen.findByRole('heading', { name: 'Вход' })
+    await screen.findByLabelText('Логин')
     expect(screen.getByRole('checkbox', { name: 'Запомнить меня' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Забыли пароль' })).toHaveAttribute(
       'href',

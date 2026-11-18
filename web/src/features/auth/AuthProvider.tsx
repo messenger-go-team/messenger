@@ -78,21 +78,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setUser(null)
   }, [clearRefreshTimer])
 
-  /** true, если cookie уже отозвана или её не было. Отметка ставится до запроса. */
+  /**
+   * Отзыв refresh-cookie: отметка до запроса, ошибка повтора сразу после сбоя.
+   * 204 и 401 снимают отметку и сообщение; временный сбой оставляет оба.
+   */
   const settleLogout = useCallback(async (): Promise<boolean> => {
     writeLogoutPending(true)
+
+    let cleared = true
     try {
       await logoutRequest()
-      writeLogoutPending(false)
-      return true
     } catch (error) {
-      if (isLogoutSettled(error)) {
-        writeLogoutPending(false)
-        return true
-      }
-      writeLogoutPending(true)
-      return false
+      cleared = isLogoutSettled(error)
     }
+
+    writeLogoutPending(!cleared)
+    setLogoutError(cleared ? null : LOGOUT_FAILED_MESSAGE)
+    return cleared
   }, [])
 
   const revokeIfCurrentCookieIsStale = useCallback(async () => {
@@ -125,16 +127,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       })
     },
     [clearSession, enqueue, settleLogout],
-  )
-
-  const reportLogout = useCallback(
-    (cleared: boolean, epoch: number) => {
-      if (!cleared) setLogoutError(LOGOUT_FAILED_MESSAGE)
-      if (epochRef.current !== epoch) return
-      clearSession()
-      if (cleared) setLogoutError(null)
-    },
-    [clearSession],
   )
 
   const acceptSession = useCallback(
@@ -200,8 +192,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     const boot = enqueue(async () => {
       if (!pendingRefresh) {
-        const cleared = await settleLogout()
-        if (!cancelled) reportLogout(cleared, epoch)
+        await settleLogout()
         return null
       }
 
@@ -249,7 +240,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     clearSession,
     enqueue,
     refreshShared,
-    reportLogout,
     revokeIfCurrentCookieIsStale,
     settleLogout,
   ])
@@ -319,7 +309,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   )
 
   const logout = useCallback(async () => {
-    const epoch = ++epochRef.current
+    ++epochRef.current
     cookieOwnerRef.current = null
     publishedEpochRef.current = null
     clearRefreshTimer()
@@ -327,10 +317,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setAccessToken(null)
     setUser(null)
     await enqueue(async () => {
-      const cleared = await settleLogout()
-      reportLogout(cleared, epoch)
+      await settleLogout()
     })
-  }, [clearRefreshTimer, enqueue, reportLogout, settleLogout])
+  }, [clearRefreshTimer, enqueue, settleLogout])
 
   const value = useMemo<AuthContextValue>(
     () => ({

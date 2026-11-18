@@ -39,7 +39,15 @@ export function LoginPage() {
     }
   }
 
-  if (isReady && isAuthenticated) {
+  if (!isReady) {
+    return (
+      <p role="status" className="p-8 text-center text-sm text-muted-foreground">
+        Проверяем сессию…
+      </p>
+    )
+  }
+
+  if (isAuthenticated) {
     return <Navigate to="/" replace />
   }
 

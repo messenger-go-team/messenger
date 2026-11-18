@@ -23,7 +23,7 @@ describe('RegisterPage', () => {
     const user = userEvent.setup()
     renderRegister()
 
-    await screen.findByRole('heading', { name: 'Регистрация' })
+    await screen.findByLabelText('Логин')
 
     await user.type(screen.getByLabelText('Логин'), 'carol_3')
     await user.type(screen.getByLabelText('Пароль'), 'correct-horse-battery')
@@ -39,7 +39,7 @@ describe('RegisterPage', () => {
     const user = userEvent.setup()
     renderRegister()
 
-    await screen.findByRole('heading', { name: 'Регистрация' })
+    await screen.findByLabelText('Логин')
 
     await user.type(screen.getByLabelText('Логин'), 'alice_1')
     await user.type(screen.getByLabelText('Пароль'), 'correct-horse-battery')
