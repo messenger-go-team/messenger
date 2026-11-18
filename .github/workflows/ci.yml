@@ -87,6 +87,26 @@ jobs:
       - name: Test real Nginx configurations and routing
         run: make test-nginx
 
+  staging-deploy:
+    name: Staging deploy regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify workflow decisions and release outcomes
+        run: python3 deploy/test-staging-workflow.py
+
+      - name: Verify deploy, WebSocket and rollback with real services
+        run: python3 deploy/test-staging-release.py
+
   migrations:
     name: Migration integration
     runs-on: ubuntu-24.04
