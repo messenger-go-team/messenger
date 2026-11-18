@@ -21,6 +21,7 @@ const (
 type repositoryFuncs struct {
 	list    func(context.Context, string) ([]ChatItem, error)
 	history func(context.Context, string, string, Query) (Page, error)
+	window  func(ctx context.Context, chat, user, target string, limit int) (MessageContext, error)
 	mark    func(context.Context, string, string, int64) error
 }
 
@@ -29,6 +30,9 @@ func (r repositoryFuncs) List(c context.Context, user string) ([]ChatItem, error
 }
 func (r repositoryFuncs) History(c context.Context, chat, user string, q Query) (Page, error) {
 	return r.history(c, chat, user, q)
+}
+func (r repositoryFuncs) MessageContext(c context.Context, chat, user, target string, limit int) (MessageContext, error) {
+	return r.window(c, chat, user, target, limit)
 }
 func (r repositoryFuncs) MarkRead(c context.Context, chat, user string, seq int64) error {
 	return r.mark(c, chat, user, seq)
