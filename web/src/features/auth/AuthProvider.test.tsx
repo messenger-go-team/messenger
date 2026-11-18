@@ -697,4 +697,290 @@ describe('AuthProvider session races', () => {
     expect(await screen.findByText('in')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
+
+  it('does not restore account A when a later login fails while its profile is loading', async () => {
+    let cookie: string | null = null
+    const lateProfile = deferred<User>()
+    const lateLogout = deferred<void>()
+    const calls: string[] = []
+    refresh.mockImplementation(async () => {
+      calls.push('refresh')
+      if (!cookie) throw new Error('no session')
+      return { ...session, access_token: 'restored-a' }
+    })
+    login
+      .mockImplementationOnce(async () => {
+        calls.push('login-a')
+        cookie = 'account-a'
+        return session
+      })
+      .mockImplementationOnce(async () => {
+        calls.push('login-b')
+        throw new Error('invalid_credentials')
+      })
+    logout.mockImplementation(() => {
+      calls.push('logout')
+      return lateLogout.promise.then(() => {
+        cookie = null
+      })
+    })
+    getMe.mockResolvedValue(profile)
+    getMe.mockImplementationOnce(() => lateProfile.promise)
+
+    const first = render(
+      <AuthProvider>
+        <SessionProbe />
+      </AuthProvider>,
+    )
+
+    expect(await screen.findByText('ready')).toBeInTheDocument()
+    screen.getByRole('button', { name: 'Войти' }).click()
+    await waitFor(() => expect(getMe).toHaveBeenCalledTimes(1))
+    expect(logout).not.toHaveBeenCalled()
+
+    screen.getByRole('button', { name: 'Войти' }).click()
+    await waitFor(() => expect(calls).toContain('login-b'))
+    lateProfile.resolve(profile)
+
+    await waitFor(() => expect(calls).toContain('logout'))
+    expect(sessionStorage.getItem(LOGOUT_PENDING_KEY)).toBe('1')
+    expect(screen.getByText('out')).toBeInTheDocument()
+
+    calls.length = 0
+    first.unmount()
+    render(
+      <AuthProvider>
+        <SessionProbe />
+      </AuthProvider>,
+    )
+
+    await waitFor(() => expect(calls[0]).toBe('logout'))
+    expect(calls).not.toContain('refresh')
+    lateLogout.resolve()
+
+    expect(await screen.findByText('nobody')).toBeInTheDocument()
+    expect(screen.getByText('out')).toBeInTheDocument()
+    expect(screen.queryByText('alice_1')).not.toBeInTheDocument()
+  })
+
+  it('does not restore a registration when a later login fails while its profile is loading', async () => {
+    let cookie: string | null = null
+    const lateProfile = deferred<User>()
+    refresh.mockImplementation(async () => {
+      if (!cookie) throw new Error('no session')
+      return { ...session, access_token: 'restored-bob' }
+    })
+    register.mockResolvedValue({
+      id: 'bob',
+      username: 'bob_2',
+      created_at: profile.created_at,
+    })
+    login
+      .mockImplementationOnce(async () => {
+        cookie = 'account-bob'
+        return { ...session, access_token: 'access-bob' }
+      })
+      .mockRejectedValueOnce(new Error('invalid_credentials'))
+    logout.mockImplementation(async () => {
+      cookie = null
+    })
+    getMe.mockResolvedValue({ ...profile, username: 'bob_2' })
+    getMe.mockImplementationOnce(() => lateProfile.promise)
+
+    const first = render(
+      <AuthProvider>
+        <SessionProbe />
+      </AuthProvider>,
+    )
+
+    expect(await screen.findByText('ready')).toBeInTheDocument()
+    screen.getByRole('button', { name: 'Регистрация' }).click()
+    await waitFor(() => expect(getMe).toHaveBeenCalledTimes(1))
+
+    screen.getByRole('button', { name: 'Войти' }).click()
+    await waitFor(() => expect(login).toHaveBeenCalledTimes(2))
+    lateProfile.resolve({ ...profile, username: 'bob_2' })
+
+    await waitFor(() => expect(logout).toHaveBeenCalledTimes(1))
+    expect(screen.getByText('out')).toBeInTheDocument()
+
+    first.unmount()
+    render(
+      <AuthProvider>
+        <SessionProbe />
+      </AuthProvider>,
+    )
+
+    expect(await screen.findByText('nobody')).toBeInTheDocument()
+    expect(screen.queryByText('bob_2')).not.toBeInTheDocument()
+    expect(screen.getByText('out')).toBeInTheDocument()
+  })
+
+  it('keeps the newer account when login succeeds while the previous profile is loading', async () => {
+    let cookie: string | null = null
+    const lateProfile = deferred<User>()
+    refresh.mockImplementation(async () => {
+      if (!cookie) throw new Error('no session')
+      return { ...session, access_token: `restored-${cookie}` }
+    })
+    login
+      .mockImplementationOnce(async () => {
+        cookie = 'account-a'
+        return session
+      })
+      .mockImplementationOnce(async () => {
+        cookie = 'account-b'
+        return { ...session, access_token: 'access-b' }
+      })
+    logout.mockImplementation(async () => {
+      cookie = null
+    })
+    getMe.mockResolvedValue({ ...profile, username: 'bob_2' })
+    getMe.mockImplementationOnce(() => lateProfile.promise)
+
+    const first = render(
+      <AuthProvider>
+        <SessionProbe />
+      </AuthProvider>,
+    )
+
+    expect(await screen.findByText('ready')).toBeInTheDocument()
+    screen.getByRole('button', { name: 'Войти' }).click()
+    await waitFor(() => expect(getMe).toHaveBeenCalledTimes(1))
+
+    screen.getByRole('button', { name: 'Войти' }).click()
+    expect(await screen.findByText('bob_2')).toBeInTheDocument()
+    lateProfile.resolve(profile)
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText('bob_2')).toBeInTheDocument()
+    expect(screen.getByText('in')).toBeInTheDocument()
+    expect(logout).not.toHaveBeenCalled()
+
+    first.unmount()
+    render(
+      <AuthProvider>
+        <SessionProbe />
+      </AuthProvider>,
+    )
+
+    expect(await screen.findByText('bob_2')).toBeInTheDocument()
+    expect(screen.getByText('in')).toBeInTheDocument()
+  })
+
+  it('keeps account B when it succeeds after the previous profile was already cancelled', async () => {
+    let cookie: string | null = null
+    const lateProfile = deferred<User>()
+    const lateLogin = deferred<AccessTokenResponse>()
+    refresh.mockImplementation(async () => {
+      if (!cookie) throw new Error('no session')
+      return { ...session, access_token: `restored-${cookie}` }
+    })
+    login
+      .mockImplementationOnce(async () => {
+        cookie = 'account-a'
+        return session
+      })
+      .mockImplementationOnce(async () => {
+        const value = await lateLogin.promise
+        cookie = 'account-b'
+        return value
+      })
+    logout.mockImplementation(async () => {
+      cookie = null
+    })
+    getMe.mockResolvedValue({ ...profile, username: 'bob_2' })
+    getMe.mockImplementationOnce(() => lateProfile.promise)
+
+    const first = render(
+      <AuthProvider>
+        <SessionProbe />
+      </AuthProvider>,
+    )
+
+    expect(await screen.findByText('ready')).toBeInTheDocument()
+    screen.getByRole('button', { name: 'Войти' }).click()
+    await waitFor(() => expect(getMe).toHaveBeenCalledTimes(1))
+
+    screen.getByRole('button', { name: 'Войти' }).click()
+    await waitFor(() => expect(login).toHaveBeenCalledTimes(2))
+    lateProfile.resolve(profile)
+    await waitFor(() => expect(sessionStorage.getItem(LOGOUT_PENDING_KEY)).toBe('1'))
+
+    lateLogin.resolve({ ...session, access_token: 'access-b' })
+    expect(await screen.findByText('bob_2')).toBeInTheDocument()
+    expect(logout).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem(LOGOUT_PENDING_KEY)).toBeNull()
+
+    first.unmount()
+    render(
+      <AuthProvider>
+        <SessionProbe />
+      </AuthProvider>,
+    )
+
+    expect(await screen.findByText('bob_2')).toBeInTheDocument()
+    expect(screen.getByText('in')).toBeInTheDocument()
+  })
+
+  it('marks an automatic revoke before logout so reload cannot restore the cancelled login', async () => {
+    let cookie: string | null = null
+    const lateLogin = deferred<AccessTokenResponse>()
+    const lateLogout = deferred<void>()
+    const calls: string[] = []
+    refresh.mockImplementation(async () => {
+      calls.push('refresh')
+      if (!cookie) throw new Error('no session')
+      return { ...session, access_token: 'restored-a' }
+    })
+    login
+      .mockImplementationOnce(async () => {
+        const value = await lateLogin.promise
+        cookie = 'account-a'
+        return value
+      })
+      .mockRejectedValueOnce(new Error('invalid_credentials'))
+    logout.mockImplementation(() => {
+      calls.push('logout')
+      return lateLogout.promise.then(() => {
+        cookie = null
+      })
+    })
+    getMe.mockResolvedValue(profile)
+
+    const first = render(
+      <AuthProvider>
+        <SessionProbe />
+      </AuthProvider>,
+    )
+
+    expect(await screen.findByText('ready')).toBeInTheDocument()
+    screen.getByRole('button', { name: 'Войти' }).click()
+    await waitFor(() => expect(login).toHaveBeenCalledTimes(1))
+
+    screen.getByRole('button', { name: 'Войти' }).click()
+    lateLogin.resolve(session)
+
+    await waitFor(() => expect(logout).toHaveBeenCalledTimes(1))
+    expect(sessionStorage.getItem(LOGOUT_PENDING_KEY)).toBe('1')
+
+    calls.length = 0
+    first.unmount()
+    render(
+      <AuthProvider>
+        <SessionProbe />
+      </AuthProvider>,
+    )
+
+    await waitFor(() => expect(calls[0]).toBe('logout'))
+    expect(calls).not.toContain('refresh')
+    lateLogout.resolve()
+
+    expect(await screen.findByText('nobody')).toBeInTheDocument()
+    expect(screen.getByText('out')).toBeInTheDocument()
+    expect(screen.queryByText('alice_1')).not.toBeInTheDocument()
+  })
 })
