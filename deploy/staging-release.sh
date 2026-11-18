@@ -10,15 +10,20 @@ case "${1:-}:$#" in
     deploy:3|rollback:1) ;;
     *) die 'usage: staging-release.sh deploy SHA RELEASE_DIR | rollback' ;;
 esac
-root=$(realpath -e "${STAGING_ROOT:-/root/messenger36-stage}")
+root=$(realpath -e "${STAGING_ROOT:-$HOME/messenger36-stage}")
 project=${STAGING_PROJECT:-messenger36-stage}
 ingress=${STAGING_INGRESS:-messenger36-ingress}
-snippets=$(realpath -e "${STAGING_SNIPPETS:-/root/messenger36-nginx/snippets}")
+snippets=$(realpath -e "${STAGING_SNIPPETS:-$root/nginx/snippets}")
 url=${STAGING_URL:-https://staging.tidingm.ru}
+tool_root=$(dirname "$(realpath "$0")")
+wss_probe=${STAGING_WSS_PROBE:-$tool_root/../staging-wss-probe}
+wss_credentials=${STAGING_WSS_CREDENTIALS:-$root/wss-probe.json}
 [[ $project =~ ^messenger36-stage(-[a-z0-9]+)*$ ]] || die 'expected a staging Compose project'
 [[ $url =~ ^https://[a-zA-Z0-9.-]+(:[0-9]+)?$ ]] || die 'expected an HTTPS origin'
 active_snippet="$snippets/public-locations.conf"
+marker_snippet="$snippets/release-marker.conf"
 [[ -f $root/compose.yaml && -f $active_snippet ]] || die 'existing staging Compose and Nginx config required'
+[[ -x $wss_probe && -r $wss_credentials ]] || die 'WSS probe executable and staging test credentials required'
 network="${project}_default"
 services=(auth chat history)
 compose=(docker compose --project-name "$project" --project-directory "$root" --file "$root/compose.yaml")
@@ -93,22 +98,50 @@ https_status() {
     return 1
 }
 
+runtime_matches() {
+    local revision=$1 service expected
+    for service in "${services[@]}"; do
+        expected=$(<"$revision/$service.image") || return 1
+        [[ $(container_image "$service") == "$expected" ]] || return 1
+    done
+}
+
+verify_runtime() {
+    local revision=$1 expected actual attempt later_status
+    runtime_matches "$revision" && cmp -s "$revision/public-locations.conf" "$active_snippet" || return 1
+    expected=$(<"$revision/marker") || return 1
+    for ((attempt=1; attempt<=10; attempt++)); do
+        actual=$(docker exec "$ingress" wget -T 2 -qO- http://127.0.0.1:8081/) || actual=
+        if [[ -n $expected && $actual == "$expected" ]]; then break; fi
+        sleep 1
+    done
+    (( attempt <= 10 )) || { log 'Nginx did not load the selected config' >&2; return 1; }
+    health || return 1
+    later_status=$(<"$revision/later.status") || return 1
+    https_status /me 401 && https_status /internal/users/test 404 &&
+        https_status /later "$later_status" || return 1
+    "$wss_probe" "$url" "$wss_credentials"
+}
+
 activate() {
-    local revision=$1 check_later=$2 service expected
+    local revision=$1 marker signature
     atomic_copy "$revision/compose.yaml" "$overlay" 0600 || return 1
     local target=("${compose[@]}" --file "$overlay")
     "${target[@]}" config --quiet || return 1
     "${target[@]}" up -d --no-deps --no-build --force-recreate "${services[@]}" || return 1
-    for service in "${services[@]}"; do
-        expected=$(<"$revision/$service.image")
-        [[ $(container_image "$service") == "$expected" ]] || return 1
-    done
+    runtime_matches "$revision" || return 1
     health || return 1
     atomic_copy "$revision/public-locations.conf" "$active_snippet" 0644 || return 1
+    # Equivalent recovery snapshots must report the same active marker.
+    signature=$(cd "$revision" &&
+        sha256sum public-locations.conf auth.image chat.image history.image | sha256sum | cut -d ' ' -f 1) || return 1
+    marker=$(mktemp "$snippets/.release.XXXXXXXX") || return 1
+    printf '%s\n' "$signature" > "$revision/marker" &&
+        printf 'return 200 "%s";\n' "$signature" > "$marker" &&
+        chmod 0644 "$marker" && mv -fT "$marker" "$marker_snippet" || return 1
     docker exec "$ingress" nginx -t || return 1
     docker exec "$ingress" nginx -s reload || return 1
-    https_status /me 401 && https_status /internal/users/test 404 || return 1
-    if [[ $check_later == yes ]]; then https_status /later 401 || return 1; fi
+    verify_runtime "$revision"
 }
 
 migrate() {
@@ -139,15 +172,55 @@ COMMIT;
 SQL
 }
 
+valid_ref() {
+    [[ $1 =~ ^rel\.[a-zA-Z0-9]+/(previous|next)$ && -d $state/$1 ]]
+}
+
+# A pending switch points at its target. The sibling is the recovery snapshot.
+# The current pointer changes only after verification. A crash after that
+# atomic commit needs only marker cleanup, never another switch.
+recover_pending() {
+    local target recovery
+    target=$(<"$state/pending")
+    valid_ref "$target" || die 'invalid pending switch'
+    if [[ -f $state/current && $(<"$state/current") == "$target" ]]; then
+        rm -f "$state/pending"
+        return
+    fi
+    case "$target" in
+        */next) recovery=${target%/*}/previous ;;
+        */previous) recovery=${target%/*}/next ;;
+    esac
+    log "restoring $recovery and preserving the current DB schema"
+    activate "$state/$recovery" || die "recovery failed; snapshot retained at $state/$recovery"
+    rm -f "$state/pending"
+}
+
+switch_to() {
+    local target=$1 pointer
+    valid_ref "$target" || die 'invalid switch target'
+    pointer=$(mktemp "$state/.switch.XXXXXX")
+    printf '%s\n' "$target" > "$pointer"
+    mv -fT "$pointer" "$state/pending"
+    if ! activate "$state/$target"; then
+        log 'switch failed; restoring previous running configuration' >&2
+        recover_pending
+        return 1
+    fi
+    atomic_copy "$state/pending" "$state/current" 0600
+    rm -f "$state/pending"
+}
+
 rollback() {
-    [[ -f $state/previous ]] || die 'no rollback snapshot'
-    local previous
-    previous=$(<"$state/previous")
-    [[ $previous =~ ^rel\.[a-zA-Z0-9]+$ && -d $state/$previous/previous ]] || die 'invalid rollback snapshot'
-    atomic_copy "$state/previous" "$state/pending" 0600
-    log "restoring $previous and preserving the current DB schema"
-    activate "$state/$previous/previous" no || die "rollback failed; snapshot retained at $state/$previous/previous"
-    rm -f "$state/pending" "$state/previous"
+    if [[ -f $state/pending ]]; then
+        recover_pending
+        return
+    fi
+    [[ -f $state/current ]] || die 'no rollback snapshot'
+    local current
+    current=$(<"$state/current")
+    valid_ref "$current" && [[ $current == */next ]] || die 'no rollback snapshot'
+    switch_to "${current%/*}/previous"
     log 'previous images and Nginx snippet restored'
 }
 
@@ -162,7 +235,13 @@ if [[ $1 == rollback ]]; then
     rollback
     exit
 fi
-[[ ! -e $state/pending ]] || die 'incomplete switch; run rollback before deploying again'
+if [[ -f $state/pending ]]; then
+    if [[ -f $state/current && $(<"$state/current") == "$(<"$state/pending")" ]]; then
+        recover_pending
+    else
+        die 'incomplete switch; run rollback before deploying again'
+    fi
+fi
 
 sha=$2
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || die 'expected full lowercase Git SHA'
@@ -170,6 +249,15 @@ release=$(realpath -e "$3")
 [[ -f $release/REVISION && $(<"$release/REVISION") == "$sha" && -x $release/migrate ]] || die 'release SHA or migrator missing'
 candidate="$release/deploy/nginx/snippets/public-locations.conf"
 [[ -s $candidate ]] || die 'release is missing the public Nginx snippet'
+if [[ -f $state/current ]]; then
+    current=$(<"$state/current")
+    valid_ref "$current" || die 'invalid current release'
+    if [[ $(<"$state/$current/REVISION") == "$sha" ]]; then
+        verify_runtime "$state/$current"
+        printf 'STAGING_RESULT already_active %s\n' "$sha"
+        exit 0
+    fi
+fi
 
 # Future schema changes need their own compatibility review before deployment.
 for service in auth history; do
@@ -191,6 +279,18 @@ id=${run##*/}
 mkdir "$run/previous" "$run/next"
 install -m 0600 "$active_snippet" "$run/previous/public-locations.conf"
 install -m 0600 "$candidate" "$run/next/public-locations.conf"
+previous_revision=unknown
+if [[ -f $state/current ]] && runtime_matches "$state/$current" &&
+    cmp -s "$state/$current/public-locations.conf" "$active_snippet"; then
+    previous_revision=$(<"$state/$current/REVISION")
+fi
+printf '%s\n' "$previous_revision" > "$run/previous/REVISION"
+printf '%s\n' "$sha" > "$run/next/REVISION"
+previous_later=$(curl --silent --show-error --proto '=https' --max-time 5 \
+    --output /dev/null --write-out '%{http_code}' "$url/later")
+[[ $previous_later == 401 || $previous_later == 404 ]] || die 'unexpected /later baseline status'
+printf '%s\n' "$previous_later" > "$run/previous/later.status"
+printf '401\n' > "$run/next/later.status"
 for service in "${services[@]}"; do
     image="$project-$service:$sha"
     previous=$(container_image "$service") || die "$service must be running to capture rollback"
@@ -216,14 +316,7 @@ fi
 log "applying migrations before switching services ($before)"
 migrate "$release"
 
-printf '%s\n' "$id" > "$run/pointer"
-atomic_copy "$run/pointer" "$state/previous" 0600
-atomic_copy "$run/pointer" "$state/pending" 0600
 log "switching staging services to $sha"
-if ! activate "$run/next" yes; then
-    log 'deployment failed; starting application rollback' >&2
-    rollback
-    exit 1
-fi
-rm -f "$state/pending"
+switch_to "$id/next"
 log "deployed $sha; rollback snapshot is $run/previous"
+printf 'STAGING_RESULT deployed %s\n' "$sha"

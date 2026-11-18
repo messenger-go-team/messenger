@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: messenger_stage
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set staging database owner password}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d messenger_stage"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  auth:
+    image: messenger36-stage-auth:${STAGING_BASE_SHA:?set reviewed baseline SHA}
+    environment:
+      AUTH_DATABASE_URL: ${AUTH_DATABASE_URL:?set Auth runtime DSN}
+      AUTH_INTERNAL_TOKEN: ${AUTH_INTERNAL_TOKEN:?set staging internal credential}
+      JWT_SECRET: ${JWT_SECRET:?set staging JWT signing key}
+    restart: unless-stopped
+
+  chat:
+    image: messenger36-stage-chat:${STAGING_BASE_SHA:?set reviewed baseline SHA}
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?set staging JWT signing key}
+      WS_ALLOWED_ORIGINS: https://staging.tidingm.ru
+      HISTORY_GRPC_ADDR: history:9090
+    restart: unless-stopped
+
+  history:
+    image: messenger36-stage-history:${STAGING_BASE_SHA:?set reviewed baseline SHA}
+    environment:
+      HISTORY_DATABASE_URL: ${HISTORY_DATABASE_URL:?set History runtime DSN}
+      AUTH_BASE_URL: http://auth:8080
+      AUTH_INTERNAL_TOKEN: ${AUTH_INTERNAL_TOKEN:?set staging internal credential}
+      JWT_SECRET: ${JWT_SECRET:?set staging JWT signing key}
+    restart: unless-stopped
+
+  ingress:
+    image: nginx:alpine
+    container_name: messenger36-ingress
+    ports:
+      - '127.0.0.1:18080:8080'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/snippets:/etc/nginx/messenger/snippets:ro
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
