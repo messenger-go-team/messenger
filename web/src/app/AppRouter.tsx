@@ -5,6 +5,7 @@ import { LoginPage } from '@/features/auth/LoginPage'
 import { RegisterPage } from '@/features/auth/RegisterPage'
 import { RequireAuth } from '@/features/auth/RequireAuth'
 import { ChatListPage } from '@/features/chats/ChatListPage'
+import { ProfilePage } from '@/features/profile/ProfilePage'
 import { ContactsPlaceholderPage } from '@/pages/ContactsPlaceholderPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
@@ -19,6 +20,7 @@ export function AppRouter() {
         <Route path="/" element={<ChatListPage />} />
         <Route path="/chats/:chatId" element={<ChatListPage />} />
         <Route path="/contacts" element={<ContactsPlaceholderPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
         <Route path="/change-password" element={<ChangePasswordPage />} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />
