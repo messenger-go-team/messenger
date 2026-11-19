@@ -274,14 +274,16 @@ describe('ChatListPage', () => {
     expect(await screen.findByRole('heading', { name: 'charlie_3' })).toBeInTheDocument()
 
     await user.clear(screen.getByRole('searchbox', { name: 'Поиск по логину' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(/не удалось загрузить/i)
-    expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument()
+    const listAlert = await screen.findByText(/Не удалось загрузить чаты/i)
+    const retry = within(listAlert.closest('[role="alert"]') as HTMLElement).getByRole('button', {
+      name: 'Повторить',
+    })
     expect(screen.getByText(/пока нет чатов/i)).toBeInTheDocument()
 
     failListAfterCreate = false
-    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    await user.click(retry)
     expect(await screen.findByRole('link', { name: /charlie_3/i })).toBeInTheDocument()
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Не удалось загрузить чаты/i)).not.toBeInTheDocument()
   })
 
   it('keeps preview and unread when refresh after opening an existing chat fails', async () => {
@@ -349,8 +351,12 @@ describe('ChatListPage', () => {
     const rowAfter = await screen.findByRole('link', { name: /bob_2/i })
     expect(within(rowAfter).getByText('3')).toBeInTheDocument()
     expect(within(rowAfter).getByText('старое превью')).toBeInTheDocument()
-    expect(await screen.findByRole('alert')).toHaveTextContent(/не удалось загрузить/i)
-    expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument()
+    const listAlertText = await screen.findByText(/Не удалось загрузить чаты/i)
+    expect(
+      within(listAlertText.closest('[role="alert"]') as HTMLElement).getByRole('button', {
+        name: 'Повторить',
+      }),
+    ).toBeInTheDocument()
   })
 
   it('ignores a stale initial GET that arrives after a newer refresh', async () => {
