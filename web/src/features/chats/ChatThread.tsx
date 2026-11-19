@@ -215,7 +215,10 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   const letter = title.charAt(0).toUpperCase() || '?'
 
   return (
-    <section className="flex h-full min-h-0 w-full flex-col bg-background" aria-label={`Чат с ${title}`}>
+    <section
+      className="flex h-full min-h-0 w-full flex-col bg-background"
+      aria-label={`Чат с ${title}`}
+    >
       <header className="flex items-center gap-3 border-b border-border px-3 py-3 md:px-5">
         <Link
           to="/"
@@ -290,7 +293,10 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
 
         <ul className="flex flex-col gap-2">
           {messages.map((message) => (
-            <li key={message.key} className={cn('flex', message.mine ? 'justify-end' : 'justify-start')}>
+            <li
+              key={message.key}
+              className={cn('flex', message.mine ? 'justify-end' : 'justify-start')}
+            >
               <div
                 className={cn(
                   'max-w-[min(100%,28rem)] rounded-2xl px-3 py-2 text-sm shadow-sm',
@@ -309,7 +315,9 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
                   )}
                 >
                   {message.createdAt && message.status !== 'sending' ? (
-                    <time dateTime={message.createdAt}>{formatChatListTime(message.createdAt)}</time>
+                    <time dateTime={message.createdAt}>
+                      {formatChatListTime(message.createdAt)}
+                    </time>
                   ) : null}
                   {message.mine ? <StatusLabel status={message.status} /> : null}
                   {message.status === 'failed' ? (

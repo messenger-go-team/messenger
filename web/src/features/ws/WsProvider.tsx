@@ -129,7 +129,14 @@ export function WsProvider({
     }
     // accessToken намеренно только на старте сессии пользователя
     // eslint-disable-next-line react-hooks/exhaustive-deps -- recreate on identity, not refresh
-  }, [authAdapter, disableApiMockSocket, historyAdapter, isAuthenticated, user?.id, webSocketFactory])
+  }, [
+    authAdapter,
+    disableApiMockSocket,
+    historyAdapter,
+    isAuthenticated,
+    user?.id,
+    webSocketFactory,
+  ])
 
   const value = useMemo(() => ({ client, snapshot }), [client, snapshot])
 

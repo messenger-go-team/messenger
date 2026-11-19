@@ -75,10 +75,7 @@ describe('ChatThread', () => {
         calls += 1
         await gate
         if (calls === 1) {
-          return HttpResponse.json(
-            { code: 'unknown_error', message: 'down' },
-            { status: 503 },
-          )
+          return HttpResponse.json({ code: 'unknown_error', message: 'down' }, { status: 503 })
         }
         return HttpResponse.json({
           messages: [],
@@ -147,7 +144,9 @@ describe('ChatThread', () => {
     const bubble = (await screen.findByText('повтор')).closest('li')
     expect(bubble).toBeTruthy()
     expect(await within(bubble as HTMLElement).findByText('ошибка')).toBeInTheDocument()
-    await user.click(within(bubble as HTMLElement).getByRole('button', { name: 'Повторить отправку' }))
+    await user.click(
+      within(bubble as HTMLElement).getByRole('button', { name: 'Повторить отправку' }),
+    )
 
     await waitFor(() => {
       expect(mockWs.received.length).toBeGreaterThanOrEqual(2)

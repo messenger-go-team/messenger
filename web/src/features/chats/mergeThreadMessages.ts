@@ -115,7 +115,12 @@ export function mergeThreadMessages({
 export function maxConfirmedSeq(messages: readonly ThreadMessage[]): number {
   let max = 0
   for (const message of messages) {
-    if (message.seq != null && message.seq > max && message.status !== 'sending' && message.status !== 'failed') {
+    if (
+      message.seq != null &&
+      message.seq > max &&
+      message.status !== 'sending' &&
+      message.status !== 'failed'
+    ) {
       max = message.seq
     }
   }
