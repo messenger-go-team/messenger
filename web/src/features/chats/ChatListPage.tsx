@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type FormEvent,
@@ -55,6 +56,12 @@ export function ChatListPage() {
   const [openError, setOpenError] = useState<{ target: UserSummary; message: string } | null>(null)
   const searchRequestRef = useRef(0)
   const openRequestRef = useRef(0)
+  const listRequestRef = useRef(0)
+  const locationKeyRef = useRef(location.key)
+
+  useLayoutEffect(() => {
+    locationKeyRef.current = location.key
+  }, [location.key])
 
   useEffect(() => {
     mountedRef.current = true
@@ -62,6 +69,7 @@ export function ChatListPage() {
       mountedRef.current = false
       openRequestRef.current += 1
       searchRequestRef.current += 1
+      listRequestRef.current += 1
     }
   }, [])
 
@@ -69,32 +77,38 @@ export function ChatListPage() {
     setListReloadKey((value) => value + 1)
   }, [])
 
+  /** Единая загрузка списка: применяется только ответ с актуальным request id. */
+  const fetchChats = useCallback(async (token: string, mode: 'initial' | 'refresh') => {
+    const requestId = ++listRequestRef.current
+    if (mode === 'initial') {
+      setListStatus('loading')
+      setListError(null)
+    }
+    try {
+      const response = await listChats(token)
+      if (requestId !== listRequestRef.current || !mountedRef.current) return
+      setChats(response.chats)
+      setListStatus('ready')
+      setListError(null)
+    } catch {
+      if (requestId !== listRequestRef.current || !mountedRef.current) return
+      setListError('Не удалось загрузить чаты. Повторите попытку.')
+      setListStatus((status) => (status === 'ready' ? 'ready' : 'error'))
+    }
+  }, [])
+
   useEffect(() => {
     if (!accessToken) return
 
-    let cancelled = false
     const timer = window.setTimeout(() => {
-      void (async () => {
-        setListStatus('loading')
-        setListError(null)
-        try {
-          const response = await listChats(accessToken)
-          if (cancelled) return
-          setChats(response.chats)
-          setListStatus('ready')
-        } catch {
-          if (cancelled) return
-          setListStatus('error')
-          setListError('Не удалось загрузить чаты. Повторите попытку.')
-        }
-      })()
+      void fetchChats(accessToken, listReloadKey === 0 ? 'initial' : 'refresh')
     }, 0)
 
     return () => {
-      cancelled = true
       window.clearTimeout(timer)
+      listRequestRef.current += 1
     }
-  }, [accessToken, listReloadKey])
+  }, [accessToken, fetchChats, listReloadKey])
 
   const searchPrefix = normalizeUserSearchInput(query)
   const searching = searchPrefix.length > 0
@@ -144,40 +158,21 @@ export function ChatListPage() {
         : searchFetchStatus
   const visibleSearchResults = resultsMatchCurrentPrefix ? searchResults : []
 
-  const refreshChatsInBackground = useCallback(async (token: string) => {
-    try {
-      const response = await listChats(token)
-      if (!mountedRef.current) return
-      setChats(response.chats)
-      setListStatus('ready')
-      setListError(null)
-    } catch {
-      // Открытие чата уже произошло по id из POST; список подтянется при следующем заходе.
-    }
-  }, [])
-
   async function openChatWithUser(target: UserSummary) {
     if (!accessToken || creatingUserId !== null) return
     const requestId = ++openRequestRef.current
+    const startedAtLocationKey = locationKeyRef.current
     setCreatingUserId(target.id)
     setOpenError(null)
     setSearchError(null)
     try {
       const chat = await createPersonalChat(target.id, accessToken)
       if (requestId !== openRequestRef.current || !mountedRef.current) return
-      const listItem: ChatListItem = {
-        id: chat.id,
-        type: chat.type,
-        created_at: chat.created_at,
-        members: chat.members,
-        last_message: null,
-        unread_count: 0,
-      }
-      setChats((previous) => [listItem, ...previous.filter((item) => item.id !== chat.id)])
-      setListStatus('ready')
+      // Список обновляем только через fetchChats — без stub last_message/unread.
+      void fetchChats(accessToken, 'refresh')
+      if (locationKeyRef.current !== startedAtLocationKey) return
       setQuery('')
       navigate(`/chats/${chat.id}`, { state: { peerUsername: target.username } })
-      void refreshChatsInBackground(accessToken)
     } catch {
       if (requestId !== openRequestRef.current || !mountedRef.current) return
       setOpenError({
@@ -395,7 +390,19 @@ function ChatsPanel({
   }
 
   return (
-    <ul className="flex flex-col">
+    <div className="flex flex-col">
+      {error ? (
+        <div
+          className="flex flex-col items-start gap-2 border-b border-border px-4 py-3"
+          role="alert"
+        >
+          <p className="text-sm text-destructive">{error}</p>
+          <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+            Повторить
+          </Button>
+        </div>
+      ) : null}
+      <ul className="flex flex-col">
       {chats.map((chat) => {
         const name = peerUsername(chat.members, currentUserId)
         const preview = chat.last_message?.body ?? 'Нет сообщений'
@@ -432,7 +439,8 @@ function ChatsPanel({
           </li>
         )
       })}
-    </ul>
+      </ul>
+    </div>
   )
 }
 

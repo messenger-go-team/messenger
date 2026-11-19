@@ -1,7 +1,13 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import {
+  createMemoryRouter,
+  MemoryRouter,
+  Route,
+  RouterProvider,
+  Routes,
+} from 'react-router'
 import { describe, expect, it } from 'vitest'
 import type { User } from '@/api/auth'
 import { login } from '@/api/auth'
@@ -202,14 +208,31 @@ describe('ChatListPage', () => {
       password: 'test-password',
       created_at: '2026-11-01T10:10:00Z',
     })
-    let listCalls = 0
+    // После create список падает; до create оба клиента получают [].
+    let failListAfterCreate = false
     server.use(
       http.get('/chats', () => {
-        listCalls += 1
-        if (listCalls === 1) {
-          return HttpResponse.json({ chats: [] })
+        if (failListAfterCreate) {
+          return HttpResponse.json({ code: 'unknown_error', message: 'unavailable' }, { status: 503 })
         }
-        return HttpResponse.json({ code: 'unknown_error', message: 'unavailable' }, { status: 503 })
+        return HttpResponse.json({ chats: [] })
+      }),
+      http.post('/chats/personal', async ({ request }) => {
+        failListAfterCreate = true
+        const body = (await request.json()) as { user_id: string }
+        return HttpResponse.json(
+          {
+            id: LATER_CHAT_ID,
+            type: 'personal',
+            created_at: '2026-11-19T12:00:00Z',
+            members: [
+              { id: ALICE.id, username: 'alice_1' },
+              { id: body.user_id, username: 'charlie_3' },
+            ],
+            last_seq: 0,
+          },
+          { status: 201 },
+        )
       }),
     )
     const auth = await authValue()
@@ -221,6 +244,235 @@ describe('ChatListPage', () => {
     await user.click(await screen.findByRole('button', { name: /Написать charlie_3/i }))
 
     expect(await screen.findByText(/чат с charlie_3/i)).toBeInTheDocument()
+  })
+
+  it('keeps preview and unread when refresh after opening an existing chat fails', async () => {
+    let failListAfterCreate = false
+    const existingList = {
+      chats: [
+        {
+          id: INITIAL_CHAT_ID,
+          type: 'personal' as const,
+          created_at: '2026-11-07T11:00:00Z',
+          members: [
+            { id: ALICE.id, username: 'alice_1' },
+            { id: BOB_ID, username: 'bob_2' },
+          ],
+          last_message: {
+            id: 'm-old',
+            chat_id: INITIAL_CHAT_ID,
+            seq: 1,
+            sender_id: BOB_ID,
+            body: 'старое превью',
+            created_at: '2026-11-19T10:00:00Z',
+          },
+          unread_count: 3,
+        },
+      ],
+    }
+    server.use(
+      http.get('/chats', () => {
+        if (failListAfterCreate) {
+          return HttpResponse.json({ code: 'unknown_error', message: 'unavailable' }, { status: 503 })
+        }
+        return HttpResponse.json(existingList)
+      }),
+      http.post('/chats/personal', async () => {
+        failListAfterCreate = true
+        return HttpResponse.json({
+          id: INITIAL_CHAT_ID,
+          type: 'personal',
+          created_at: '2026-11-07T11:00:00Z',
+          members: [
+            { id: ALICE.id, username: 'alice_1' },
+            { id: BOB_ID, username: 'bob_2' },
+          ],
+          last_seq: 1,
+        })
+      }),
+    )
+    const auth = await authValue()
+    const user = userEvent.setup()
+    renderChats(auth)
+
+    const bobRow = await screen.findByRole('link', { name: /bob_2/i })
+    expect(within(bobRow).getByText('3')).toBeInTheDocument()
+    expect(within(bobRow).getByText('старое превью')).toBeInTheDocument()
+
+    await user.type(screen.getByRole('searchbox', { name: 'Поиск по логину' }), 'bob')
+    await user.click(await screen.findByRole('button', { name: /Написать bob_2/i }))
+
+    expect(await screen.findByText(/чат с bob_2/i)).toBeInTheDocument()
+    await user.clear(screen.getByRole('searchbox', { name: 'Поиск по логину' }))
+
+    const rowAfter = await screen.findByRole('link', { name: /bob_2/i })
+    expect(within(rowAfter).getByText('3')).toBeInTheDocument()
+    expect(within(rowAfter).getByText('старое превью')).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(/не удалось загрузить/i)
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument()
+  })
+
+  it('ignores a stale initial GET that arrives after a newer refresh', async () => {
+    addUser({
+      id: CHARLIE_ID,
+      username: 'charlie_3',
+      password: 'test-password',
+      created_at: '2026-11-01T10:10:00Z',
+    })
+    let releaseInitial!: () => void
+    const initialGate = new Promise<void>((resolve) => {
+      releaseInitial = resolve
+    })
+    let listCalls = 0
+    server.use(
+      http.get('/chats', async () => {
+        listCalls += 1
+        if (listCalls === 1) {
+          await initialGate
+          return HttpResponse.json({ chats: [] })
+        }
+        return HttpResponse.json({
+          chats: [
+            {
+              id: LATER_CHAT_ID,
+              type: 'personal',
+              created_at: '2026-11-19T12:00:00Z',
+              members: [
+                { id: ALICE.id, username: 'alice_1' },
+                { id: CHARLIE_ID, username: 'charlie_3' },
+              ],
+              last_message: null,
+              unread_count: 0,
+            },
+          ],
+        })
+      }),
+      http.post('/chats/personal', async ({ request }) => {
+        const body = (await request.json()) as { user_id: string }
+        return HttpResponse.json(
+          {
+            id: LATER_CHAT_ID,
+            type: 'personal',
+            created_at: '2026-11-19T12:00:00Z',
+            members: [
+              { id: ALICE.id, username: 'alice_1' },
+              { id: body.user_id, username: 'charlie_3' },
+            ],
+            last_seq: 0,
+          },
+          { status: 201 },
+        )
+      }),
+    )
+    const auth = await authValue()
+    const user = userEvent.setup()
+    renderChats(auth)
+
+    expect(await screen.findByText('Загрузка чатов…')).toBeInTheDocument()
+    await user.type(screen.getByRole('searchbox', { name: 'Поиск по логину' }), 'char')
+    await user.click(await screen.findByRole('button', { name: /Написать charlie_3/i }))
+    expect(await screen.findByText(/чат с charlie_3/i)).toBeInTheDocument()
+
+    await user.clear(screen.getByRole('searchbox', { name: 'Поиск по логину' }))
+    expect(await screen.findByRole('link', { name: /charlie_3/i })).toBeInTheDocument()
+
+    await act(async () => {
+      releaseInitial()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /charlie_3/i })).toBeInTheDocument()
+    })
+    expect(screen.queryByText('У вас нет чатов')).not.toBeInTheDocument()
+  })
+
+  it('does not navigate when the user goes back before POST resolves', async () => {
+    addUser({
+      id: CHARLIE_ID,
+      username: 'charlie_3',
+      password: 'test-password',
+      created_at: '2026-11-01T10:10:00Z',
+    })
+    let releaseCreate!: () => void
+    const createGate = new Promise<void>((resolve) => {
+      releaseCreate = resolve
+    })
+    server.use(
+      http.get('/chats', () =>
+        HttpResponse.json({
+          chats: [
+            {
+              id: INITIAL_CHAT_ID,
+              type: 'personal',
+              created_at: '2026-11-07T11:00:00Z',
+              members: [
+                { id: ALICE.id, username: 'alice_1' },
+                { id: BOB_ID, username: 'bob_2' },
+              ],
+              last_message: {
+                id: 'm1',
+                chat_id: INITIAL_CHAT_ID,
+                seq: 1,
+                sender_id: BOB_ID,
+                body: 'привет',
+                created_at: '2026-11-19T10:48:00Z',
+              },
+              unread_count: 0,
+            },
+          ],
+        }),
+      ),
+      http.post('/chats/personal', async ({ request }) => {
+        await createGate
+        const body = (await request.json()) as { user_id: string }
+        return HttpResponse.json(
+          {
+            id: LATER_CHAT_ID,
+            type: 'personal',
+            created_at: '2026-11-19T12:00:00Z',
+            members: [
+              { id: ALICE.id, username: 'alice_1' },
+              { id: body.user_id, username: 'charlie_3' },
+            ],
+            last_seq: 0,
+          },
+          { status: 201 },
+        )
+      }),
+    )
+    const auth = await authValue()
+    const router = createMemoryRouter(
+      [
+        { path: '/', element: <ChatListPage /> },
+        { path: '/chats/:chatId', element: <ChatListPage /> },
+      ],
+      { initialEntries: ['/', `/chats/${INITIAL_CHAT_ID}`], initialIndex: 1 },
+    )
+    render(
+      <AuthContext.Provider value={auth}>
+        <RouterProvider router={router} />
+      </AuthContext.Provider>,
+    )
+
+    expect(await screen.findByText(/чат с bob_2/i)).toBeInTheDocument()
+    const user = userEvent.setup()
+    await user.type(screen.getByRole('searchbox', { name: 'Поиск по логину' }), 'char')
+    await user.click(await screen.findByRole('button', { name: /Написать charlie_3/i }))
+
+    await act(async () => {
+      await router.navigate(-1)
+    })
+    expect(await screen.findByText(/Выберите чат/i)).toBeInTheDocument()
+
+    await act(async () => {
+      releaseCreate()
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByText(/чат с charlie_3/i)).not.toBeInTheDocument()
+    })
+    expect(screen.getByText(/Выберите чат/i)).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/')
   })
 
   it('retries opening the selected user after a failed create', async () => {
