@@ -244,7 +244,7 @@ export function ChatListPage() {
         className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-border bg-muted/40 py-3"
       >
         <div className="flex flex-col items-center gap-3">
-          <NavIcon label="Уведомления" disabled>
+          <NavIcon label="Важно" to="/later">
             <Bell className="size-5" />
           </NavIcon>
           <NavIcon label="Чаты" active={chatsNavActive} to="/">
