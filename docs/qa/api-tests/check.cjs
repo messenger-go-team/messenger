@@ -7,11 +7,36 @@ const {
   validateResponse,
 } = require("./collection/schema.cjs");
 const { redact } = require("./report.cjs");
-const generated = spawnSync(process.execPath, ["generate.cjs", "--check"], {
-  cwd: __dirname,
-  stdio: "inherit",
-});
-assert.equal(generated.status, 0);
+const generated = require("./generate.cjs").generate(true);
+// A Windows checkout can read a case-only path mismatch that Linux CI cannot.
+const index = spawnSync(
+  "git",
+  ["ls-files", "--full-name", "--", "docs/qa/api-tests/collection"],
+  {
+    cwd: require("node:path").resolve(__dirname, "../../.."),
+    encoding: "utf8",
+  },
+);
+assert.equal(
+  index.status,
+  0,
+  "read Git index for portable generated filenames",
+);
+const tracked = index.stdout.trim().split(/\r?\n/);
+for (const filename of generated.keys()) {
+  const expected = "docs/qa/api-tests/collection/" + filename;
+  const existing = tracked.find(
+    (p) => p.toLowerCase() === expected.toLowerCase(),
+  );
+  assert.ok(
+    !existing || existing === expected,
+    "Git index filename case mismatch: " +
+      existing +
+      " -> " +
+      expected +
+      "; use a two-step git mv",
+  );
+}
 assert.equal(new Set(cases.map((c) => c.id)).size, cases.length);
 for (const [api, spec] of Object.entries(specs))
   for (const [route, ops] of Object.entries(spec.paths))
