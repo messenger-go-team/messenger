@@ -331,15 +331,18 @@ export function ChatListPage() {
         </div>
       </aside>
 
-      <main className="hidden min-w-0 flex-1 items-center justify-center bg-background md:flex">
+      <main className="hidden min-w-0 flex-1 flex-col items-center justify-center bg-muted/20 md:flex">
         {chatId ? (
-          <p className="max-w-sm px-6 text-center text-muted-foreground">
-            Чат с {selectedPeer ?? 'пользователем'}. Окно переписки — в задаче #44.
-          </p>
+          <div className="max-w-sm px-6 text-center">
+            <p className="text-base font-medium text-foreground">
+              Чат с {selectedPeer ?? 'пользователем'}
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Окно переписки подключается в задаче #44
+            </p>
+          </div>
         ) : (
-          <p className="max-w-sm px-6 text-center text-muted-foreground">
-            Выберите чат, чтобы начать обмен сообщениями
-          </p>
+          <ChatNotSelectedPanel onFindPerson={() => focusSearch()} />
         )}
       </main>
     </div>
@@ -380,8 +383,19 @@ function ChatsPanel({
 
   if (chats.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
-        <p className="text-sm text-muted-foreground">У вас нет чатов</p>
+      <div className="flex flex-col items-center gap-4 px-6 py-12 text-center">
+        <span
+          aria-hidden
+          className="inline-flex size-14 items-center justify-center rounded-full bg-muted text-muted-foreground"
+        >
+          <MessageCircle className="size-7" />
+        </span>
+        <div className="space-y-1">
+          <p className="text-base font-semibold text-foreground">Начните переписку</p>
+          <p className="text-sm text-muted-foreground">
+            У вас пока нет чатов. Найдите человека по логину и напишите первое сообщение.
+          </p>
+        </div>
         <Button type="button" onClick={onFindPerson}>
           Найти человека
         </Button>
@@ -479,7 +493,22 @@ function SearchPanel({
   }
 
   if (results.length === 0) {
-    return <p className="px-4 py-6 text-sm text-muted-foreground">Никого не нашли</p>
+    return (
+      <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
+        <span
+          aria-hidden
+          className="inline-flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground"
+        >
+          <Search className="size-5" />
+        </span>
+        <div className="space-y-1">
+          <p className="text-base font-semibold text-foreground">Никого не нашли</p>
+          <p className="text-sm text-muted-foreground">
+            Проверьте логин: только латиница, цифры и _ , от 3 символов.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   const opening = creatingUserId !== null
@@ -497,12 +526,18 @@ function SearchPanel({
           </Button>
         </div>
       ) : null}
+      <p className="px-4 pt-2 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        Люди
+      </p>
       <ul className="flex flex-col">
         {results.map((item) => (
           <li key={item.id} className="border-b border-border">
             <div className="flex items-center gap-3 px-4 py-3">
               <InitialAvatar username={item.username} />
-              <span className="min-w-0 flex-1 truncate font-semibold">{item.username}</span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold">{item.username}</p>
+                <p className="truncate text-xs text-muted-foreground">@{item.username}</p>
+              </div>
               <Button
                 type="button"
                 size="sm"
@@ -516,6 +551,28 @@ function SearchPanel({
           </li>
         ))}
       </ul>
+    </div>
+  )
+}
+
+function ChatNotSelectedPanel({ onFindPerson }: { onFindPerson: () => void }) {
+  return (
+    <div className="flex max-w-md flex-col items-center gap-4 px-8 text-center">
+      <span
+        aria-hidden
+        className="inline-flex size-16 items-center justify-center rounded-full bg-muted text-muted-foreground"
+      >
+        <MessageCircle className="size-8" />
+      </span>
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold tracking-tight">Выберите чат</h2>
+        <p className="text-sm text-muted-foreground">
+          Откройте диалог слева или найдите человека по логину, чтобы начать переписку.
+        </p>
+      </div>
+      <Button type="button" variant="outline" onClick={onFindPerson}>
+        Найти человека
+      </Button>
     </div>
   )
 }
