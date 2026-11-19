@@ -64,6 +64,20 @@ describe('ChatThread', () => {
     expect(screen.getByText('Да, договорились.')).toBeInTheDocument()
   })
 
+  it('exposes message menu with Later stub entry point', async () => {
+    const auth = await authValue()
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 6)
+    renderThread(auth, mockWs)
+
+    await screen.findByText('Да, договорились.')
+    const menus = screen.getAllByRole('button', { name: 'Действия с сообщением' })
+    expect(menus.length).toBeGreaterThan(0)
+    await userEvent.click(menus[0]!)
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Вернуться позже' }))
+    expect(await screen.findByRole('status')).toHaveTextContent(/Вернуться позже/i)
+  })
+
   it('shows loading then error with retry', async () => {
     let release!: () => void
     const gate = new Promise<void>((resolve) => {
@@ -75,10 +89,7 @@ describe('ChatThread', () => {
         calls += 1
         await gate
         if (calls === 1) {
-          return HttpResponse.json(
-            { code: 'unknown_error', message: 'down' },
-            { status: 503 },
-          )
+          return HttpResponse.json({ code: 'unknown_error', message: 'down' }, { status: 503 })
         }
         return HttpResponse.json({
           messages: [],
@@ -147,7 +158,9 @@ describe('ChatThread', () => {
     const bubble = (await screen.findByText('повтор')).closest('li')
     expect(bubble).toBeTruthy()
     expect(await within(bubble as HTMLElement).findByText('ошибка')).toBeInTheDocument()
-    await user.click(within(bubble as HTMLElement).getByRole('button', { name: 'Повторить отправку' }))
+    await user.click(
+      within(bubble as HTMLElement).getByRole('button', { name: 'Повторить отправку' }),
+    )
 
     await waitFor(() => {
       expect(mockWs.received.length).toBeGreaterThanOrEqual(2)
