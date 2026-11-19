@@ -382,10 +382,7 @@ function ChatsPanel({
   }
 
   const refreshErrorBanner = error ? (
-    <div
-      className="flex flex-col items-start gap-2 border-b border-border px-4 py-3"
-      role="alert"
-    >
+    <div className="flex flex-col items-start gap-2 border-b border-border px-4 py-3" role="alert">
       <p className="text-sm text-destructive">{error}</p>
       <Button type="button" variant="outline" size="sm" onClick={onRetry}>
         Повторить
