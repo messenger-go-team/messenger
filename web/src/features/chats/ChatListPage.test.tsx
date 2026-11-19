@@ -211,6 +211,7 @@ describe('ChatListPage', () => {
     })
     // После create список падает; до create оба клиента получают [].
     let failListAfterCreate = false
+    let createdChat = false
     server.use(
       http.get('/chats', () => {
         if (failListAfterCreate) {
@@ -219,10 +220,28 @@ describe('ChatListPage', () => {
             { status: 503 },
           )
         }
-        return HttpResponse.json({ chats: [] })
+        if (!createdChat) {
+          return HttpResponse.json({ chats: [] })
+        }
+        return HttpResponse.json({
+          chats: [
+            {
+              id: LATER_CHAT_ID,
+              type: 'personal',
+              created_at: '2026-11-19T12:00:00Z',
+              members: [
+                { id: ALICE.id, username: 'alice_1' },
+                { id: CHARLIE_ID, username: 'charlie_3' },
+              ],
+              last_message: null,
+              unread_count: 0,
+            },
+          ],
+        })
       }),
       http.post('/chats/personal', async ({ request }) => {
         failListAfterCreate = true
+        createdChat = true
         const body = (await request.json()) as { user_id: string }
         return HttpResponse.json(
           {
@@ -248,6 +267,16 @@ describe('ChatListPage', () => {
     await user.click(await screen.findByRole('button', { name: /Написать charlie_3/i }))
 
     expect(await screen.findByText(/чат с charlie_3/i)).toBeInTheDocument()
+
+    await user.clear(screen.getByRole('searchbox', { name: 'Поиск по логину' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/не удалось загрузить/i)
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument()
+    expect(screen.getByText(/пока нет чатов/i)).toBeInTheDocument()
+
+    failListAfterCreate = false
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByRole('link', { name: /charlie_3/i })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('keeps preview and unread when refresh after opening an existing chat fails', async () => {

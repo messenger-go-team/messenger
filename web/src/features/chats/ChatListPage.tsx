@@ -381,41 +381,46 @@ function ChatsPanel({
     )
   }
 
+  const refreshErrorBanner = error ? (
+    <div
+      className="flex flex-col items-start gap-2 border-b border-border px-4 py-3"
+      role="alert"
+    >
+      <p className="text-sm text-destructive">{error}</p>
+      <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+        Повторить
+      </Button>
+    </div>
+  ) : null
+
   if (chats.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-4 px-6 py-12 text-center">
-        <span
-          aria-hidden
-          className="inline-flex size-14 items-center justify-center rounded-full bg-muted text-muted-foreground"
-        >
-          <MessageCircle className="size-7" />
-        </span>
-        <div className="space-y-1">
-          <p className="text-base font-semibold text-foreground">Начните переписку</p>
-          <p className="text-sm text-muted-foreground">
-            У вас пока нет чатов. Найдите человека по логину и напишите первое сообщение.
-          </p>
+      <div className="flex flex-col">
+        {refreshErrorBanner}
+        <div className="flex flex-col items-center gap-4 px-6 py-12 text-center">
+          <span
+            aria-hidden
+            className="inline-flex size-14 items-center justify-center rounded-full bg-muted text-muted-foreground"
+          >
+            <MessageCircle className="size-7" />
+          </span>
+          <div className="space-y-1">
+            <p className="text-base font-semibold text-foreground">Начните переписку</p>
+            <p className="text-sm text-muted-foreground">
+              У вас пока нет чатов. Найдите человека по логину и напишите первое сообщение.
+            </p>
+          </div>
+          <Button type="button" onClick={onFindPerson}>
+            Найти человека
+          </Button>
         </div>
-        <Button type="button" onClick={onFindPerson}>
-          Найти человека
-        </Button>
       </div>
     )
   }
 
   return (
     <div className="flex flex-col">
-      {error ? (
-        <div
-          className="flex flex-col items-start gap-2 border-b border-border px-4 py-3"
-          role="alert"
-        >
-          <p className="text-sm text-destructive">{error}</p>
-          <Button type="button" variant="outline" size="sm" onClick={onRetry}>
-            Повторить
-          </Button>
-        </div>
-      ) : null}
+      {refreshErrorBanner}
       <ul className="flex flex-col">
         {chats.map((chat) => {
           const name = peerUsername(chat.members, currentUserId)
