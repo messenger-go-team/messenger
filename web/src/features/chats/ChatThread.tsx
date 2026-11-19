@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input'
 import { useAuth } from '@/features/auth/useAuth'
 import { connectionStatusLabel } from '@/features/chats/connectionStatus'
 import { formatChatListTime } from '@/features/chats/formatChatListTime'
+import { resolveMarkReadSeq } from '@/features/chats/markReadSeq'
 import {
   maxConfirmedSeq,
   mergeThreadMessages,
@@ -44,7 +45,10 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   const stickToBottomRef = useRef(true)
   const markedSeqRef = useRef(0)
   const markInFlightRef = useRef(false)
+  const pendingMarkSeqRef = useRef(0)
+  const visibleMaxSeqRef = useRef(0)
   const historyRequestRef = useRef(0)
+  const messageNodeRefs = useRef(new Map<number, Element>())
 
   const [history, setHistory] = useState<Message[]>([])
   const [historyStatus, setHistoryStatus] = useState<HistoryStatus>('loading')
@@ -54,6 +58,7 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   const [draft, setDraft] = useState('')
   const [sendError, setSendError] = useState<string | null>(null)
   const [visibilityTick, setVisibilityTick] = useState(0)
+  const [visibleMaxSeq, setVisibleMaxSeq] = useState(0)
 
   const loadInitial = useCallback(async () => {
     if (!accessToken) return
@@ -130,25 +135,67 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
     const list = listRef.current
     if (!list) return
     list.scrollTop = list.scrollHeight
+    const bottomSeq = maxConfirmedSeq(messages)
+    if (bottomSeq > visibleMaxSeqRef.current) {
+      visibleMaxSeqRef.current = bottomSeq
+      setVisibleMaxSeq(bottomSeq)
+    }
   }, [messages])
 
   const connectionLabel = connectionStatusLabel(snapshot.transport)
   const historySyncing = snapshot.history === 'syncing'
 
   useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return
+    const root = listRef.current
+    if (!root) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        let raised = visibleMaxSeqRef.current
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue
+          const seqAttr = (entry.target as HTMLElement).dataset.seq
+          const seq = seqAttr ? Number(seqAttr) : NaN
+          if (!Number.isFinite(seq) || seq <= raised) continue
+          raised = seq
+        }
+        if (raised > visibleMaxSeqRef.current) {
+          visibleMaxSeqRef.current = raised
+          setVisibleMaxSeq(raised)
+        }
+      },
+      { root, threshold: 0.4 },
+    )
+
+    for (const node of messageNodeRefs.current.values()) {
+      observer.observe(node)
+    }
+
+    return () => observer.disconnect()
+  }, [messages])
+
+  useEffect(() => {
     if (!accessToken || !user || document.hidden) return
     if (historyStatus !== 'ready' && historyStatus !== 'empty') return
-    if (historySyncing) return
 
-    const maxSeq = maxConfirmedSeq(messages)
-    if (maxSeq <= markedSeqRef.current) return
-    if (markInFlightRef.current) return
+    const seqToMark = resolveMarkReadSeq({
+      visibleMaxSeq,
+      messages,
+      historySyncing,
+    })
+    if (seqToMark <= markedSeqRef.current) return
+
+    if (markInFlightRef.current) {
+      pendingMarkSeqRef.current = Math.max(pendingMarkSeqRef.current, seqToMark)
+      return
+    }
 
     markInFlightRef.current = true
-    const seqToMark = maxSeq
-    void markChatRead(chatId, seqToMark, accessToken)
+    const requested = seqToMark
+    void markChatRead(chatId, requested, accessToken)
       .then(() => {
-        if (seqToMark > markedSeqRef.current) markedSeqRef.current = seqToMark
+        if (requested > markedSeqRef.current) markedSeqRef.current = requested
         onReadCommitted?.()
       })
       .catch(() => {
@@ -156,6 +203,11 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
       })
       .finally(() => {
         markInFlightRef.current = false
+        const pending = pendingMarkSeqRef.current
+        pendingMarkSeqRef.current = 0
+        if (pending > markedSeqRef.current) {
+          setVisibilityTick((value) => value + 1)
+        }
       })
   }, [
     accessToken,
@@ -166,6 +218,7 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
     onReadCommitted,
     user,
     visibilityTick,
+    visibleMaxSeq,
   ])
 
   useEffect(() => {
@@ -180,7 +233,20 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
     const target = event.currentTarget
     const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight
     stickToBottomRef.current = distanceFromBottom < 80
+    if (stickToBottomRef.current) {
+      const bottomSeq = maxConfirmedSeq(messages)
+      if (bottomSeq > visibleMaxSeqRef.current) {
+        visibleMaxSeqRef.current = bottomSeq
+        setVisibleMaxSeq(bottomSeq)
+      }
+    }
     if (target.scrollTop < 48) void loadOlder()
+  }
+
+  const bindMessageNode = (seq: number | undefined, node: HTMLElement | null) => {
+    if (seq == null) return
+    if (node) messageNodeRefs.current.set(seq, node)
+    else messageNodeRefs.current.delete(seq)
   }
 
   const send = (event: FormEvent) => {
@@ -295,6 +361,8 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
           {messages.map((message) => (
             <li
               key={message.key}
+              ref={(node) => bindMessageNode(message.seq, node)}
+              data-seq={message.seq}
               className={cn('flex', message.mine ? 'justify-end' : 'justify-start')}
             >
               <div

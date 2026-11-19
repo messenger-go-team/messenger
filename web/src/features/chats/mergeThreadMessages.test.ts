@@ -111,6 +111,53 @@ describe('mergeThreadMessages', () => {
     expect(merged[0]?.status).toBe('sent')
   })
 
+  it('does not surface WS cache older than the REST history window', () => {
+    const merged = mergeThreadMessages({
+      currentUserId: USER,
+      chatId: CHAT,
+      history: [
+        {
+          id: 'm50',
+          chat_id: CHAT,
+          seq: 50,
+          sender_id: PEER,
+          body: 'newest page',
+          created_at: '2026-11-01T12:00:00Z',
+        },
+        {
+          id: 'm51',
+          chat_id: CHAT,
+          seq: 51,
+          sender_id: PEER,
+          body: 'also page',
+          created_at: '2026-11-01T12:01:00Z',
+        },
+      ],
+      wsMessages: [
+        {
+          id: 'm1',
+          chat_id: CHAT,
+          seq: 1,
+          sender_id: PEER,
+          body: 'from sync cache',
+          created_at: '2026-11-01T10:00:00Z',
+        },
+        {
+          id: 'm52',
+          chat_id: CHAT,
+          seq: 52,
+          sender_id: USER,
+          body: 'live',
+          created_at: '2026-11-01T12:02:00Z',
+          client_msg_id: 'c52',
+        },
+      ],
+      pending: [],
+    })
+
+    expect(merged.map((item) => item.seq)).toEqual([50, 51, 52])
+  })
+
   it('ignores other chats', () => {
     const merged = mergeThreadMessages({
       currentUserId: USER,

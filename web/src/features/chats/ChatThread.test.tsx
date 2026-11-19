@@ -249,7 +249,7 @@ describe('ChatThread', () => {
     expect(await screen.findByText('Привет, Боб!')).toBeInTheDocument()
   })
 
-  it('marks the highest visible seq as read and notifies the list', async () => {
+  it('marks the highest visible contiguous seq as read and notifies the list', async () => {
     const readBodies: unknown[] = []
     server.use(
       http.post(`/chats/${INITIAL_CHAT_ID}/read`, async ({ request }) => {
@@ -269,6 +269,148 @@ describe('ChatThread', () => {
     })
     expect(readBodies.at(-1)).toEqual({ seq: 6 })
     expect(onRead).toHaveBeenCalled()
+  })
+
+  it('queues the next mark-read while a previous POST is in flight', async () => {
+    const readBodies: number[] = []
+    let releaseFirst!: () => void
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    let readCalls = 0
+    server.use(
+      http.post(`/chats/${INITIAL_CHAT_ID}/read`, async ({ request }) => {
+        readCalls += 1
+        const body = (await request.json()) as { seq: number }
+        readBodies.push(body.seq)
+        if (readCalls === 1) await firstGate
+        return new HttpResponse(null, { status: 204 })
+      }),
+      http.get(`/chats/${INITIAL_CHAT_ID}/messages`, () =>
+        HttpResponse.json({
+          messages: [
+            {
+              id: 'm1',
+              chat_id: INITIAL_CHAT_ID,
+              seq: 1,
+              sender_id: '00000000-0000-4000-8000-000000000002',
+              body: 'one',
+              created_at: '2026-11-19T10:00:00Z',
+            },
+            {
+              id: 'm2',
+              chat_id: INITIAL_CHAT_ID,
+              seq: 2,
+              sender_id: '00000000-0000-4000-8000-000000000002',
+              body: 'two',
+              created_at: '2026-11-19T10:01:00Z',
+            },
+          ],
+          next_before_seq: null,
+          next_after_seq: 2,
+          has_more_before: false,
+          has_more_after: false,
+        }),
+      ),
+    )
+    const auth = await authValue()
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    renderThread(auth, mockWs)
+
+    await screen.findByText('two')
+    await waitFor(() => expect(readBodies).toContain(2))
+
+    await waitFor(() => expect(mockWs.connections.size).toBeGreaterThan(0))
+    const connection = Array.from(mockWs.connections)[0]!
+    await act(async () => {
+      connection.serverMessage(
+        JSON.stringify({
+          type: 'message.new',
+          id: '50000000-0000-4000-8000-000000000003',
+          ts: '2026-11-19T10:02:00Z',
+          payload: {
+            chat_id: INITIAL_CHAT_ID,
+            client_msg_id: '30000000-0000-4000-8000-000000000003',
+            message_id: '40000000-0000-4000-8000-000000000003',
+            sender_id: '00000000-0000-4000-8000-000000000002',
+            seq: 3,
+            body: 'three',
+            created_at: '2026-11-19T10:02:00Z',
+          },
+        }),
+      )
+    })
+    expect(await screen.findByText('three')).toBeInTheDocument()
+
+    await act(async () => {
+      releaseFirst()
+    })
+    await waitFor(() => {
+      expect(readBodies.at(-1)).toBe(3)
+    })
+  })
+
+  it('does not render WS cache below the REST history window', async () => {
+    server.use(
+      http.get(`/chats/${INITIAL_CHAT_ID}/messages`, () =>
+        HttpResponse.json({
+          messages: [
+            {
+              id: 'm50',
+              chat_id: INITIAL_CHAT_ID,
+              seq: 50,
+              sender_id: '00000000-0000-4000-8000-000000000002',
+              body: 'page-start',
+              created_at: '2026-11-19T12:00:00Z',
+            },
+            {
+              id: 'm51',
+              chat_id: INITIAL_CHAT_ID,
+              seq: 51,
+              sender_id: '00000000-0000-4000-8000-000000000002',
+              body: 'page-end',
+              created_at: '2026-11-19T12:01:00Z',
+            },
+          ],
+          next_before_seq: 50,
+          next_after_seq: 51,
+          has_more_before: true,
+          has_more_after: false,
+        }),
+      ),
+      http.post(`/chats/${INITIAL_CHAT_ID}/read`, () => new HttpResponse(null, { status: 204 })),
+    )
+    const auth = await authValue()
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 51)
+    renderThread(auth, mockWs)
+
+    expect(await screen.findByText('page-start')).toBeInTheDocument()
+    expect(screen.getByText('page-end')).toBeInTheDocument()
+
+    await waitFor(() => expect(mockWs.connections.size).toBeGreaterThan(0))
+    const connection = Array.from(mockWs.connections)[0]!
+    await act(async () => {
+      connection.serverMessage(
+        JSON.stringify({
+          type: 'message.new',
+          id: '50000000-0000-4000-8000-000000000001',
+          ts: '2026-11-19T09:00:00Z',
+          payload: {
+            chat_id: INITIAL_CHAT_ID,
+            client_msg_id: '30000000-0000-4000-8000-000000000001',
+            message_id: '40000000-0000-4000-8000-000000000001',
+            sender_id: '00000000-0000-4000-8000-000000000002',
+            seq: 1,
+            body: 'ancient-from-cache',
+            created_at: '2026-11-19T09:00:00Z',
+          },
+        }),
+      )
+    })
+
+    expect(screen.queryByText('ancient-from-cache')).not.toBeInTheDocument()
+    expect(screen.getByText('page-start')).toBeInTheDocument()
   })
 
   it('shows connection banner while reconnecting', async () => {

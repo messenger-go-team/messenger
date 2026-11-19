@@ -62,7 +62,22 @@ export function mergeThreadMessages({
   }
 
   for (const message of history) upsertConfirmed(message)
-  for (const message of wsMessages) upsertConfirmed(message)
+
+  // Окно ленты задаёт REST (history). WS-кэш: только seq внутри окна или новее max —
+  // старые seq из sync не всплывают без before_seq / loadOlder.
+  let historyMinSeq: number | null = null
+  let historyMaxSeq = 0
+  for (const message of history) {
+    if (message.chat_id !== chatId) continue
+    if (historyMinSeq == null || message.seq < historyMinSeq) historyMinSeq = message.seq
+    if (message.seq > historyMaxSeq) historyMaxSeq = message.seq
+  }
+
+  for (const message of wsMessages) {
+    if (message.chat_id !== chatId) continue
+    if (historyMinSeq != null && message.seq < historyMinSeq) continue
+    upsertConfirmed(message)
+  }
 
   for (const item of pending) {
     if (item.chatId !== chatId) continue
