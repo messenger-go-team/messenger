@@ -9,7 +9,15 @@ import {
   type UIEvent,
 } from 'react'
 import { Link } from 'react-router'
-import { ArrowLeft, RotateCcw, SendHorizontal } from 'lucide-react'
+import {
+  ArrowLeft,
+  Check,
+  CircleAlert,
+  LoaderCircle,
+  MessageCircle,
+  RotateCcw,
+  SendHorizontal,
+} from 'lucide-react'
 import { getMessageHistory, markChatRead, type Message } from '@/api/history'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -54,6 +62,7 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   const [draft, setDraft] = useState('')
   const [sendError, setSendError] = useState<string | null>(null)
   const [visibilityTick, setVisibilityTick] = useState(0)
+  const [showNewMessagesChip, setShowNewMessagesChip] = useState(false)
 
   const loadInitial = useCallback(async () => {
     if (!accessToken) return
@@ -179,7 +188,12 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   const onScroll = (event: UIEvent<HTMLDivElement>) => {
     const target = event.currentTarget
     const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight
-    stickToBottomRef.current = distanceFromBottom < 80
+    const atBottom = distanceFromBottom < 80
+    stickToBottomRef.current = atBottom
+    if (atBottom) setShowNewMessagesChip(false)
+    else if (messages.some((item) => !item.mine && item.status === 'received')) {
+      setShowNewMessagesChip(true)
+    }
     if (target.scrollTop < 48) void loadOlder()
   }
 
@@ -215,7 +229,10 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   const letter = title.charAt(0).toUpperCase() || '?'
 
   return (
-    <section className="flex h-full min-h-0 w-full flex-col bg-background" aria-label={`Чат с ${title}`}>
+    <section
+      className="flex h-full min-h-0 w-full flex-col bg-background"
+      aria-label={`Чат с ${title}`}
+    >
       <header className="flex items-center gap-3 border-b border-border px-3 py-3 md:px-5">
         <Link
           to="/"
@@ -271,9 +288,18 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
         ) : null}
 
         {historyStatus === 'empty' && messages.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">
-            Напишите первое сообщение
-          </p>
+          <div className="flex flex-col items-center gap-3 py-16 text-center">
+            <span
+              aria-hidden
+              className="inline-flex size-14 items-center justify-center rounded-full bg-muted text-muted-foreground"
+            >
+              <MessageCircle className="size-7" />
+            </span>
+            <div className="space-y-1">
+              <p className="text-base font-semibold">Напишите первое сообщение</p>
+              <p className="text-sm text-muted-foreground">Сообщения появятся в этом окне</p>
+            </div>
+          </div>
         ) : null}
 
         {loadingOlder ? (
@@ -288,28 +314,57 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
           </p>
         ) : null}
 
+        {showNewMessagesChip ? (
+          <div className="sticky top-0 z-10 mb-3 flex justify-center">
+            <button
+              type="button"
+              className="rounded-full border border-border bg-card px-3 py-1 text-xs font-medium shadow-sm"
+              onClick={() => {
+                stickToBottomRef.current = true
+                setShowNewMessagesChip(false)
+                const list = listRef.current
+                if (list) list.scrollTop = list.scrollHeight
+              }}
+            >
+              Новые сообщения
+            </button>
+          </div>
+        ) : null}
+
         <ul className="flex flex-col gap-2">
           {messages.map((message) => (
-            <li key={message.key} className={cn('flex', message.mine ? 'justify-end' : 'justify-start')}>
+            <li
+              key={message.key}
+              className={cn(
+                'group/bubble flex',
+                message.mine ? 'justify-end' : 'justify-start',
+                message.mine &&
+                  message.status === 'sending' &&
+                  'animate-in fade-in slide-in-from-bottom-1 duration-200',
+              )}
+            >
               <div
                 className={cn(
-                  'max-w-[min(100%,28rem)] rounded-2xl px-3 py-2 text-sm shadow-sm',
+                  'max-w-[min(100%,28rem)] rounded-2xl px-3 py-2 text-sm shadow-sm transition-shadow',
                   message.mine
                     ? 'rounded-br-md bg-primary text-primary-foreground'
                     : 'rounded-bl-md bg-muted text-foreground',
                   message.status === 'failed' && 'ring-2 ring-destructive/60',
                   message.status === 'sending' && 'opacity-80',
+                  'group-hover/bubble:shadow-md',
                 )}
               >
                 <p className="whitespace-pre-wrap break-words">{message.body}</p>
                 <div
                   className={cn(
-                    'mt-1 flex items-center justify-end gap-2 text-[11px]',
+                    'mt-1 flex items-center justify-end gap-1.5 text-[11px]',
                     message.mine ? 'text-primary-foreground/80' : 'text-muted-foreground',
                   )}
                 >
                   {message.createdAt && message.status !== 'sending' ? (
-                    <time dateTime={message.createdAt}>{formatChatListTime(message.createdAt)}</time>
+                    <time dateTime={message.createdAt}>
+                      {formatChatListTime(message.createdAt)}
+                    </time>
                   ) : null}
                   {message.mine ? <StatusLabel status={message.status} /> : null}
                   {message.status === 'failed' ? (
@@ -344,16 +399,16 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
             setDraft(event.target.value)
             setSendError(null)
           }}
-          placeholder="Сообщение"
+          placeholder="Написать сообщение"
           maxLength={MAX_BODY_LENGTH}
           autoComplete="off"
-          className="min-h-10 flex-1 rounded-full"
+          className="min-h-11 flex-1 rounded-full border-transparent bg-muted px-4"
           aria-invalid={Boolean(sendError)}
         />
         <Button
           type="submit"
           size="icon"
-          className="rounded-full"
+          className="size-11 rounded-full"
           disabled={!draft.trim() || !client}
           aria-label="Отправить"
         >
@@ -370,8 +425,29 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
 }
 
 function StatusLabel({ status }: { status: ThreadMessage['status'] }) {
-  if (status === 'sending') return <span>отправляется</span>
-  if (status === 'failed') return <span>ошибка</span>
-  if (status === 'sent') return <span>отправлено</span>
+  if (status === 'sending') {
+    return (
+      <span className="inline-flex items-center gap-1" title="Отправляется">
+        <LoaderCircle className="size-3 animate-spin" aria-hidden />
+        <span className="sr-only">отправляется</span>
+      </span>
+    )
+  }
+  if (status === 'failed') {
+    return (
+      <span className="inline-flex items-center gap-1" title="Ошибка">
+        <CircleAlert className="size-3" aria-hidden />
+        <span className="sr-only">ошибка</span>
+      </span>
+    )
+  }
+  if (status === 'sent') {
+    return (
+      <span className="inline-flex items-center gap-1" title="Отправлено">
+        <Check className="size-3" aria-hidden />
+        <span className="sr-only">отправлено</span>
+      </span>
+    )
+  }
   return null
 }
