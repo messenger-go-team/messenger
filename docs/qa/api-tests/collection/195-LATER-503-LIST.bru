@@ -1,0 +1,21 @@
+meta {
+  name: LATER-503-LIST
+  type: http
+  seq: 195
+}
+
+get {
+  url: {{baseUrl}}/later
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-503-LIST", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-503-LIST", bru, req, res, test, expect);
+}

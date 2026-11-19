@@ -1,0 +1,29 @@
+meta {
+  name: AUTH-REGISTER-extra
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/auth/register
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"username":"{{aName}}","password":"{{password}}","unexpected":true}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("AUTH-REGISTER-extra", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("AUTH-REGISTER-extra", bru, req, res, test, expect);
+}

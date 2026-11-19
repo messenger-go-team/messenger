@@ -1,0 +1,21 @@
+meta {
+  name: INTERNAL-401-a
+  type: http
+  seq: 64
+}
+
+get {
+  url: {{internalUrl}}/internal/users/{{bID}}
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("INTERNAL-401-a", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("INTERNAL-401-a", bru, req, res, test, expect);
+}

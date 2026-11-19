@@ -1,0 +1,21 @@
+meta {
+  name: CONTACT-UUID-delete
+  type: http
+  seq: 58
+}
+
+delete {
+  url: {{baseUrl}}/contacts/not-a-uuid
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTACT-UUID-delete", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTACT-UUID-delete", bru, req, res, test, expect);
+}

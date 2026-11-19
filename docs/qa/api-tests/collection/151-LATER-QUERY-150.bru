@@ -1,0 +1,29 @@
+meta {
+  name: LATER-QUERY-150
+  type: http
+  seq: 151
+}
+
+post {
+  url: {{baseUrl}}/later?due_at=%zz
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"chat_id":"{{chatAB}}","message_id":"{{targetID}}","due_at":null}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-QUERY-150", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-QUERY-150", bru, req, res, test, expect);
+}

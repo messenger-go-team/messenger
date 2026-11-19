@@ -1,0 +1,21 @@
+meta {
+  name: CONTEXT-MISSING
+  type: http
+  seq: 130
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/messages/{{missingID}}/context
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTEXT-MISSING", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTEXT-MISSING", bru, req, res, test, expect);
+}

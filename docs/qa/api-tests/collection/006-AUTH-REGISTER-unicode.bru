@@ -1,0 +1,29 @@
+meta {
+  name: AUTH-REGISTER-unicode
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/auth/register
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"username":"кириллица","password":"12345678"}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("AUTH-REGISTER-unicode", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("AUTH-REGISTER-unicode", bru, req, res, test, expect);
+}

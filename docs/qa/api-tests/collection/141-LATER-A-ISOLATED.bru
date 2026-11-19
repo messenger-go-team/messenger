@@ -1,0 +1,21 @@
+meta {
+  name: LATER-A-ISOLATED
+  type: http
+  seq: 141
+}
+
+get {
+  url: {{baseUrl}}/later
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-A-ISOLATED", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-A-ISOLATED", bru, req, res, test, expect);
+}

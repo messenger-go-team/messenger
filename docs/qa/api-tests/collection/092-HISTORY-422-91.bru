@@ -1,0 +1,21 @@
+meta {
+  name: HISTORY-422-91
+  type: http
+  seq: 92
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/messages?after_seq=9007199254740992
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("HISTORY-422-91", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("HISTORY-422-91", bru, req, res, test, expect);
+}

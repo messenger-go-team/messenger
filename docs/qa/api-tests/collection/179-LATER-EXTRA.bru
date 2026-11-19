@@ -1,0 +1,29 @@
+meta {
+  name: LATER-EXTRA
+  type: http
+  seq: 179
+}
+
+patch {
+  url: {{baseUrl}}/later/{{laterID}}
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"due_at":null,"owner_id":"{{bID}}"}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-EXTRA", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-EXTRA", bru, req, res, test, expect);
+}

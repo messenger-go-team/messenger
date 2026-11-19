@@ -1,0 +1,29 @@
+meta {
+  name: READ-422-108
+  type: http
+  seq: 109
+}
+
+post {
+  url: {{baseUrl}}/chats/{{chatAB}}/read
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"seq":9007199254740992}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("READ-422-108", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("READ-422-108", bru, req, res, test, expect);
+}

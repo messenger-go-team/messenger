@@ -1,0 +1,29 @@
+meta {
+  name: LATER-401-post/later
+  type: http
+  seq: 148
+}
+
+post {
+  url: {{baseUrl}}/later
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"chat_id":"{{chatAB}}","message_id":"{{targetID}}","due_at":null}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-401-post/later", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-401-post/later", bru, req, res, test, expect);
+}

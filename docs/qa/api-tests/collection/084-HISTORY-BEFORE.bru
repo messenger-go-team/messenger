@@ -1,0 +1,21 @@
+meta {
+  name: HISTORY-BEFORE
+  type: http
+  seq: 84
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/messages?before_seq=101&limit=100
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("HISTORY-BEFORE", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("HISTORY-BEFORE", bru, req, res, test, expect);
+}

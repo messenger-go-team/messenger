@@ -1,0 +1,21 @@
+meta {
+  name: UNREAD-B-ISOLATED
+  type: http
+  seq: 117
+}
+
+get {
+  url: {{baseUrl}}/chats
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("UNREAD-B-ISOLATED", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("UNREAD-B-ISOLATED", bru, req, res, test, expect);
+}

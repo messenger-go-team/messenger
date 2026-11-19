@@ -1,0 +1,21 @@
+meta {
+  name: LATER-DELETED-CHAT
+  type: http
+  seq: 192
+}
+
+get {
+  url: {{baseUrl}}/later
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-DELETED-CHAT", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-DELETED-CHAT", bru, req, res, test, expect);
+}

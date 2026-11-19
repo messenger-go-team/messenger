@@ -1,0 +1,29 @@
+meta {
+  name: LATER-QUERY-164
+  type: http
+  seq: 165
+}
+
+patch {
+  url: {{baseUrl}}/later/{{laterID}}?%
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"due_at":null}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-QUERY-164", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-QUERY-164", bru, req, res, test, expect);
+}

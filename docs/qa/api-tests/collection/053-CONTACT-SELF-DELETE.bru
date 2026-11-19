@@ -1,0 +1,21 @@
+meta {
+  name: CONTACT-SELF-DELETE
+  type: http
+  seq: 53
+}
+
+delete {
+  url: {{baseUrl}}/contacts/{{aID}}
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTACT-SELF-DELETE", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTACT-SELF-DELETE", bru, req, res, test, expect);
+}

@@ -1,0 +1,29 @@
+meta {
+  name: AUTH-LOGIN-INVALID-16
+  type: http
+  seq: 17
+}
+
+post {
+  url: {{baseUrl}}/auth/login
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"username":"{{aName}}","password":"{{password}}","extra":true}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("AUTH-LOGIN-INVALID-16", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("AUTH-LOGIN-INVALID-16", bru, req, res, test, expect);
+}

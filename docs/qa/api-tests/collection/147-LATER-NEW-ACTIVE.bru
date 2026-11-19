@@ -1,0 +1,21 @@
+meta {
+  name: LATER-NEW-ACTIVE
+  type: http
+  seq: 147
+}
+
+get {
+  url: {{baseUrl}}/later
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-NEW-ACTIVE", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-NEW-ACTIVE", bru, req, res, test, expect);
+}

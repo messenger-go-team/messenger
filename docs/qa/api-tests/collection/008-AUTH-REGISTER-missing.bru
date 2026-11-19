@@ -1,0 +1,29 @@
+meta {
+  name: AUTH-REGISTER-missing
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/auth/register
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"username":"qa49_bad"}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("AUTH-REGISTER-missing", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("AUTH-REGISTER-missing", bru, req, res, test, expect);
+}

@@ -1,0 +1,21 @@
+meta {
+  name: LATER-DELETED-SOURCE
+  type: http
+  seq: 189
+}
+
+get {
+  url: {{baseUrl}}/later
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-DELETED-SOURCE", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-DELETED-SOURCE", bru, req, res, test, expect);
+}

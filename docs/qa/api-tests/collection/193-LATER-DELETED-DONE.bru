@@ -1,0 +1,21 @@
+meta {
+  name: LATER-DELETED-DONE
+  type: http
+  seq: 193
+}
+
+post {
+  url: {{baseUrl}}/later/{{accessLaterID}}/done
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-DELETED-DONE", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-DELETED-DONE", bru, req, res, test, expect);
+}

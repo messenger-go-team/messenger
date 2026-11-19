@@ -1,0 +1,21 @@
+meta {
+  name: CONTEXT-FOREIGN
+  type: http
+  seq: 128
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/messages/{{targetID}}/context
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTEXT-FOREIGN", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTEXT-FOREIGN", bru, req, res, test, expect);
+}

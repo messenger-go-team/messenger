@@ -1,0 +1,21 @@
+meta {
+  name: CONTACT-SELF-PUT
+  type: http
+  seq: 52
+}
+
+put {
+  url: {{baseUrl}}/contacts/{{aID}}
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTACT-SELF-PUT", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTACT-SELF-PUT", bru, req, res, test, expect);
+}

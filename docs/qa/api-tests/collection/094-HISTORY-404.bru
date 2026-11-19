@@ -1,0 +1,21 @@
+meta {
+  name: HISTORY-404
+  type: http
+  seq: 94
+}
+
+get {
+  url: {{baseUrl}}/chats/{{missingID}}/messages
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("HISTORY-404", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("HISTORY-404", bru, req, res, test, expect);
+}

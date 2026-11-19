@@ -1,0 +1,29 @@
+meta {
+  name: AUTH-DUPLICATE
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/auth/register
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"username":"QA49_A","password":"{{password}}"}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("AUTH-DUPLICATE", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("AUTH-DUPLICATE", bru, req, res, test, expect);
+}

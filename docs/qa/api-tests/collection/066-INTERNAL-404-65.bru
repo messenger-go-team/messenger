@@ -1,0 +1,21 @@
+meta {
+  name: INTERNAL-404-65
+  type: http
+  seq: 66
+}
+
+get {
+  url: {{internalUrl}}/internal/users/bad-uuid
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("INTERNAL-404-65", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("INTERNAL-404-65", bru, req, res, test, expect);
+}

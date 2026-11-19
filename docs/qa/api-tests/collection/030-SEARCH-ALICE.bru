@@ -1,0 +1,21 @@
+meta {
+  name: SEARCH-ALICE
+  type: http
+  seq: 30
+}
+
+get {
+  url: {{baseUrl}}/users/search?prefix=ALICE
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("SEARCH-ALICE", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("SEARCH-ALICE", bru, req, res, test, expect);
+}

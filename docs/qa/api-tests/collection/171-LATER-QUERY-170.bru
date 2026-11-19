@@ -1,0 +1,21 @@
+meta {
+  name: LATER-QUERY-170
+  type: http
+  seq: 171
+}
+
+post {
+  url: {{baseUrl}}/later/{{laterID}}/done?%
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-QUERY-170", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-QUERY-170", bru, req, res, test, expect);
+}

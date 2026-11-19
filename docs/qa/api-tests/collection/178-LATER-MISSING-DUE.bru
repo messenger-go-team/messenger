@@ -1,0 +1,29 @@
+meta {
+  name: LATER-MISSING-DUE
+  type: http
+  seq: 178
+}
+
+post {
+  url: {{baseUrl}}/later
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"chat_id":"{{chatAB}}","message_id":"{{targetID}}"}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-MISSING-DUE", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-MISSING-DUE", bru, req, res, test, expect);
+}

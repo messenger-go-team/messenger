@@ -1,0 +1,29 @@
+meta {
+  name: READ-IDEMPOTENT-2
+  type: http
+  seq: 100
+}
+
+post {
+  url: {{baseUrl}}/chats/{{chatAB}}/read
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"seq":2}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("READ-IDEMPOTENT-2", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("READ-IDEMPOTENT-2", bru, req, res, test, expect);
+}

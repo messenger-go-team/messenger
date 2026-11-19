@@ -1,0 +1,21 @@
+meta {
+  name: LATER-401-post/later/{later_id}/done
+  type: http
+  seq: 166
+}
+
+post {
+  url: {{baseUrl}}/later/{{laterID}}/done
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-401-post/later/{later_id}/done", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-401-post/later/{later_id}/done", bru, req, res, test, expect);
+}

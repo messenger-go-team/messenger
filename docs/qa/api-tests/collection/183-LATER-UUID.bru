@@ -1,0 +1,29 @@
+meta {
+  name: LATER-UUID
+  type: http
+  seq: 183
+}
+
+patch {
+  url: {{baseUrl}}/later/bad-uuid
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"due_at":null}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-UUID", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-UUID", bru, req, res, test, expect);
+}

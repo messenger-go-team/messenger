@@ -1,0 +1,21 @@
+meta {
+  name: UNREAD-NO-REGRESSION
+  type: http
+  seq: 103
+}
+
+get {
+  url: {{baseUrl}}/chats
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("UNREAD-NO-REGRESSION", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("UNREAD-NO-REGRESSION", bru, req, res, test, expect);
+}

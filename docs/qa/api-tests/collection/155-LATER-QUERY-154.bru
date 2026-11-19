@@ -1,0 +1,21 @@
+meta {
+  name: LATER-QUERY-154
+  type: http
+  seq: 155
+}
+
+get {
+  url: {{baseUrl}}/later?limit=1
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-QUERY-154", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-QUERY-154", bru, req, res, test, expect);
+}

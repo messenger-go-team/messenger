@@ -1,0 +1,21 @@
+meta {
+  name: CONTACT-PUT-2
+  type: http
+  seq: 44
+}
+
+put {
+  url: {{baseUrl}}/contacts/{{bID}}
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTACT-PUT-2", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTACT-PUT-2", bru, req, res, test, expect);
+}

@@ -1,0 +1,21 @@
+meta {
+  name: SEARCH-INVALID-35
+  type: http
+  seq: 36
+}
+
+get {
+  url: {{baseUrl}}/users/search
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("SEARCH-INVALID-35", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("SEARCH-INVALID-35", bru, req, res, test, expect);
+}

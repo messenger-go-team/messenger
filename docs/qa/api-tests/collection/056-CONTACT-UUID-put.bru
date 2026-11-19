@@ -1,0 +1,21 @@
+meta {
+  name: CONTACT-UUID-put
+  type: http
+  seq: 56
+}
+
+put {
+  url: {{baseUrl}}/contacts/not-a-uuid
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTACT-UUID-put", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTACT-UUID-put", bru, req, res, test, expect);
+}

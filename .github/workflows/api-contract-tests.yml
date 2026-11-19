@@ -1,0 +1,50 @@
+name: API contract tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Auth and History OpenAPI (Bruno)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: docs/qa/api-tests
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.16.0'
+          cache: npm
+          cache-dependency-path: docs/qa/api-tests/package-lock.json
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Audit dependencies
+        run: npm audit --audit-level=moderate
+      - name: Check collection, schemas and dependency compatibility
+        run: npm run check
+      - name: Run positive and intentional negative controls against private Compose
+        run: npm run compose
+      - name: Verify report rejection controls
+        run: npm run check:reports
+      - name: Upload sanitized reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-contract-reports
+          path: docs/qa/api-tests/reports/public/
+          if-no-files-found: warn
+          retention-days: 7

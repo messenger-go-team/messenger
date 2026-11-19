@@ -1,0 +1,21 @@
+meta {
+  name: CONTEXT-DELETED-SOURCE
+  type: http
+  seq: 191
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/messages/{{targetID}}/context
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTEXT-DELETED-SOURCE", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTEXT-DELETED-SOURCE", bru, req, res, test, expect);
+}

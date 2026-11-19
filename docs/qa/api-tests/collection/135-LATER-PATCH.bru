@@ -1,0 +1,29 @@
+meta {
+  name: LATER-PATCH
+  type: http
+  seq: 135
+}
+
+patch {
+  url: {{baseUrl}}/later/{{laterID}}
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"due_at":"2020-01-01T00:00:00Z"}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-PATCH", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-PATCH", bru, req, res, test, expect);
+}
