@@ -7,6 +7,8 @@ import type { User } from '@/api/auth'
 import { login } from '@/api/auth'
 import { AuthContext, type AuthContextValue } from '@/features/auth/auth-context'
 import { ChatListPage } from '@/features/chats/ChatListPage'
+import { WsProvider } from '@/features/ws/WsProvider'
+import { MockWebSocketServer } from '@/ws/mock/server'
 import { server } from '../../../mocks/server'
 import { addUser } from '../../../mocks/data/auth'
 import { INITIAL_CHAT_ID } from '../../../mocks/data/history'
@@ -36,15 +38,18 @@ async function authValue(): Promise<AuthContextValue> {
 }
 
 function renderChats(auth: AuthContextValue, initialPath = '/') {
+  const mockWs = new MockWebSocketServer({ senderId: auth.user?.id ?? ALICE.id })
   return render(
     <AuthContext.Provider value={auth}>
-      <MemoryRouter initialEntries={[initialPath]}>
-        <Routes>
-          <Route path="/" element={<ChatListPage />} />
-          <Route path="/chats/:chatId" element={<ChatListPage />} />
-          <Route path="/contacts" element={<h1>Контакты</h1>} />
-        </Routes>
-      </MemoryRouter>
+      <WsProvider webSocketFactory={mockWs.webSocketFactory} disableApiMockSocket>
+        <MemoryRouter initialEntries={[initialPath]}>
+          <Routes>
+            <Route path="/" element={<ChatListPage />} />
+            <Route path="/chats/:chatId" element={<ChatListPage />} />
+            <Route path="/contacts" element={<h1>Контакты</h1>} />
+          </Routes>
+        </MemoryRouter>
+      </WsProvider>
     </AuthContext.Provider>,
   )
 }
@@ -266,7 +271,7 @@ describe('ChatListPage', () => {
     await user.type(screen.getByRole('searchbox', { name: 'Поиск по логину' }), 'char')
     await user.click(await screen.findByRole('button', { name: /Написать charlie_3/i }))
 
-    expect(await screen.findByText(/чат с charlie_3/i)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'charlie_3' })).toBeInTheDocument()
 
     await user.clear(screen.getByRole('searchbox', { name: 'Поиск по логину' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/не удалось загрузить/i)
@@ -338,7 +343,7 @@ describe('ChatListPage', () => {
     await user.type(screen.getByRole('searchbox', { name: 'Поиск по логину' }), 'bob')
     await user.click(await screen.findByRole('button', { name: /Написать bob_2/i }))
 
-    expect(await screen.findByText(/чат с bob_2/i)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'bob_2' })).toBeInTheDocument()
     await user.clear(screen.getByRole('searchbox', { name: 'Поиск по логину' }))
 
     const rowAfter = await screen.findByRole('link', { name: /bob_2/i })
@@ -407,7 +412,7 @@ describe('ChatListPage', () => {
     expect(await screen.findByText('Загрузка чатов…')).toBeInTheDocument()
     await user.type(screen.getByRole('searchbox', { name: 'Поиск по логину' }), 'char')
     await user.click(await screen.findByRole('button', { name: /Написать charlie_3/i }))
-    expect(await screen.findByText(/чат с charlie_3/i)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'charlie_3' })).toBeInTheDocument()
 
     await user.clear(screen.getByRole('searchbox', { name: 'Поиск по логину' }))
     expect(await screen.findByRole('link', { name: /charlie_3/i })).toBeInTheDocument()
@@ -489,6 +494,7 @@ describe('ChatListPage', () => {
       }),
     )
     const auth = await authValue()
+    const mockWs = new MockWebSocketServer({ senderId: auth.user?.id ?? ALICE.id })
     const router = createMemoryRouter(
       [
         { path: '/', element: <ChatListPage /> },
@@ -498,11 +504,13 @@ describe('ChatListPage', () => {
     )
     render(
       <AuthContext.Provider value={auth}>
-        <RouterProvider router={router} />
+        <WsProvider webSocketFactory={mockWs.webSocketFactory} disableApiMockSocket>
+          <RouterProvider router={router} />
+        </WsProvider>
       </AuthContext.Provider>,
     )
 
-    expect(await screen.findByText(/чат с bob_2/i)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'bob_2' })).toBeInTheDocument()
     const user = userEvent.setup()
     await user.type(screen.getByRole('searchbox', { name: 'Поиск по логину' }), 'char')
     await user.click(await screen.findByRole('button', { name: /Написать charlie_3/i }))
@@ -517,7 +525,7 @@ describe('ChatListPage', () => {
     })
 
     await waitFor(() => {
-      expect(screen.queryByText(/чат с charlie_3/i)).not.toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: 'charlie_3' })).not.toBeInTheDocument()
     })
     expect(screen.getByText(/Выберите чат/i)).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/')
@@ -566,7 +574,7 @@ describe('ChatListPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/не удалось открыть чат/i)
 
     await user.click(screen.getByRole('button', { name: 'Повторить' }))
-    expect(await screen.findByText(/чат с charlie_3/i)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'charlie_3' })).toBeInTheDocument()
     expect(createCalls).toBe(2)
   })
 
@@ -636,6 +644,6 @@ describe('ChatListPage', () => {
     expect(writeCharlie).toBeDisabled()
     expect(writeDana).toBeDisabled()
     releaseCreate()
-    expect(await screen.findByText(/чат с charlie_3/i)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'charlie_3' })).toBeInTheDocument()
   })
 })
