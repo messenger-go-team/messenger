@@ -37,6 +37,7 @@ export function ChatListPage() {
   const navigate = useNavigate()
   const searchId = useId()
   const chatsNavActive = location.pathname === '/' || location.pathname.startsWith('/chats/')
+  const mountedRef = useRef(true)
 
   const [chats, setChats] = useState<ChatListItem[]>([])
   const [listStatus, setListStatus] = useState<ListStatus>('loading')
@@ -44,14 +45,25 @@ export function ChatListPage() {
   const [listReloadKey, setListReloadKey] = useState(0)
 
   const [query, setQuery] = useState('')
-  const [searchNonce, setSearchNonce] = useState(0)
   const [searchResults, setSearchResults] = useState<UserSummary[]>([])
+  const [searchResultsPrefix, setSearchResultsPrefix] = useState<string | null>(null)
   const [searchFetchStatus, setSearchFetchStatus] = useState<'loading' | 'ready' | 'error'>(
     'loading',
   )
   const [searchError, setSearchError] = useState<string | null>(null)
   const [creatingUserId, setCreatingUserId] = useState<string | null>(null)
+  const [openError, setOpenError] = useState<{ target: UserSummary; message: string } | null>(null)
   const searchRequestRef = useRef(0)
+  const openRequestRef = useRef(0)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      openRequestRef.current += 1
+      searchRequestRef.current += 1
+    }
+  }, [])
 
   const reloadChats = useCallback(() => {
     setListReloadKey((value) => value + 1)
@@ -89,23 +101,30 @@ export function ChatListPage() {
   const searchInvalid = searching && !isValidUserSearchPrefix(searchPrefix)
 
   useEffect(() => {
-    if (!searching || searchInvalid || !accessToken || !user) return
+    if (!searching || searchInvalid) {
+      searchRequestRef.current += 1
+      return
+    }
+    if (!accessToken || !user) return
 
     const requestId = ++searchRequestRef.current
+    const prefixForRequest = searchPrefix
     const timer = window.setTimeout(() => {
       void (async () => {
         setSearchFetchStatus('loading')
         setSearchError(null)
         try {
-          const response = await searchUsers(searchPrefix, accessToken)
+          const response = await searchUsers(prefixForRequest, accessToken)
           if (requestId !== searchRequestRef.current) return
           setSearchResults(response.users.filter((item) => item.id !== user.id))
+          setSearchResultsPrefix(prefixForRequest)
           setSearchFetchStatus('ready')
         } catch {
           if (requestId !== searchRequestRef.current) return
+          setSearchResults([])
+          setSearchResultsPrefix(prefixForRequest)
           setSearchFetchStatus('error')
           setSearchError('Не удалось найти пользователей. Повторите попытку.')
-          setSearchResults([])
         }
       })()
     }, SEARCH_DEBOUNCE_MS)
@@ -113,29 +132,62 @@ export function ChatListPage() {
     return () => {
       window.clearTimeout(timer)
     }
-  }, [accessToken, searchInvalid, searchNonce, searchPrefix, searching, user])
+  }, [accessToken, searchInvalid, searchPrefix, searching, user])
 
+  const resultsMatchCurrentPrefix = searchResultsPrefix === searchPrefix
   const searchStatus: SearchStatus = !searching
     ? 'idle'
     : searchInvalid
       ? 'invalid'
-      : searchFetchStatus
+      : !resultsMatchCurrentPrefix
+        ? 'loading'
+        : searchFetchStatus
+  const visibleSearchResults = resultsMatchCurrentPrefix ? searchResults : []
 
-  async function openChatWithUser(target: UserSummary) {
-    if (!accessToken) return
-    setCreatingUserId(target.id)
+  const refreshChatsInBackground = useCallback(async (token: string) => {
     try {
-      const chat = await createPersonalChat(target.id, accessToken)
-      const response = await listChats(accessToken)
+      const response = await listChats(token)
+      if (!mountedRef.current) return
       setChats(response.chats)
       setListStatus('ready')
-      setQuery('')
-      navigate(`/chats/${chat.id}`)
+      setListError(null)
     } catch {
-      setSearchError('Не удалось открыть чат. Повторите попытку.')
-      setSearchFetchStatus('error')
+      // Открытие чата уже произошло по id из POST; список подтянется при следующем заходе.
+    }
+  }, [])
+
+  async function openChatWithUser(target: UserSummary) {
+    if (!accessToken || creatingUserId !== null) return
+    const requestId = ++openRequestRef.current
+    setCreatingUserId(target.id)
+    setOpenError(null)
+    setSearchError(null)
+    try {
+      const chat = await createPersonalChat(target.id, accessToken)
+      if (requestId !== openRequestRef.current || !mountedRef.current) return
+      const listItem: ChatListItem = {
+        id: chat.id,
+        type: chat.type,
+        created_at: chat.created_at,
+        members: chat.members,
+        last_message: null,
+        unread_count: 0,
+      }
+      setChats((previous) => [listItem, ...previous.filter((item) => item.id !== chat.id)])
+      setListStatus('ready')
+      setQuery('')
+      navigate(`/chats/${chat.id}`, { state: { peerUsername: target.username } })
+      void refreshChatsInBackground(accessToken)
+    } catch {
+      if (requestId !== openRequestRef.current || !mountedRef.current) return
+      setOpenError({
+        target,
+        message: 'Не удалось открыть чат. Повторите попытку.',
+      })
     } finally {
-      setCreatingUserId(null)
+      if (requestId === openRequestRef.current) {
+        setCreatingUserId(null)
+      }
     }
   }
 
@@ -144,13 +196,48 @@ export function ChatListPage() {
     document.getElementById(searchId)?.focus()
   }
 
-  const selectedPeer =
-    chatId && user
-      ? peerUsername(chats.find((chat) => chat.id === chatId)?.members ?? [], user.id)
+  function retrySearch() {
+    if (!searching || searchInvalid) return
+    searchRequestRef.current += 1
+    setSearchResultsPrefix(null)
+    setSearchFetchStatus('loading')
+    setSearchError(null)
+    // Триггерим эффект повторным «сдвигом» через смену nonce в prefix-зависимом ключе:
+    setQuery((value) => value)
+    void (async () => {
+      if (!accessToken || !user) return
+      const requestId = ++searchRequestRef.current
+      const prefixForRequest = searchPrefix
+      try {
+        const response = await searchUsers(prefixForRequest, accessToken)
+        if (requestId !== searchRequestRef.current) return
+        setSearchResults(response.users.filter((item) => item.id !== user.id))
+        setSearchResultsPrefix(prefixForRequest)
+        setSearchFetchStatus('ready')
+      } catch {
+        if (requestId !== searchRequestRef.current) return
+        setSearchResults([])
+        setSearchResultsPrefix(prefixForRequest)
+        setSearchFetchStatus('error')
+        setSearchError('Не удалось найти пользователей. Повторите попытку.')
+      }
+    })()
+  }
+
+  const peerFromState =
+    typeof location.state === 'object' &&
+    location.state !== null &&
+    'peerUsername' in location.state &&
+    typeof location.state.peerUsername === 'string'
+      ? location.state.peerUsername
       : null
+  const selectedChat = chatId ? chats.find((chat) => chat.id === chatId) : undefined
+  const selectedPeer = chatId
+    ? (selectedChat && user ? peerUsername(selectedChat.members, user.id) : null) || peerFromState
+    : null
 
   return (
-    <div className="flex h-svh min-h-0 bg-background text-foreground">
+    <div className="flex h-svh min-h-0 overflow-hidden bg-background text-foreground">
       <nav
         aria-label="Основная навигация"
         className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-border bg-muted/40 py-3"
@@ -183,7 +270,7 @@ export function ChatListPage() {
         </div>
       </nav>
 
-      <aside className="flex w-full max-w-[344px] shrink-0 flex-col border-r border-border bg-card">
+      <aside className="flex min-w-0 flex-1 max-w-[344px] flex-col border-r border-border bg-card">
         <header className="flex items-center justify-between gap-3 px-4 pt-5 pb-3">
           <h1 className="text-xl font-semibold tracking-tight">Чаты</h1>
           <Button
@@ -199,17 +286,20 @@ export function ChatListPage() {
 
         <div className="px-4 pb-3">
           <label htmlFor={searchId} className="sr-only">
-            найти
+            Поиск по логину
           </label>
           <div className="relative">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               id={searchId}
               role="searchbox"
-              aria-label="найти"
-              placeholder="найти"
+              aria-label="Поиск по логину"
+              placeholder="Поиск по логину"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value)
+                setOpenError(null)
+              }}
               className="h-10 rounded-full border-transparent bg-muted pl-9"
               autoComplete="off"
             />
@@ -220,10 +310,16 @@ export function ChatListPage() {
           {searching ? (
             <SearchPanel
               status={searchStatus}
-              results={searchResults}
-              error={searchError}
+              results={visibleSearchResults}
+              error={openError?.message ?? searchError}
               creatingUserId={creatingUserId}
-              onRetry={() => setSearchNonce((value) => value + 1)}
+              onRetry={() => {
+                if (openError) {
+                  void openChatWithUser(openError.target)
+                  return
+                }
+                retrySearch()
+              }}
               onWrite={openChatWithUser}
             />
           ) : (
@@ -378,26 +474,41 @@ function SearchPanel({
     return <p className="px-4 py-6 text-sm text-muted-foreground">Никого не нашли</p>
   }
 
+  const opening = creatingUserId !== null
+
   return (
-    <ul className="flex flex-col">
-      {results.map((item) => (
-        <li key={item.id} className="border-b border-border">
-          <div className="flex items-center gap-3 px-4 py-3">
-            <InitialAvatar username={item.username} />
-            <span className="min-w-0 flex-1 truncate font-semibold">{item.username}</span>
-            <Button
-              type="button"
-              size="sm"
-              disabled={creatingUserId === item.id}
-              aria-label={`Написать ${item.username}`}
-              onClick={() => void onWrite(item)}
-            >
-              {creatingUserId === item.id ? 'Открываем…' : 'Написать'}
-            </Button>
-          </div>
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-col">
+      {error ? (
+        <div
+          className="flex flex-col items-start gap-3 border-b border-border px-4 py-4"
+          role="alert"
+        >
+          <p className="text-sm text-destructive">{error}</p>
+          <Button type="button" variant="outline" onClick={onRetry}>
+            Повторить
+          </Button>
+        </div>
+      ) : null}
+      <ul className="flex flex-col">
+        {results.map((item) => (
+          <li key={item.id} className="border-b border-border">
+            <div className="flex items-center gap-3 px-4 py-3">
+              <InitialAvatar username={item.username} />
+              <span className="min-w-0 flex-1 truncate font-semibold">{item.username}</span>
+              <Button
+                type="button"
+                size="sm"
+                disabled={opening}
+                aria-label={`Написать ${item.username}`}
+                onClick={() => void onWrite(item)}
+              >
+                {creatingUserId === item.id ? 'Открываем…' : 'Написать'}
+              </Button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
