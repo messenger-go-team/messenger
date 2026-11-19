@@ -112,8 +112,15 @@ describe('ChatListPage', () => {
     const auth = await authValue()
     renderChats(auth)
 
-    expect(await screen.findByText('У вас нет чатов')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Найти человека' })).toBeInTheDocument()
+    expect(await screen.findByText('Начните переписку')).toBeInTheDocument()
+    expect(screen.getByText(/пока нет чатов/i)).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Найти человека' }).length).toBeGreaterThan(0)
+  })
+
+  it('shows not-selected panel on the right when no chat is open', async () => {
+    const auth = await authValue()
+    renderChats(auth)
+    expect(await screen.findByRole('heading', { name: 'Выберите чат' })).toBeInTheDocument()
   })
 
   it('shows loading then list', async () => {
@@ -236,7 +243,7 @@ describe('ChatListPage', () => {
     const user = userEvent.setup()
     renderChats(auth)
 
-    await screen.findByText('У вас нет чатов')
+    await screen.findByText('Начните переписку')
     await user.type(screen.getByRole('searchbox', { name: 'Поиск по логину' }), 'char')
     await user.click(await screen.findByRole('button', { name: /Написать charlie_3/i }))
 
@@ -383,7 +390,19 @@ describe('ChatListPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('link', { name: /charlie_3/i })).toBeInTheDocument()
     })
-    expect(screen.queryByText('У вас нет чатов')).not.toBeInTheDocument()
+    expect(screen.queryByText('Начните переписку')).not.toBeInTheDocument()
+  })
+
+  it('shows not-found search empty state', async () => {
+    server.use(http.get('/users/search', () => HttpResponse.json({ users: [] })))
+    const auth = await authValue()
+    const user = userEvent.setup()
+    renderChats(auth)
+
+    await screen.findByRole('heading', { name: 'Чаты' })
+    await user.type(screen.getByRole('searchbox', { name: 'Поиск по логину' }), 'zzz')
+    expect(await screen.findByText('Никого не нашли')).toBeInTheDocument()
+    expect(screen.getByText(/Проверьте логин/i)).toBeInTheDocument()
   })
 
   it('does not navigate when the user goes back before POST resolves', async () => {
