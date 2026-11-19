@@ -111,6 +111,20 @@ describe('ChatThread', () => {
     expect(screen.getByText('Да, договорились.')).toBeInTheDocument()
   })
 
+  it('exposes message menu with Later stub entry point', async () => {
+    const auth = await authValue()
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 6)
+    renderThread(auth, mockWs)
+
+    await screen.findByText('Да, договорились.')
+    const menus = screen.getAllByRole('button', { name: 'Действия с сообщением' })
+    expect(menus.length).toBeGreaterThan(0)
+    await userEvent.click(menus[0]!)
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Вернуться позже' }))
+    expect(await screen.findByRole('status')).toHaveTextContent(/Вернуться позже/i)
+  })
+
   it('shows loading then error with retry', async () => {
     let release!: () => void
     const gate = new Promise<void>((resolve) => {
