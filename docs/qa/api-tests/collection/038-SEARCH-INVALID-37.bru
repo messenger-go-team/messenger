@@ -5,9 +5,13 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/users/search?prefix=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  url: {{baseUrl}}/users/search?prefix=
   body: none
   auth: none
+}
+
+settings {
+  followRedirects: false
 }
 
 script:pre-request {

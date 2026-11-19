@@ -27,6 +27,14 @@ for (const data of [positive, negative])
     }
   }
 
+const expectedFiles = ["positive", "negative"].flatMap((n) =>
+  ["json", "xml", "log", "summary.json"].map((ext) => n + "." + ext),
+);
+assert.deepEqual(
+  fs.readdirSync(dir).sort(),
+  expectedFiles.sort(),
+  "only verified artifacts allowed",
+);
 for (const file of fs.readdirSync(dir)) {
   const text = fs.readFileSync(path.join(dir, file), "utf8");
   assert.doesNotMatch(

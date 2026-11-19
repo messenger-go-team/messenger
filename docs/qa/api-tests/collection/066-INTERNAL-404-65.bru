@@ -5,9 +5,13 @@ meta {
 }
 
 get {
-  url: {{internalUrl}}/internal/users/bad-uuid
+  url: {{internalUrl}}/internal/users/{{missingID}}
   body: none
   auth: none
+}
+
+settings {
+  followRedirects: false
 }
 
 script:pre-request {

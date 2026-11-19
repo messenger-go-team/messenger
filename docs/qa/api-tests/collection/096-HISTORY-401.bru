@@ -1,0 +1,25 @@
+meta {
+  name: HISTORY-401
+  type: http
+  seq: 96
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/messages
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("HISTORY-401", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("HISTORY-401", bru, req, res, test, expect);
+}

@@ -1,0 +1,25 @@
+meta {
+  name: LATER-AUTH-QUERY-224
+  type: http
+  seq: 225
+}
+
+post {
+  url: {{baseUrl}}/later/{{laterID}}/done?unexpected=1
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-AUTH-QUERY-224", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-AUTH-QUERY-224", bru, req, res, test, expect);
+}

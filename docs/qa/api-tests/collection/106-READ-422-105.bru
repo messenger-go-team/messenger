@@ -10,12 +10,16 @@ post {
   auth: none
 }
 
+settings {
+  followRedirects: false
+}
+
 headers {
   Content-Type: application/json
 }
 
 body:json {
-  {"seq":1.5}
+  {"seq":206}
 }
 
 script:pre-request {

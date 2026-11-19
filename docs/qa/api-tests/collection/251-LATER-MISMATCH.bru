@@ -1,0 +1,33 @@
+meta {
+  name: LATER-MISMATCH
+  type: http
+  seq: 251
+}
+
+post {
+  url: {{baseUrl}}/later
+  body: json
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"chat_id":"{{chatAC}}","message_id":"{{targetID}}","due_at":null}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-MISMATCH", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-MISMATCH", bru, req, res, test, expect);
+}

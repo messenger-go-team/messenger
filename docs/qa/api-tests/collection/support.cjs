@@ -3,6 +3,16 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { cases } = require("./plan.cjs");
 const { validateResponse } = require("./schema.cjs");
+const { assertUnchangedLater } = require("./invariants.cjs");
+function snapshotLater() {
+  const r = spawnSync(process.env.FIXTURE_BIN, ["snapshot-later"], {
+    encoding: "utf8",
+    timeout: 20000,
+    maxBuffer: 1024 * 1024,
+  });
+  if (r.status !== 0) throw new Error("Later snapshot failed");
+  return JSON.parse(r.stdout);
+}
 function data() {
   return JSON.parse(
     fs.readFileSync(
@@ -46,6 +56,7 @@ async function prepare(id, bru, req) {
     if (result.status !== 0)
       throw new Error("fixture control failed: " + c.control);
   }
+  if (c.unchangedLater) bru.setVar("laterBefore", snapshotLater());
   req.setUrl(
     interpolate((c.internal ? f.internalUrl : f.baseUrl) + c.path, bru),
   );
@@ -86,6 +97,8 @@ function verify(id, bru, req, res, test, expect) {
         /password_hash|token_hash|panic:|SELECT .+ FROM/i,
       );
     }
+    if (c.unchangedLater)
+      assertUnchangedLater(bru.getVar("laterBefore"), snapshotLater());
     if (c.check) c.check({ b: res.body, e: expect, v: bru, f, req, res });
   });
 }

@@ -1,0 +1,25 @@
+meta {
+  name: CONTEXT-UUID
+  type: http
+  seq: 137
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/messages/bad/context
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTEXT-UUID", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTEXT-UUID", bru, req, res, test, expect);
+}

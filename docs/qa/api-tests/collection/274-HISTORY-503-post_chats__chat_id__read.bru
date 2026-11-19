@@ -1,0 +1,33 @@
+meta {
+  name: HISTORY-503-post/chats/{chat_id}/read
+  type: http
+  seq: 274
+}
+
+post {
+  url: {{baseUrl}}/chats/{{chatAB}}/read
+  body: json
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"seq":205}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("HISTORY-503-post/chats/{chat_id}/read", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("HISTORY-503-post/chats/{chat_id}/read", bru, req, res, test, expect);
+}

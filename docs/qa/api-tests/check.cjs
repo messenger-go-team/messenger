@@ -93,3 +93,23 @@ assert.equal(
 console.log(
   `All OpenAPI operations covered by ${cases.length} requests; schema rejection, 204 and redaction controls passed`,
 );
+
+const fs = require("node:fs"),
+  path = require("node:path");
+const workflow = require("yaml").parse(
+  fs.readFileSync(
+    path.resolve(
+      __dirname,
+      "../../../.github/workflows/api-contract-tests.yml",
+    ),
+    "utf8",
+  ),
+);
+const steps = workflow.jobs.contracts.steps;
+const verifier = steps.find((s) => s.id === "verify_reports"),
+  upload = steps.find((s) => s.uses?.startsWith("actions/upload-artifact@"));
+assert.equal(verifier.run, "npm run check:reports");
+assert.ok(steps.indexOf(upload) > steps.indexOf(verifier));
+assert.match(upload.if, /steps\.verify_reports\.outcome == 'success'/);
+assert.ok(!upload.if.includes("always()"));
+console.log("Artifact upload requires successful content verification");

@@ -9,7 +9,7 @@
   "scripts": {
     "test": "node run.cjs",
     "generate": "node generate.cjs",
-    "check": "node check.cjs && node compatibility.cjs",
+    "check": "node check.cjs && node compatibility.cjs && node regression-controls.cjs",
     "compose": "node compose.cjs",
     "check:reports": "node report-check.cjs"
   },

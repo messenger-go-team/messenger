@@ -1,0 +1,25 @@
+meta {
+  name: CONTEXT-ACCESS-LOST
+  type: http
+  seq: 258
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAC}}/messages/{{accessTargetID}}/context
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTEXT-ACCESS-LOST", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTEXT-ACCESS-LOST", bru, req, res, test, expect);
+}

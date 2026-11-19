@@ -1,21 +1,25 @@
 meta {
-  name: SEARCH-alice
+  name: SEARCH-ALICE
   type: http
   seq: 31
 }
 
 get {
-  url: {{baseUrl}}/users/search?prefix=alice
+  url: {{baseUrl}}/users/search?prefix=ALICE
   body: none
   auth: none
 }
 
+settings {
+  followRedirects: false
+}
+
 script:pre-request {
   const { prepare } = require("./support.cjs");
-  await prepare("SEARCH-alice", bru, req);
+  await prepare("SEARCH-ALICE", bru, req);
 }
 
 tests {
   const { verify } = require("./support.cjs");
-  verify("SEARCH-alice", bru, req, res, test, expect);
+  verify("SEARCH-ALICE", bru, req, res, test, expect);
 }

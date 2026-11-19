@@ -198,6 +198,10 @@ func control(mode string) {
 		defer func() { _ = a.Close() }()
 		exec(a, `TRUNCATE auth.contacts,auth.refresh_tokens,auth.users CASCADE`)
 		exec(h, `TRUNCATE history.later_entries,history.messages,history.personal_chat_pairs,history.chat_members,history.chats CASCADE`)
+	case "snapshot-later":
+		var snapshot []byte
+		must(h.QueryRowContext(ctx, `SELECT COALESCE(json_agg(row_to_json(x) ORDER BY x.id),'[]'::json) FROM (SELECT id,user_id,message_id,due_at,state,created_at,updated_at FROM history.later_entries) x`).Scan(&snapshot))
+		fmt.Println(string(snapshot))
 	case "revoke":
 		exec(h, `DELETE FROM history.chat_members WHERE chat_id=$1 AND user_id=$2`, f["chatAC"], f["aID"])
 	case "restore":

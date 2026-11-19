@@ -39,9 +39,10 @@ jobs:
       - name: Run positive and intentional negative controls against private Compose
         run: npm run compose
       - name: Verify report rejection controls
+        id: verify_reports
         run: npm run check:reports
       - name: Upload sanitized reports
-        if: always()
+        if: ${{ success() && steps.verify_reports.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: api-contract-reports

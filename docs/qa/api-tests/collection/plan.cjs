@@ -1,3 +1,4 @@
+const { refreshCookie, assertContext } = require("./invariants.cjs");
 // Single source for collection order, contract binding and business assertions.
 const cases = [];
 function add(id, api, route, method, path, status, extra = {}) {
@@ -8,7 +9,7 @@ const a = (id, route, method, path, status, extra) =>
 const h = (id, route, method, path, status, extra) =>
   add(id, "history", route, method, path, status, extra);
 const unread = (body, id) => body.chats.find((c) => c.id === id).unread_count;
-const cookie = (res) => String(res.headers["set-cookie"] || "").split(";")[0];
+const cookie = (res, previous) => refreshCookie(res.headers, previous);
 const credentials = { username: "{{aName}}", password: "{{password}}" };
 const freshUser = { username: "qa49_registered", password: "{{password}}" };
 a("AUTH-REGISTER", "/auth/register", "post", "/auth/register", 201, {
@@ -45,9 +46,6 @@ a("AUTH-LOGIN", "/auth/login", "post", "/auth/login", 200, {
     e(b.token_type).equal("Bearer");
     e(b.expires_in).equal(900);
     e(b).not.have.property("refresh_token");
-    const header = String(res.headers["set-cookie"]);
-    for (const flag of ["HttpOnly", "Secure", "SameSite=Lax", "Path=/auth"])
-      e(header).include(flag);
     v.setVar("aToken", b.access_token);
     v.setVar("r1", cookie(res));
   },
@@ -92,9 +90,9 @@ a("AUTH-REFRESH", "/auth/refresh", "post", "/auth/refresh", 200, {
   auth: "none",
   check: ({ b, e, v, res }) => {
     // Access JWTs issued in the same second may match; rotation applies to refresh.
-    e(cookie(res)).not.equal(v.getVar("r1"));
+    const next = cookie(res, v.getVar("r1"));
     v.setVar("aToken", b.access_token);
-    v.setVar("r2", cookie(res));
+    v.setVar("r2", next);
   },
 });
 a("AUTH-OLD-REFRESH", "/auth/refresh", "post", "/auth/refresh", 401, {
@@ -105,7 +103,10 @@ a("AUTH-OLD-REFRESH", "/auth/refresh", "post", "/auth/refresh", 401, {
 a("AUTH-NEW-REFRESH", "/auth/refresh", "post", "/auth/refresh", 200, {
   auth: "none",
   headers: { Cookie: "{{r2}}" },
-  check: ({ b, v }) => v.setVar("aToken", b.access_token),
+  check: ({ b, v, res }) => {
+    v.setVar("lastRefresh", cookie(res, v.getVar("r2")));
+    v.setVar("aToken", b.access_token);
+  },
 });
 a("AUTH-LOGOUT", "/auth/logout", "post", "/auth/logout", 204, {
   auth: "none",
@@ -118,6 +119,18 @@ a("AUTH-REFRESH-NO-COOKIE", "/auth/refresh", "post", "/auth/refresh", 401, {
 a("AUTH-LOGOUT-REPEAT", "/auth/logout", "post", "/auth/logout", 401, {
   auth: "none",
 });
+a(
+  "AUTH-LOGOUT-REVOKED-REFRESH",
+  "/auth/refresh",
+  "post",
+  "/auth/refresh",
+  401,
+  {
+    auth: "none",
+    clearCookies: true,
+    headers: { Cookie: "{{lastRefresh}}" },
+  },
+);
 a("AUTH-COOKIE-NOT-ACCESS", "/me", "get", "/me", 401, { auth: "none" });
 for (const prefix of ["ALICE", "alice"])
   a(
@@ -493,37 +506,46 @@ h("UNREAD-B-ISOLATED", "/chats", "get", "/chats", 200, {
   auth: "b",
   check: ({ b, e, f }) => e(unread(b, f.chatAB)).equal(1),
 });
-for (const limit of [1, 3, 100])
-  h(
-    "CONTEXT-" + limit,
-    ctx,
-    "get",
-    "/chats/{{chatAB}}/messages/{{targetID}}/context?limit=" + limit,
-    200,
-    {
-      check: ({ b, e, f }) => {
-        e(b.target_message_id).equal(f.targetID);
-        e(b.messages.length).equal(limit);
-        e(b.messages.filter((m) => m.id === f.targetID).length).equal(1);
-        if (limit === 3)
-          e(b.messages.map((m) => m.seq)).deep.equal([149, 150, 151]);
-        e(b.next_before_seq).equal(b.messages[0].seq);
-        e(b.next_after_seq).equal(b.messages.at(-1).seq);
-      },
-    },
-  );
-for (const [name, id, size] of [
-  ["FIRST", "firstID", 2],
-  ["LAST", "lastID", 2],
+for (const [name, key, seq] of [
+  ["MIDDLE", "targetID", 150],
+  ["FIRST", "firstID", 1],
+  ["LAST", "lastID", 205],
 ])
-  h(
-    "CONTEXT-EDGE-" + name,
-    ctx,
-    "get",
-    `/chats/{{chatAB}}/messages/{{${id}}}/context?limit=3`,
-    200,
-    { check: ({ b, e }) => e(b.messages.length).equal(size) },
-  );
+  for (const limit of [1, 3, 100])
+    h(
+      name === "MIDDLE"
+        ? "CONTEXT-" + limit
+        : "CONTEXT-EDGE-" + name + "-" + limit,
+      ctx,
+      "get",
+      `/chats/{{chatAB}}/messages/{{${key}}}/context?limit=${limit}`,
+      200,
+      {
+        check: ({ b, f }) =>
+          assertContext(b, {
+            targetID: f[key],
+            chatID: f.chatAB,
+            targetSeq: seq,
+            limit,
+          }),
+      },
+    );
+h(
+  "CONTEXT-DEFAULT",
+  ctx,
+  "get",
+  "/chats/{{chatAB}}/messages/{{targetID}}/context",
+  200,
+  {
+    check: ({ b, f }) =>
+      assertContext(b, {
+        targetID: f.targetID,
+        chatID: f.chatAB,
+        targetSeq: 150,
+        limit: 50,
+      }),
+  },
+);
 for (const q of ["limit=0", "limit=101", "after_seq=0", "before_seq=3"])
   h(
     "CONTEXT-422-" + cases.length,
@@ -661,17 +683,52 @@ const operations = [
   ["patch", "/later/{later_id}", "/later/{{laterID}}", { due_at: null }],
   ["post", "/later/{later_id}/done", "/later/{{laterID}}/done", undefined],
 ];
-for (const [method, route, path, body] of operations) {
+const invalidQueries = ["limit=1", "unexpected=1", "due_at=%zz", "%zz=1", "%"];
+for (const [method, route, path, originalBody] of operations) {
+  const body =
+    method === "get"
+      ? undefined
+      : originalBody
+        ? { ...originalBody, due_at: future }
+        : undefined;
   h("LATER-401-" + method + route, route, method, path, 401, {
     auth: "none",
     body,
+    unchangedLater: true,
   });
-  for (const query of ["limit=1", "unexpected=1", "due_at=%zz", "%zz=1", "%"]) {
+  for (const query of invalidQueries) {
     h("LATER-QUERY-" + cases.length, route, method, path + "?" + query, 422, {
       body,
+      unchangedLater: true,
     });
+    for (const auth of ["none", "invalid", "expired"])
+      h(
+        "LATER-AUTH-QUERY-" + cases.length,
+        route,
+        method,
+        path + "?" + query,
+        401,
+        { auth, body, unchangedLater: true },
+      );
   }
 }
+// A fresh message exercises rejected POST creation, separately from active-entry upsert.
+for (const query of invalidQueries)
+  h(
+    "LATER-CREATE-QUERY-" + cases.length,
+    "/later",
+    "post",
+    "/later?" + query,
+    422,
+    {
+      body: {
+        chat_id: "{{chatAB}}",
+        message_id: "{{firstID}}",
+        due_at: future,
+      },
+      unchangedLater: true,
+    },
+  );
 for (const value of [
   "2026-02-30T12:00:00Z",
   "2026-01-01T12:00:00+00:00",

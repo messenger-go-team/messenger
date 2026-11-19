@@ -4,10 +4,22 @@ meta {
   seq: 159
 }
 
-get {
-  url: {{baseUrl}}/later?%
-  body: none
+post {
+  url: {{baseUrl}}/later?unexpected=1
+  body: json
   auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"chat_id":"{{chatAB}}","message_id":"{{targetID}}","due_at":"2099-01-01T00:00:00Z"}
 }
 
 script:pre-request {

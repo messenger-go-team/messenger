@@ -4,10 +4,14 @@ meta {
   seq: 163
 }
 
-patch {
-  url: {{baseUrl}}/later/{{laterID}}?due_at=%zz
+post {
+  url: {{baseUrl}}/later?due_at=%zz
   body: json
   auth: none
+}
+
+settings {
+  followRedirects: false
 }
 
 headers {
@@ -15,7 +19,7 @@ headers {
 }
 
 body:json {
-  {"due_at":null}
+  {"chat_id":"{{chatAB}}","message_id":"{{targetID}}","due_at":"2099-01-01T00:00:00Z"}
 }
 
 script:pre-request {

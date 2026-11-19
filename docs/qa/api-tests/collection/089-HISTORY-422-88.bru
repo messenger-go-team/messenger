@@ -5,9 +5,13 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/chats/{{chatAB}}/messages?before_seq=0
+  url: {{baseUrl}}/chats/{{chatAB}}/messages?after_seq=-1
   body: none
   auth: none
+}
+
+settings {
+  followRedirects: false
 }
 
 script:pre-request {
