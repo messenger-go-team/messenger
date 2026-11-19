@@ -403,42 +403,42 @@ function ChatsPanel({
         </div>
       ) : null}
       <ul className="flex flex-col">
-      {chats.map((chat) => {
-        const name = peerUsername(chat.members, currentUserId)
-        const preview = chat.last_message?.body ?? 'Нет сообщений'
-        const time = chat.last_message ? formatChatListTime(chat.last_message.created_at) : ''
-        const selected = chat.id === selectedChatId
+        {chats.map((chat) => {
+          const name = peerUsername(chat.members, currentUserId)
+          const preview = chat.last_message?.body ?? 'Нет сообщений'
+          const time = chat.last_message ? formatChatListTime(chat.last_message.created_at) : ''
+          const selected = chat.id === selectedChatId
 
-        return (
-          <li key={chat.id} className="border-b border-border">
-            <Link
-              to={`/chats/${chat.id}`}
-              className={cn(
-                'flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/60',
-                selected && 'bg-accent',
-              )}
-            >
-              <InitialAvatar username={name} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate font-semibold">{name}</span>
-                  {time ? (
-                    <span className="shrink-0 text-xs text-muted-foreground">{time}</span>
-                  ) : null}
+          return (
+            <li key={chat.id} className="border-b border-border">
+              <Link
+                to={`/chats/${chat.id}`}
+                className={cn(
+                  'flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/60',
+                  selected && 'bg-accent',
+                )}
+              >
+                <InitialAvatar username={name} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-semibold">{name}</span>
+                    {time ? (
+                      <span className="shrink-0 text-xs text-muted-foreground">{time}</span>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm text-muted-foreground">{preview}</span>
+                    {chat.unread_count > 0 ? (
+                      <span className="inline-flex min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
+                        {chat.unread_count}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm text-muted-foreground">{preview}</span>
-                  {chat.unread_count > 0 ? (
-                    <span className="inline-flex min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
-                      {chat.unread_count}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-            </Link>
-          </li>
-        )
-      })}
+              </Link>
+            </li>
+          )
+        })}
       </ul>
     </div>
   )

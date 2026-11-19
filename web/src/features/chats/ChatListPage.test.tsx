@@ -1,13 +1,7 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import {
-  createMemoryRouter,
-  MemoryRouter,
-  Route,
-  RouterProvider,
-  Routes,
-} from 'react-router'
+import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from 'react-router'
 import { describe, expect, it } from 'vitest'
 import type { User } from '@/api/auth'
 import { login } from '@/api/auth'
@@ -213,7 +207,10 @@ describe('ChatListPage', () => {
     server.use(
       http.get('/chats', () => {
         if (failListAfterCreate) {
-          return HttpResponse.json({ code: 'unknown_error', message: 'unavailable' }, { status: 503 })
+          return HttpResponse.json(
+            { code: 'unknown_error', message: 'unavailable' },
+            { status: 503 },
+          )
         }
         return HttpResponse.json({ chats: [] })
       }),
@@ -273,7 +270,10 @@ describe('ChatListPage', () => {
     server.use(
       http.get('/chats', () => {
         if (failListAfterCreate) {
-          return HttpResponse.json({ code: 'unknown_error', message: 'unavailable' }, { status: 503 })
+          return HttpResponse.json(
+            { code: 'unknown_error', message: 'unavailable' },
+            { status: 503 },
+          )
         }
         return HttpResponse.json(existingList)
       }),
