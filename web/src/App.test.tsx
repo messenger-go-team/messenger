@@ -3,19 +3,30 @@ import { MemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 import App from './App'
 
-// Router smoke tests фиксируют основной маршрут и wildcard fallback без browser history.
 describe('App', () => {
-  it('renders the application', () => {
+  it('redirects unauthenticated users from home to login', async () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <App />
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole('heading', { name: 'Messenger' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Вход' })).toBeInTheDocument()
   })
 
-  it('renders not found page for unknown routes', () => {
+  it('renders login route', async () => {
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('heading', { name: 'Вход' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Логин')).toBeInTheDocument()
+    expect(screen.getByLabelText('Пароль')).toBeInTheDocument()
+  })
+
+  it('renders not found page for unknown routes', async () => {
     render(
       <MemoryRouter initialEntries={['/unknown']}>
         <App />
@@ -23,7 +34,7 @@ describe('App', () => {
     )
 
     expect(
-      screen.getByRole('heading', {
+      await screen.findByRole('heading', {
         name: '404 — Страница не найдена',
       }),
     ).toBeInTheDocument()

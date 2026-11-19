@@ -1,4 +1,9 @@
 import { Route, Routes } from 'react-router'
+import { ChangePasswordPage } from '@/features/auth/ChangePasswordPage'
+import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage'
+import { LoginPage } from '@/features/auth/LoginPage'
+import { RegisterPage } from '@/features/auth/RegisterPage'
+import { RequireAuth } from '@/features/auth/RequireAuth'
 import { HomePage } from '@/pages/HomePage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
@@ -6,7 +11,13 @@ import { NotFoundPage } from '@/pages/NotFoundPage'
 export function AppRouter() {
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route element={<RequireAuth />}>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/change-password" element={<ChangePasswordPage />} />
+      </Route>
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )
