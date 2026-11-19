@@ -66,11 +66,9 @@ export function mergeThreadMessages({
   // Окно ленты задаёт REST (history). WS-кэш: только seq внутри окна или новее max —
   // старые seq из sync не всплывают без before_seq / loadOlder.
   let historyMinSeq: number | null = null
-  let historyMaxSeq = 0
   for (const message of history) {
     if (message.chat_id !== chatId) continue
     if (historyMinSeq == null || message.seq < historyMinSeq) historyMinSeq = message.seq
-    if (message.seq > historyMaxSeq) historyMaxSeq = message.seq
   }
 
   for (const message of wsMessages) {
@@ -83,6 +81,8 @@ export function mergeThreadMessages({
     if (item.chatId !== chatId) continue
     if (item.status === 'sent' && item.messageId && byId.has(item.messageId)) continue
     if (item.status === 'sent' && item.messageId) {
+      // Та же нижняя граница окна, что и для WS-кэша (ACK не обходит before_seq).
+      if (historyMinSeq != null && item.seq != null && item.seq < historyMinSeq) continue
       const confirmed: ThreadMessage = {
         key: item.messageId,
         id: item.messageId,

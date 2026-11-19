@@ -2,7 +2,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { User } from '@/api/auth'
 import { login } from '@/api/auth'
 import { AuthContext, type AuthContextValue } from '@/features/auth/auth-context'
@@ -53,6 +53,53 @@ function renderThread(
 }
 
 describe('ChatThread', () => {
+  beforeEach(() => {
+    class MockIntersectionObserver {
+      readonly callback: IntersectionObserverCallback
+
+      constructor(callback: IntersectionObserverCallback) {
+        this.callback = callback
+      }
+
+      observe(target: Element) {
+        queueMicrotask(() => {
+          this.callback(
+            [
+              {
+                isIntersecting: true,
+                target,
+                intersectionRatio: 1,
+                time: 0,
+                boundingClientRect: target.getBoundingClientRect(),
+                intersectionRect: target.getBoundingClientRect(),
+                rootBounds: null,
+              },
+            ],
+            this as unknown as IntersectionObserver,
+          )
+        })
+      }
+
+      unobserve() {}
+
+      disconnect() {}
+
+      takeRecords(): IntersectionObserverEntry[] {
+        return []
+      }
+
+      readonly root = null
+      readonly rootMargin = ''
+      readonly thresholds = [0.6]
+    }
+
+    vi.stubGlobal('IntersectionObserver', MockIntersectionObserver)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it('loads history and shows peer header', async () => {
     const auth = await authValue()
     const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
@@ -249,7 +296,7 @@ describe('ChatThread', () => {
     expect(await screen.findByText('Привет, Боб!')).toBeInTheDocument()
   })
 
-  it('marks the highest visible contiguous seq as read and notifies the list', async () => {
+  it('marks the highest visible confirmed seq as read and notifies the list', async () => {
     const readBodies: unknown[] = []
     server.use(
       http.post(`/chats/${INITIAL_CHAT_ID}/read`, async ({ request }) => {

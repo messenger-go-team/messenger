@@ -17,11 +17,7 @@ import { useAuth } from '@/features/auth/useAuth'
 import { connectionStatusLabel } from '@/features/chats/connectionStatus'
 import { formatChatListTime } from '@/features/chats/formatChatListTime'
 import { resolveMarkReadSeq } from '@/features/chats/markReadSeq'
-import {
-  maxConfirmedSeq,
-  mergeThreadMessages,
-  type ThreadMessage,
-} from '@/features/chats/mergeThreadMessages'
+import { mergeThreadMessages, type ThreadMessage } from '@/features/chats/mergeThreadMessages'
 import { useWs } from '@/features/ws/useWs'
 import { cn } from '@/lib/utils'
 
@@ -130,26 +126,26 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
     })
   }, [chatId, history, snapshot.messages, snapshot.pending, user])
 
+  const restHistoryMaxSeq = useMemo(
+    () => history.reduce((max, message) => Math.max(max, message.seq), 0),
+    [history],
+  )
+
   useEffect(() => {
     if (!stickToBottomRef.current) return
     const list = listRef.current
     if (!list) return
     list.scrollTop = list.scrollHeight
-    const bottomSeq = maxConfirmedSeq(messages)
-    if (bottomSeq > visibleMaxSeqRef.current) {
-      visibleMaxSeqRef.current = bottomSeq
-      setVisibleMaxSeq(bottomSeq)
-    }
   }, [messages])
 
   const connectionLabel = connectionStatusLabel(snapshot.transport)
-  const historySyncing = snapshot.history === 'syncing'
 
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined') return
     const root = listRef.current
     if (!root) return
 
+    // Только фактическое пересечение с viewport — порог 80 px для stick-to-bottom сюда не переносим.
     const observer = new IntersectionObserver(
       (entries) => {
         let raised = visibleMaxSeqRef.current
@@ -165,7 +161,7 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
           setVisibleMaxSeq(raised)
         }
       },
-      { root, threshold: 0.4 },
+      { root, threshold: 0.6 },
     )
 
     for (const node of messageNodeRefs.current.values()) {
@@ -182,7 +178,8 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
     const seqToMark = resolveMarkReadSeq({
       visibleMaxSeq,
       messages,
-      historySyncing,
+      historySyncState: snapshot.history,
+      restHistoryMaxSeq,
     })
     if (seqToMark <= markedSeqRef.current) return
 
@@ -213,9 +210,10 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
     accessToken,
     chatId,
     historyStatus,
-    historySyncing,
     messages,
     onReadCommitted,
+    restHistoryMaxSeq,
+    snapshot.history,
     user,
     visibilityTick,
     visibleMaxSeq,
@@ -233,13 +231,6 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
     const target = event.currentTarget
     const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight
     stickToBottomRef.current = distanceFromBottom < 80
-    if (stickToBottomRef.current) {
-      const bottomSeq = maxConfirmedSeq(messages)
-      if (bottomSeq > visibleMaxSeqRef.current) {
-        visibleMaxSeqRef.current = bottomSeq
-        setVisibleMaxSeq(bottomSeq)
-      }
-    }
     if (target.scrollTop < 48) void loadOlder()
   }
 

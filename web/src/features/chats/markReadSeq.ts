@@ -1,45 +1,35 @@
 import type { ThreadMessage } from '@/features/chats/mergeThreadMessages'
-
-/** Макс. seq без дыр от минимума подтверждённой ленты (1,2,5 → 2). */
-export function maxContiguousConfirmedSeq(messages: readonly ThreadMessage[]): number {
-  const seqs = Array.from(
-    new Set(
-      messages
-        .filter(
-          (message) =>
-            message.seq != null && message.status !== 'sending' && message.status !== 'failed',
-        )
-        .map((message) => message.seq as number),
-    ),
-  ).sort((left, right) => left - right)
-
-  if (seqs.length === 0) return 0
-
-  let cursor = seqs[0]!
-  for (let index = 1; index < seqs.length; index += 1) {
-    const next = seqs[index]!
-    if (next !== cursor + 1) break
-    cursor = next
-  }
-  return cursor
-}
+import { maxConfirmedSeq } from '@/features/chats/mergeThreadMessages'
+import type { HistorySyncState } from '@/ws'
 
 /**
- * Seq для POST /read: не выше показанного и не через дыру;
- * во время history sync / error без contiguous — 0 (ждём).
+ * Seq для POST /read:
+ * - только не выше реально показанного (visibleMaxSeq);
+ * - при successful backfill (`ready`) — до max подтверждённых в ленте, дыры seq допустимы;
+ * - при `error` — только до max REST-истории (не прыгаем по WS-буферу после сбоя догрузки);
+ * - во время sync / not_started — 0.
  */
 export function resolveMarkReadSeq({
   visibleMaxSeq,
   messages,
-  historySyncing,
+  historySyncState,
+  restHistoryMaxSeq,
 }: {
   visibleMaxSeq: number
   messages: readonly ThreadMessage[]
-  historySyncing: boolean
+  historySyncState: HistorySyncState
+  restHistoryMaxSeq: number
 }): number {
-  if (historySyncing) return 0
+  if (historySyncState === 'syncing' || historySyncState === 'not_started') return 0
   if (visibleMaxSeq <= 0) return 0
-  const contiguous = maxContiguousConfirmedSeq(messages)
-  if (contiguous <= 0) return 0
-  return Math.min(visibleMaxSeq, contiguous)
+
+  if (historySyncState === 'ready') {
+    const trustedMax = maxConfirmedSeq(messages)
+    if (trustedMax <= 0) return 0
+    return Math.min(visibleMaxSeq, trustedMax)
+  }
+
+  // history === 'error'
+  if (restHistoryMaxSeq <= 0) return 0
+  return Math.min(visibleMaxSeq, restHistoryMaxSeq)
 }

@@ -111,6 +111,38 @@ describe('mergeThreadMessages', () => {
     expect(merged[0]?.status).toBe('sent')
   })
 
+  it('does not surface pending ACK older than the REST history window', () => {
+    const merged = mergeThreadMessages({
+      currentUserId: USER,
+      chatId: CHAT,
+      history: [
+        {
+          id: 'm51',
+          chat_id: CHAT,
+          seq: 51,
+          sender_id: PEER,
+          body: 'page',
+          created_at: '2026-11-01T12:00:00Z',
+        },
+      ],
+      wsMessages: [],
+      pending: [
+        {
+          chatId: CHAT,
+          clientMsgId: 'c1',
+          body: 'ancient ack',
+          status: 'sent',
+          attempts: 1,
+          messageId: 'm1',
+          seq: 1,
+          createdAt: '2026-11-01T10:00:00Z',
+        },
+      ],
+    })
+
+    expect(merged.map((item) => item.seq)).toEqual([51])
+  })
+
   it('does not surface WS cache older than the REST history window', () => {
     const merged = mergeThreadMessages({
       currentUserId: USER,
