@@ -90,6 +90,12 @@ export class MockWebSocketServer {
     return Array.from(this.messages.values())
   }
 
+  /** Поднимает курсор seq, чтобы новые ack не пересекались с уже известной REST-историей. */
+  ensureSequenceAtLeast(chatId: string, seq: number): void {
+    const current = this.nextSequence.get(chatId) ?? 0
+    if (seq > current) this.nextSequence.set(chatId, seq)
+  }
+
   private connect(url: string, protocols: string[]): MockWebSocket {
     const socket = new MockWebSocket(this, url, protocols)
     this.connections.add(socket)

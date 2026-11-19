@@ -15,6 +15,7 @@ import { createPersonalChat, listChats, type ChatListItem } from '@/api/history'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/features/auth/useAuth'
+import { ChatThread } from '@/features/chats/ChatThread'
 import { formatChatListTime } from '@/features/chats/formatChatListTime'
 import { peerUsername } from '@/features/chats/peerUsername'
 import {
@@ -270,7 +271,12 @@ export function ChatListPage() {
         </div>
       </nav>
 
-      <aside className="flex min-w-0 flex-1 max-w-[344px] flex-col border-r border-border bg-card">
+      <aside
+        className={cn(
+          'min-w-0 flex-1 max-w-[344px] flex-col border-r border-border bg-card',
+          chatId ? 'hidden md:flex' : 'flex',
+        )}
+      >
         <header className="flex items-center justify-between gap-3 px-4 pt-5 pb-3">
           <h1 className="text-xl font-semibold tracking-tight">Чаты</h1>
           <Button
@@ -336,11 +342,19 @@ export function ChatListPage() {
         </div>
       </aside>
 
-      <main className="hidden min-w-0 flex-1 items-center justify-center bg-background md:flex">
+      <main
+        className={cn(
+          'min-w-0 flex-1 bg-background',
+          chatId ? 'flex' : 'hidden items-center justify-center md:flex',
+        )}
+      >
         {chatId ? (
-          <p className="max-w-sm px-6 text-center text-muted-foreground">
-            Чат с {selectedPeer ?? 'пользователем'}. Окно переписки — в задаче #44.
-          </p>
+          <ChatThread
+            key={chatId}
+            chatId={chatId}
+            peerUsername={selectedPeer}
+            onReadCommitted={reloadChats}
+          />
         ) : (
           <p className="max-w-sm px-6 text-center text-muted-foreground">
             Выберите чат, чтобы начать обмен сообщениями

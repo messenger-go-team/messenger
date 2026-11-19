@@ -7,6 +7,8 @@ import type { User } from '@/api/auth'
 import { login } from '@/api/auth'
 import { AuthContext, type AuthContextValue } from '@/features/auth/auth-context'
 import { ChatListPage } from '@/features/chats/ChatListPage'
+import { WsProvider } from '@/features/ws/WsProvider'
+import { MockWebSocketServer } from '@/ws/mock/server'
 import { server } from '../../../mocks/server'
 import { addUser } from '../../../mocks/data/auth'
 import { INITIAL_CHAT_ID } from '../../../mocks/data/history'
@@ -36,15 +38,18 @@ async function authValue(): Promise<AuthContextValue> {
 }
 
 function renderChats(auth: AuthContextValue, initialPath = '/') {
+  const mockWs = new MockWebSocketServer({ senderId: auth.user?.id ?? ALICE.id })
   return render(
     <AuthContext.Provider value={auth}>
-      <MemoryRouter initialEntries={[initialPath]}>
-        <Routes>
-          <Route path="/" element={<ChatListPage />} />
-          <Route path="/chats/:chatId" element={<ChatListPage />} />
-          <Route path="/contacts" element={<h1>Контакты</h1>} />
-        </Routes>
-      </MemoryRouter>
+      <WsProvider webSocketFactory={mockWs.webSocketFactory} disableApiMockSocket>
+        <MemoryRouter initialEntries={[initialPath]}>
+          <Routes>
+            <Route path="/" element={<ChatListPage />} />
+            <Route path="/chats/:chatId" element={<ChatListPage />} />
+            <Route path="/contacts" element={<h1>Контакты</h1>} />
+          </Routes>
+        </MemoryRouter>
+      </WsProvider>
     </AuthContext.Provider>,
   )
 }
@@ -202,14 +207,31 @@ describe('ChatListPage', () => {
       password: 'test-password',
       created_at: '2026-11-01T10:10:00Z',
     })
-    let listCalls = 0
+    // После create список падает; до create оба клиента (UI + WS history sync) получают [].
+    let failListAfterCreate = false
     server.use(
       http.get('/chats', () => {
-        listCalls += 1
-        if (listCalls === 1) {
-          return HttpResponse.json({ chats: [] })
+        if (failListAfterCreate) {
+          return HttpResponse.json({ code: 'unknown_error', message: 'unavailable' }, { status: 503 })
         }
-        return HttpResponse.json({ code: 'unknown_error', message: 'unavailable' }, { status: 503 })
+        return HttpResponse.json({ chats: [] })
+      }),
+      http.post('/chats/personal', async ({ request }) => {
+        failListAfterCreate = true
+        const body = (await request.json()) as { user_id: string }
+        return HttpResponse.json(
+          {
+            id: LATER_CHAT_ID,
+            type: 'personal',
+            created_at: '2026-11-19T12:00:00Z',
+            members: [
+              { id: ALICE.id, username: 'alice_1' },
+              { id: body.user_id, username: 'charlie_3' },
+            ],
+            last_seq: 0,
+          },
+          { status: 201 },
+        )
       }),
     )
     const auth = await authValue()
@@ -220,7 +242,7 @@ describe('ChatListPage', () => {
     await user.type(screen.getByRole('searchbox', { name: 'Поиск по логину' }), 'char')
     await user.click(await screen.findByRole('button', { name: /Написать charlie_3/i }))
 
-    expect(await screen.findByText(/чат с charlie_3/i)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'charlie_3' })).toBeInTheDocument()
   })
 
   it('retries opening the selected user after a failed create', async () => {
@@ -266,7 +288,7 @@ describe('ChatListPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/не удалось открыть чат/i)
 
     await user.click(screen.getByRole('button', { name: 'Повторить' }))
-    expect(await screen.findByText(/чат с charlie_3/i)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'charlie_3' })).toBeInTheDocument()
     expect(createCalls).toBe(2)
   })
 
@@ -336,6 +358,6 @@ describe('ChatListPage', () => {
     expect(writeCharlie).toBeDisabled()
     expect(writeDana).toBeDisabled()
     releaseCreate()
-    expect(await screen.findByText(/чат с charlie_3/i)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'charlie_3' })).toBeInTheDocument()
   })
 })
