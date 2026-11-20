@@ -1,0 +1,25 @@
+meta {
+  name: UNREAD-AFTER-PRIVATE-WRITES
+  type: http
+  seq: 276
+}
+
+get {
+  url: {{baseUrl}}/chats
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("UNREAD-AFTER-PRIVATE-WRITES", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("UNREAD-AFTER-PRIVATE-WRITES", bru, req, res, test, expect);
+}

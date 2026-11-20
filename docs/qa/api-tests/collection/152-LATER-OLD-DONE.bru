@@ -1,0 +1,25 @@
+meta {
+  name: LATER-OLD-DONE
+  type: http
+  seq: 152
+}
+
+post {
+  url: {{baseUrl}}/later/{{previousLaterID}}/done
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-OLD-DONE", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-OLD-DONE", bru, req, res, test, expect);
+}

@@ -1,0 +1,25 @@
+meta {
+  name: CONTACT-MISSING-DELETE
+  type: http
+  seq: 56
+}
+
+delete {
+  url: {{baseUrl}}/contacts/{{missingID}}
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTACT-MISSING-DELETE", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTACT-MISSING-DELETE", bru, req, res, test, expect);
+}

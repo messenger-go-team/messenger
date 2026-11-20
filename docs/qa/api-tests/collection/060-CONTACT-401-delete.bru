@@ -1,0 +1,25 @@
+meta {
+  name: CONTACT-401-delete
+  type: http
+  seq: 60
+}
+
+delete {
+  url: {{baseUrl}}/contacts/{{bID}}
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTACT-401-delete", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTACT-401-delete", bru, req, res, test, expect);
+}

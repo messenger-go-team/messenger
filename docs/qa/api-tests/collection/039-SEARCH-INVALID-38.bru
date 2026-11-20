@@ -1,0 +1,25 @@
+meta {
+  name: SEARCH-INVALID-38
+  type: http
+  seq: 39
+}
+
+get {
+  url: {{baseUrl}}/users/search?prefix=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("SEARCH-INVALID-38", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("SEARCH-INVALID-38", bru, req, res, test, expect);
+}

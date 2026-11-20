@@ -1,0 +1,25 @@
+meta {
+  name: LATER-ACCESS-RESTORED
+  type: http
+  seq: 259
+}
+
+get {
+  url: {{baseUrl}}/later
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-ACCESS-RESTORED", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-ACCESS-RESTORED", bru, req, res, test, expect);
+}

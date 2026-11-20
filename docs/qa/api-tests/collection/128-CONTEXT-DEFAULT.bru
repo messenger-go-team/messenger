@@ -1,0 +1,25 @@
+meta {
+  name: CONTEXT-DEFAULT
+  type: http
+  seq: 128
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/messages/{{targetID}}/context
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTEXT-DEFAULT", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTEXT-DEFAULT", bru, req, res, test, expect);
+}

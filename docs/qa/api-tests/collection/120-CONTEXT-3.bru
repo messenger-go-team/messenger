@@ -1,0 +1,25 @@
+meta {
+  name: CONTEXT-3
+  type: http
+  seq: 120
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/messages/{{targetID}}/context?limit=3
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTEXT-3", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTEXT-3", bru, req, res, test, expect);
+}

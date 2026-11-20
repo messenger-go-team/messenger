@@ -1,0 +1,25 @@
+meta {
+  name: LATER-QUERY-225
+  type: http
+  seq: 226
+}
+
+post {
+  url: {{baseUrl}}/later/{{laterID}}/done?due_at=%zz
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-QUERY-225", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-QUERY-225", bru, req, res, test, expect);
+}

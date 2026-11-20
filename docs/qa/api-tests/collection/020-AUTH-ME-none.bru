@@ -1,0 +1,25 @@
+meta {
+  name: AUTH-ME-none
+  type: http
+  seq: 20
+}
+
+get {
+  url: {{baseUrl}}/me
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("AUTH-ME-none", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("AUTH-ME-none", bru, req, res, test, expect);
+}
