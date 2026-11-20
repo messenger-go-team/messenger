@@ -146,8 +146,7 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   }, [messages])
 
   useEffect(() => {
-    const latestIncomingKey =
-      [...messages].reverse().find((item) => !item.mine)?.key ?? null
+    const latestIncomingKey = [...messages].reverse().find((item) => !item.mine)?.key ?? null
 
     if (stickToBottomRef.current) {
       lastIncomingKeyRef.current = latestIncomingKey
