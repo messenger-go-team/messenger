@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -29,14 +30,18 @@ type wsEndpoint struct {
 	broker         Broker
 	history        historyv1.HistoryServiceClient
 	historyTimeout time.Duration
+	logger         *slog.Logger
 
 	mu     sync.Mutex
 	active sync.WaitGroup
 }
 
-func newWSEndpoint(cfg config, ready *atomic.Bool, timing wsTiming, history historyv1.HistoryServiceClient) *wsEndpoint {
+func newWSEndpoint(cfg config, ready *atomic.Bool, timing wsTiming,
+	history historyv1.HistoryServiceClient, logger *slog.Logger,
+) *wsEndpoint {
 	hub := newConnectionHub()
 	return &wsEndpoint{
+		logger:         logger,
 		ready:          ready,
 		verifier:       cfg.JWTVerifier,
 		timing:         timing,

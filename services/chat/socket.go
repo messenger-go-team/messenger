@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"sync/atomic"
 	"time"
@@ -11,9 +12,10 @@ import (
 )
 
 const (
-	wsMaxMessageBytes = 64 * 1024
-	wsTokenExpired    = 4401
-	wsQueueSize       = 32
+	wsMaxMessageBytes  = 64 * 1024
+	wsTokenExpired     = 4401
+	wsQueueSize        = 32
+	wsCommandQueueSize = 8
 )
 
 type socketSession struct {
@@ -77,22 +79,30 @@ func (ws *wsEndpoint) serveSocket(socket *socketSession) {
 		return nil
 	})
 
-	readDone, writeDone := make(chan struct{}), make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	commands := make(chan []byte, wsCommandQueueSize)
+	workerDone, writeDone := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		ws.runWSCommands(ctx, socket, commands)
+	}()
 	go func() {
 		defer close(writeDone)
 		defer func() { _ = conn.Close() }()
-		ws.writeSocket(socket, &pending, readDone)
+		defer cancel()
+		ws.writeSocket(socket, &pending, ctx.Done())
 	}()
 	defer func() {
-		close(readDone)
-		_ = conn.Close() // Unblock an in-flight write when the reader exits.
+		cancel()
+		_ = conn.Close()
 		<-writeDone
+		<-workerDone
 	}()
 
 	for {
 		kind, data, err := conn.ReadMessage()
 		if err != nil {
-			// Gorilla sends the close frame itself for protocol errors and read limits.
+			// Gorilla sends the close frame for protocol errors and read limits.
 			return
 		}
 		switch {
@@ -103,7 +113,36 @@ func (ws *wsEndpoint) serveSocket(socket *socketSession) {
 			ws.sendClose(conn, websocket.CloseInvalidFramePayloadData, "invalid UTF-8")
 			return
 		}
-		// Application commands are handled by T35. Reading here keeps processing control frames.
+
+		select {
+		case <-ctx.Done():
+			return
+		case commands <- data:
+		default:
+			ws.sendClose(conn, websocket.CloseTryAgainLater, "inbound queue full")
+			return
+		}
+	}
+}
+
+func (ws *wsEndpoint) runWSCommands(ctx context.Context, socket *socketSession, commands <-chan []byte) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ws.stopping:
+			return
+		case data := <-commands:
+			if ctx.Err() != nil || !time.Now().Before(socket.expiresAt) {
+				return
+			}
+			select {
+			case <-ws.stopping:
+				return
+			default:
+			}
+			ws.handleWSCommand(ctx, socket, data)
+		}
 	}
 }
 

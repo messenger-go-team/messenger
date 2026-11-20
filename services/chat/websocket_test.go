@@ -27,8 +27,9 @@ func TestWSHandshake(t *testing.T) {
 	cfg := testConfig(t)
 	var ready atomic.Bool
 	ready.Store(true)
-	ws := newWSEndpoint(cfg, &ready, defaultWSTiming(), nil)
-	server := httptest.NewServer(newServiceHandler(&ready, newLogger(io.Discard, "chat", cfg.LogLevel), ws))
+	logger := newLogger(io.Discard, "chat", cfg.LogLevel)
+	ws := newWSEndpoint(cfg, &ready, defaultWSTiming(), nil, logger)
+	server := httptest.NewServer(newServiceHandler(&ready, logger, ws))
 	defer server.Close()
 
 	token := signTestToken(t, time.Now().Add(time.Minute))
@@ -105,9 +106,19 @@ func TestWSMessageLimits(t *testing.T) {
 			url := startTestChat(t, defaultWSTiming())
 			conn, _ := dialTestSocket(t, url, testWSHeaders(signTestToken(t, time.Now().Add(time.Minute))))
 			defer func() { _ = conn.Close() }()
-			if err := conn.WriteMessage(websocket.TextMessage, []byte(strings.Repeat("a", wsMaxMessageBytes))); err != nil {
+			id := newWSEventID()
+			boundary, err := json.Marshal(newWSEnvelope(wsSendType, id, map[string]string{
+				"chat_id": fanoutChat, "client_msg_id": sendTestClientID, "body": "boundary",
+			}))
+			if err != nil {
 				t.Fatal(err)
 			}
+			boundary = append(boundary, strings.Repeat(" ", wsMaxMessageBytes-len(boundary))...)
+			if err := conn.WriteMessage(websocket.TextMessage, boundary); err != nil {
+				t.Fatal(err)
+			}
+			readTestSendError(t, conn, id, "temporarily_unavailable", true)
+
 			if err := conn.WriteMessage(tt.kind, []byte(tt.body)); err != nil {
 				t.Fatal(err)
 			}
@@ -159,8 +170,8 @@ func TestWSExpiresWhileIdle(t *testing.T) {
 func TestWSGracefulShutdown(t *testing.T) {
 	cfg := testConfig(t)
 	var ready atomic.Bool
-	ws := newWSEndpoint(cfg, &ready, defaultWSTiming(), nil)
 	logger := newLogger(io.Discard, "chat", cfg.LogLevel)
+	ws := newWSEndpoint(cfg, &ready, defaultWSTiming(), nil, logger)
 	handler := newServiceHandler(&ready, logger, ws)
 	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
@@ -274,8 +285,8 @@ func startTestWSEndpoint(t *testing.T, timing wsTiming, history historyv1.Histor
 	cfg := testConfig(t)
 	var ready atomic.Bool
 	ready.Store(true)
-	ws := newWSEndpoint(cfg, &ready, timing, history)
 	logger := newLogger(io.Discard, "chat", cfg.LogLevel)
+	ws := newWSEndpoint(cfg, &ready, timing, history, logger)
 	server := httptest.NewServer(newServiceHandler(&ready, logger, ws))
 	t.Cleanup(func() {
 		ws.stopAccepting()

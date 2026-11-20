@@ -27,7 +27,7 @@ func run(ctx context.Context, cfg config, logger *slog.Logger) error {
 		return fmt.Errorf("listen HTTP: %w", err)
 	}
 	var ready atomic.Bool
-	ws := newWSEndpoint(cfg, &ready, defaultWSTiming(), historyv1.NewHistoryServiceClient(history))
+	ws := newWSEndpoint(cfg, &ready, defaultWSTiming(), historyv1.NewHistoryServiceClient(history), logger)
 	handler := newServiceHandler(&ready, logger, ws)
 	server := newHTTPServer(cfg, handler, logger)
 	return serve(ctx, server, listener, ws, cfg.ShutdownTimeout, logger)
