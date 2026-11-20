@@ -3,7 +3,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { cases } = require("./plan.cjs");
 const { validateResponse } = require("./schema.cjs");
-const { assertUnchangedLater } = require("./invariants.cjs");
+const { assertUnchangedLater, readRefreshJar } = require("./invariants.cjs");
 function snapshotLater() {
   const r = spawnSync(process.env.FIXTURE_BIN, ["snapshot-later"], {
     encoding: "utf8",
@@ -46,6 +46,8 @@ async function prepare(id, bru, req) {
     throw new Error("T49 only accepts its private Compose origins");
   for (const [k, value] of Object.entries(f))
     if (bru.getVar(k) === undefined) bru.setVar(k, value);
+  if (c.captureRefreshJar)
+    bru.setVar(id + "-refreshJar", await readRefreshJar(bru, f.baseUrl));
   if (c.clearCookies) await bru.cookies.jar().clear();
   if (c.control) {
     const result = spawnSync(process.env.FIXTURE_BIN, [c.control], {

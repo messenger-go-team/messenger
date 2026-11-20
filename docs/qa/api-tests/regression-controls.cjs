@@ -35,6 +35,33 @@ function semanticControls() {
         id + " must reject missing " + flag,
       );
   }
+  const logout = cases.find((c) => c.id === "AUTH-LOGOUT");
+  const emptyJar = cases.find((c) => c.id === "AUTH-REFRESH-NO-COOKIE");
+  for (const c of [logout, emptyJar]) {
+    assert.equal(c.captureRefreshJar, true);
+    assert.ok(
+      !c.clearCookies,
+      "logout jar snapshots must precede manual clear",
+    );
+  }
+  const checkLogout = (header) =>
+    logout.check({
+      v: { getVar: () => [{ path: "/auth" }] },
+      res: { headers: { "set-cookie": [header] } },
+    });
+  checkLogout("refresh_token=; Path=/auth; Max-Age=0");
+  for (const header of [
+    "refresh_token=; Path=/; Max-Age=0",
+    "refresh_token=; Path=/AUTH; Max-Age=0",
+    "other_cookie=; Path=/auth; Max-Age=0",
+    "refresh_token=; Path=/auth; Max-Age=10",
+  ])
+    assert.throws(() => checkLogout(header), /logout/);
+  emptyJar.check({ v: { getVar: () => [] } });
+  assert.throws(
+    () => emptyJar.check({ v: { getVar: () => [{ path: "/auth" }] } }),
+    /refresh cookie must be absent/,
+  );
   const replay = cases.find((c) => c.id === "AUTH-LOGOUT-REVOKED-REFRESH");
   assert.equal(replay.status, 401);
   assert.equal(replay.headers.Cookie, "{{lastRefresh}}");
@@ -322,7 +349,9 @@ async function redirectControl() {
   }
 }
 semanticControls();
-redirectControl().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+redirectControl()
+  .then(() => require("./logout-control.cjs").logoutControl())
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

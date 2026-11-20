@@ -32,6 +32,44 @@ function refreshCookie(headers, previous) {
   return cookie;
 }
 
+function assertLogoutCookie(headers) {
+  const raw = headers["set-cookie"];
+  const cookies = (Array.isArray(raw) ? raw : [raw]).filter(
+    (x) => typeof x === "string" && /^refresh_token=/.test(x),
+  );
+  assert.equal(cookies.length, 1, "logout must expire refresh_token");
+  const attributes = new Map(
+    cookies[0]
+      .split(";")
+      .slice(1)
+      .map((x) => {
+        const [name, ...value] = x.trim().split("=");
+        return [name.toLowerCase(), value.join("=")];
+      }),
+  );
+  assert.equal(attributes.get("path"), "/auth", "logout refresh Path=/auth");
+  assert.equal(attributes.get("max-age"), "0", "logout refresh Max-Age=0");
+}
+
+async function readRefreshJar(bru, baseUrl) {
+  const cookies = await bru.cookies.jar().getCookies(baseUrl + "/auth/refresh");
+  // Keep token values out of snapshots/assertion failures.
+  return cookies
+    .filter((c) => c.key === "refresh_token")
+    .map((c) => ({ path: c.path }));
+}
+
+function assertRefreshJar(cookies, present) {
+  assert.equal(
+    cookies.length,
+    present ? 1 : 0,
+    present
+      ? "refresh cookie must exist before logout"
+      : "refresh cookie must be absent after logout before manual clear",
+  );
+  if (present) assert.equal(cookies[0].path, "/auth", "jar refresh Path=/auth");
+}
+
 function assertContext(
   body,
   { targetID, chatID, targetSeq, limit, firstSeq = 1, lastSeq = 205 },
@@ -79,4 +117,11 @@ function assertUnchangedLater(before, after) {
     "Later state changed after rejected request (IDs, due_at, state, updated_at)",
   );
 }
-module.exports = { refreshCookie, assertContext, assertUnchangedLater };
+module.exports = {
+  refreshCookie,
+  assertLogoutCookie,
+  readRefreshJar,
+  assertRefreshJar,
+  assertContext,
+  assertUnchangedLater,
+};

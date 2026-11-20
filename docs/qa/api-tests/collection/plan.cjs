@@ -1,4 +1,9 @@
-const { refreshCookie, assertContext } = require("./invariants.cjs");
+const {
+  refreshCookie,
+  assertContext,
+  assertLogoutCookie,
+  assertRefreshJar,
+} = require("./invariants.cjs");
 // Single source for collection order, contract binding and business assertions.
 const cases = [];
 function add(id, api, route, method, path, status, extra = {}) {
@@ -110,11 +115,17 @@ a("AUTH-NEW-REFRESH", "/auth/refresh", "post", "/auth/refresh", 200, {
 });
 a("AUTH-LOGOUT", "/auth/logout", "post", "/auth/logout", 204, {
   auth: "none",
-  check: ({ e, res }) =>
-    e(String(res.headers["set-cookie"])).include("Max-Age=0"),
+  captureRefreshJar: true,
+  check: ({ v, res }) => {
+    assertRefreshJar(v.getVar("AUTH-LOGOUT-refreshJar"), true);
+    assertLogoutCookie(res.headers);
+  },
 });
 a("AUTH-REFRESH-NO-COOKIE", "/auth/refresh", "post", "/auth/refresh", 401, {
   auth: "none",
+  captureRefreshJar: true,
+  check: ({ v }) =>
+    assertRefreshJar(v.getVar("AUTH-REFRESH-NO-COOKIE-refreshJar"), false),
 });
 a("AUTH-LOGOUT-REPEAT", "/auth/logout", "post", "/auth/logout", 401, {
   auth: "none",
