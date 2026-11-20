@@ -1,0 +1,33 @@
+meta {
+  name: LATER-QUERY-200
+  type: http
+  seq: 201
+}
+
+patch {
+  url: {{baseUrl}}/later/{{laterID}}?unexpected=1
+  body: json
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"due_at":"2099-01-01T00:00:00Z"}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-QUERY-200", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-QUERY-200", bru, req, res, test, expect);
+}

@@ -1,0 +1,25 @@
+meta {
+  name: LATER-QUERY-233
+  type: http
+  seq: 234
+}
+
+post {
+  url: {{baseUrl}}/later/{{laterID}}/done?%
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-QUERY-233", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-QUERY-233", bru, req, res, test, expect);
+}

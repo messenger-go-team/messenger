@@ -1,0 +1,25 @@
+meta {
+  name: UNREAD-A-DONE
+  type: http
+  seq: 117
+}
+
+get {
+  url: {{baseUrl}}/chats
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("UNREAD-A-DONE", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("UNREAD-A-DONE", bru, req, res, test, expect);
+}

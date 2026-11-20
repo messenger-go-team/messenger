@@ -1,0 +1,25 @@
+meta {
+  name: SEARCH-BOUNDARY-1
+  type: http
+  seq: 34
+}
+
+get {
+  url: {{baseUrl}}/users/search?prefix=A
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("SEARCH-BOUNDARY-1", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("SEARCH-BOUNDARY-1", bru, req, res, test, expect);
+}

@@ -1,0 +1,33 @@
+meta {
+  name: LATER-SAVE
+  type: http
+  seq: 139
+}
+
+post {
+  url: {{baseUrl}}/later
+  body: json
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"chat_id":"{{chatAB}}","message_id":"{{targetID}}","due_at":null}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-SAVE", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-SAVE", bru, req, res, test, expect);
+}

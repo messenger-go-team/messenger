@@ -1,0 +1,33 @@
+meta {
+  name: AUTH-REGISTER-null
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/auth/register
+  body: json
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"username":null,"password":"12345678"}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("AUTH-REGISTER-null", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("AUTH-REGISTER-null", bru, req, res, test, expect);
+}

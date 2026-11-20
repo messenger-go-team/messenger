@@ -1,0 +1,25 @@
+meta {
+  name: CHATS-401
+  type: http
+  seq: 80
+}
+
+get {
+  url: {{baseUrl}}/chats
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CHATS-401", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CHATS-401", bru, req, res, test, expect);
+}

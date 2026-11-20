@@ -1,0 +1,25 @@
+meta {
+  name: CONTEXT-EDGE-LAST-100
+  type: http
+  seq: 127
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/messages/{{lastID}}/context?limit=100
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTEXT-EDGE-LAST-100", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTEXT-EDGE-LAST-100", bru, req, res, test, expect);
+}

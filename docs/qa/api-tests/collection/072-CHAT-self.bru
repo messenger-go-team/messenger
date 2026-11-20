@@ -1,0 +1,33 @@
+meta {
+  name: CHAT-self
+  type: http
+  seq: 72
+}
+
+post {
+  url: {{baseUrl}}/chats/personal
+  body: json
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"user_id":"{{aID}}"}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CHAT-self", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CHAT-self", bru, req, res, test, expect);
+}

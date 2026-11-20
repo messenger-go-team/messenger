@@ -1,0 +1,17 @@
+**
+!go.mod
+!go.sum
+!api/gen/**
+!api/openapi/**
+!internal/**
+!pkg/**
+!services/auth/**
+!services/history/**
+!cmd/migrate/**
+!docs/qa/api-tests/**
+**/node_modules
+**/reports
+**/.env
+**/.env.*
+
+**/fixture-check.exe

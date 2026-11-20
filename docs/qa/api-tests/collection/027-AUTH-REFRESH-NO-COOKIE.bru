@@ -1,0 +1,25 @@
+meta {
+  name: AUTH-REFRESH-NO-COOKIE
+  type: http
+  seq: 27
+}
+
+post {
+  url: {{baseUrl}}/auth/refresh
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("AUTH-REFRESH-NO-COOKIE", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("AUTH-REFRESH-NO-COOKIE", bru, req, res, test, expect);
+}

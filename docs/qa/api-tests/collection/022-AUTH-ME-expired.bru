@@ -1,0 +1,25 @@
+meta {
+  name: AUTH-ME-expired
+  type: http
+  seq: 22
+}
+
+get {
+  url: {{baseUrl}}/me
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("AUTH-ME-expired", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("AUTH-ME-expired", bru, req, res, test, expect);
+}

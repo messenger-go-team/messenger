@@ -1,0 +1,5 @@
+reports/
+.env
+.env.*
+!environments/
+fixture-check.exe

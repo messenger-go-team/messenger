@@ -1,0 +1,25 @@
+meta {
+  name: CONTEXT-422-129
+  type: http
+  seq: 130
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/messages/{{targetID}}/context?limit=101
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTEXT-422-129", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTEXT-422-129", bru, req, res, test, expect);
+}

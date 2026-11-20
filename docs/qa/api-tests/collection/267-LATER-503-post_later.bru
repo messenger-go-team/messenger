@@ -1,0 +1,33 @@
+meta {
+  name: LATER-503-post/later
+  type: http
+  seq: 267
+}
+
+post {
+  url: {{baseUrl}}/later
+  body: json
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"chat_id":"{{chatAB}}","message_id":"{{lastID}}","due_at":"2099-01-01T00:00:00Z"}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-503-post/later", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-503-post/later", bru, req, res, test, expect);
+}
