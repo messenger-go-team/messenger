@@ -29,7 +29,7 @@ func TestWSHandshake(t *testing.T) {
 	ready.Store(true)
 	logger := newLogger(io.Discard, "chat", cfg.LogLevel)
 	ws := newWSEndpoint(cfg, &ready, defaultWSTiming(), nil, logger)
-	server := httptest.NewServer(newServiceHandler(&ready, logger, ws))
+	server := httptest.NewServer(newServiceHandler(&ready, logger, ws, nil))
 	defer server.Close()
 
 	token := signTestToken(t, time.Now().Add(time.Minute))
@@ -172,7 +172,7 @@ func TestWSGracefulShutdown(t *testing.T) {
 	var ready atomic.Bool
 	logger := newLogger(io.Discard, "chat", cfg.LogLevel)
 	ws := newWSEndpoint(cfg, &ready, defaultWSTiming(), nil, logger)
-	handler := newServiceHandler(&ready, logger, ws)
+	handler := newServiceHandler(&ready, logger, ws, nil)
 	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -287,7 +287,7 @@ func startTestWSEndpoint(t *testing.T, timing wsTiming, history historyv1.Histor
 	ready.Store(true)
 	logger := newLogger(io.Discard, "chat", cfg.LogLevel)
 	ws := newWSEndpoint(cfg, &ready, timing, history, logger)
-	server := httptest.NewServer(newServiceHandler(&ready, logger, ws))
+	server := httptest.NewServer(newServiceHandler(&ready, logger, ws, nil))
 	t.Cleanup(func() {
 		ws.stopAccepting()
 		ws.hub.forceClose()

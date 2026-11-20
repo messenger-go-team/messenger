@@ -20,6 +20,7 @@ import (
 	"github.com/messenger-go-team/messenger/services/history/internal/postgres"
 	"github.com/messenger-go-team/messenger/services/history/internal/reading"
 	"google.golang.org/grpc"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func run(ctx context.Context, c config, logger *slog.Logger) error {
@@ -52,9 +53,11 @@ func run(ctx context.Context, c config, logger *slog.Logger) error {
 	}
 	defer func() { _ = grpcListener.Close() }()
 	var ready atomic.Bool
-	web := &http.Server{Handler: newServiceHandlerWithReadiness(&ready, logger, chatRoutes(service, c.JWTVerifier, &reading.Service{Repo: repo, Users: service.Users}, &later.Service{Repo: savedRepo}), historyReadiness(repo, savedRepo)), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError)}
+	checkReady := historyReadiness(repo, savedRepo)
+	web := &http.Server{Handler: newServiceHandlerWithReadiness(&ready, logger, chatRoutes(service, c.JWTVerifier, &reading.Service{Repo: repo, Users: service.Users}, &later.Service{Repo: savedRepo}), checkReady), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError)}
 	rpc := grpc.NewServer(grpc.UnaryInterceptor(rpcLogging(logger)), grpc.MaxRecvMsgSize(1<<20))
 	historyv1.RegisterHistoryServiceServer(rpc, &historyGRPC{repo: repo, messages: messages.New(repo)})
+	healthpb.RegisterHealthServer(rpc, &historyHealth{ready: &ready, check: checkReady})
 	return serveHistory(ctx, web, rpc, httpListener, grpcListener, &ready, c.ShutdownTimeout, logger)
 }
 func serveHistory(ctx context.Context, web *http.Server, rpc *grpc.Server, httpListener, grpcListener net.Listener, ready *atomic.Bool, timeout time.Duration, logger *slog.Logger) error {
