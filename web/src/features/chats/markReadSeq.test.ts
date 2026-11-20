@@ -18,19 +18,30 @@ function msg(seq: number, status: ThreadMessage['status'] = 'received'): ThreadM
 }
 
 describe('resolveMarkReadSeq', () => {
-  it('keeps mark at synced cursor when a jumped seq is visible during backfill', () => {
-    // Synced to 2; visible 5 arrives; 3–4 not loaded yet (syncing or ready-before-catch-up).
+  it('does not mark synced seq that was never visible when a jumped seq is shown', () => {
+    // Synced to 2; only 5 is in viewport; 1–2 never intersected → no /read yet.
     expect(
       resolveMarkReadSeq({
-        visibleMaxSeq: 5,
+        visibleSeqs: [5],
         messages: [msg(1), msg(2), msg(5)],
         historySyncState: 'syncing',
         syncedCursor: 2,
       }),
-    ).toBe(2)
+    ).toBe(0)
     expect(
       resolveMarkReadSeq({
-        visibleMaxSeq: 5,
+        visibleSeqs: [5],
+        messages: [msg(1), msg(2), msg(5)],
+        historySyncState: 'ready',
+        syncedCursor: 2,
+      }),
+    ).toBe(0)
+  })
+
+  it('marks synced seq when it was actually shown alongside a jumped newer seq', () => {
+    expect(
+      resolveMarkReadSeq({
+        visibleSeqs: [2, 5],
         messages: [msg(1), msg(2), msg(5)],
         historySyncState: 'ready',
         syncedCursor: 2,
@@ -42,7 +53,7 @@ describe('resolveMarkReadSeq', () => {
     // Backfill finished: synced cursor advanced to 5; 3–4 missing is OK.
     expect(
       resolveMarkReadSeq({
-        visibleMaxSeq: 5,
+        visibleSeqs: [5],
         messages: [msg(1), msg(2), msg(5)],
         historySyncState: 'ready',
         syncedCursor: 5,
@@ -54,7 +65,7 @@ describe('resolveMarkReadSeq', () => {
     // Synced to 2; ordinary visible 3 → /read to 3 immediately.
     expect(
       resolveMarkReadSeq({
-        visibleMaxSeq: 3,
+        visibleSeqs: [3],
         messages: [msg(1), msg(2), msg(3)],
         historySyncState: 'ready',
         syncedCursor: 2,
@@ -65,7 +76,7 @@ describe('resolveMarkReadSeq', () => {
   it('does not mark above what was shown', () => {
     expect(
       resolveMarkReadSeq({
-        visibleMaxSeq: 2,
+        visibleSeqs: [2],
         messages: [msg(1), msg(2), msg(3)],
         historySyncState: 'ready',
         syncedCursor: 3,
@@ -76,7 +87,7 @@ describe('resolveMarkReadSeq', () => {
   it('returns 0 before history sync has started', () => {
     expect(
       resolveMarkReadSeq({
-        visibleMaxSeq: 1,
+        visibleSeqs: [1],
         messages: [msg(1)],
         historySyncState: 'not_started',
         syncedCursor: 0,
@@ -87,7 +98,7 @@ describe('resolveMarkReadSeq', () => {
   it('on recovery error with empty synced cursor does not jump via WS-only buffer', () => {
     expect(
       resolveMarkReadSeq({
-        visibleMaxSeq: 5,
+        visibleSeqs: [5],
         messages: [msg(5)],
         historySyncState: 'error',
         syncedCursor: 0,

@@ -42,7 +42,7 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   const markedSeqRef = useRef(0)
   const markInFlightRef = useRef(false)
   const pendingMarkSeqRef = useRef(0)
-  const visibleMaxSeqRef = useRef(0)
+  const visibleSeqsRef = useRef(new Set<number>())
   const historyRequestRef = useRef(0)
   const messageNodeRefs = useRef(new Map<number, Element>())
 
@@ -54,7 +54,7 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   const [draft, setDraft] = useState('')
   const [sendError, setSendError] = useState<string | null>(null)
   const [visibilityTick, setVisibilityTick] = useState(0)
-  const [visibleMaxSeq, setVisibleMaxSeq] = useState(0)
+  const [visibleSeqs, setVisibleSeqs] = useState<readonly number[]>([])
 
   const loadInitial = useCallback(async () => {
     if (!accessToken) return
@@ -144,17 +144,17 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
     // Только фактическое пересечение с viewport — порог 80 px для stick-to-bottom сюда не переносим.
     const observer = new IntersectionObserver(
       (entries) => {
-        let raised = visibleMaxSeqRef.current
+        let changed = false
         for (const entry of entries) {
           if (!entry.isIntersecting) continue
           const seqAttr = (entry.target as HTMLElement).dataset.seq
           const seq = seqAttr ? Number(seqAttr) : NaN
-          if (!Number.isFinite(seq) || seq <= raised) continue
-          raised = seq
+          if (!Number.isFinite(seq) || seq <= 0 || visibleSeqsRef.current.has(seq)) continue
+          visibleSeqsRef.current.add(seq)
+          changed = true
         }
-        if (raised > visibleMaxSeqRef.current) {
-          visibleMaxSeqRef.current = raised
-          setVisibleMaxSeq(raised)
+        if (changed) {
+          setVisibleSeqs(Array.from(visibleSeqsRef.current).sort((a, b) => a - b))
         }
       },
       { root, threshold: 0.6 },
@@ -172,7 +172,7 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
     if (historyStatus !== 'ready' && historyStatus !== 'empty') return
 
     const seqToMark = resolveMarkReadSeq({
-      visibleMaxSeq,
+      visibleSeqs,
       messages,
       historySyncState: snapshot.history,
       syncedCursor,
@@ -212,7 +212,7 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
     syncedCursor,
     user,
     visibilityTick,
-    visibleMaxSeq,
+    visibleSeqs,
   ])
 
   useEffect(() => {
