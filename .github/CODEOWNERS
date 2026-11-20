@@ -5,12 +5,12 @@
 # Общие владельцы повторены, чтобы автор PR мог получить независимое ревью.
 # Для одного правила достаточно approval любого одного владельца, кроме автора PR.
 
-/web/ @RepinDM @afilistovich @kakocuk1
-/web/public/ @RepinDM @zavdaria @afilistovich @kakocuk1
+/web/ @efremoz @afilistovich @kakocuk1
+/web/public/ @efremoz @zavdaria @afilistovich @kakocuk1
 
 # Для контрактов дополнительно проверяем согласования фронтенда
 # и владельца сервиса по SPEC §8.
-/api/ @RepinDM @afilistovich @kakocuk1
+/api/ @efremoz @afilistovich @kakocuk1
 
 /docs/qa/ @make-smart-products @afilistovich @kakocuk1
 /.github/ISSUE_TEMPLATE/ @make-smart-products @afilistovich @kakocuk1
