@@ -4,7 +4,7 @@
 | --- | --- | --- |
 | [afilistovich](https://github.com/afilistovich) | Бэкенд, владелец проекта | Admin |
 | [kakocuk1](https://github.com/kakocuk1) | Бэкенд | Admin |
-| [RepinDM](https://github.com/RepinDM) | Фронтенд | Write |
+| [efremoz](https://github.com/efremoz) | Фронтенд | Write |
 | [make-smart-products](https://github.com/make-smart-products) | QA | Write |
 | [zavdaria](https://github.com/zavdaria) | Дизайнер | Write |
 
@@ -20,9 +20,9 @@
 
 | Область | Профильные владельцы | Общие владельцы для ревью |
 | --- | --- | --- |
-| `web/` | RepinDM | afilistovich, kakocuk1 |
-| `web/public/` | RepinDM, zavdaria | afilistovich, kakocuk1 |
-| `api/` | RepinDM и владелец соответствующего бэкенд-сервиса | afilistovich, kakocuk1 |
+| `web/` | efremoz | afilistovich, kakocuk1 |
+| `web/public/` | efremoz, zavdaria | afilistovich, kakocuk1 |
+| `api/` | efremoz и владелец соответствующего бэкенд-сервиса | afilistovich, kakocuk1 |
 | `docs/qa/`, `.github/ISSUE_TEMPLATE/` | make-smart-products | afilistovich, kakocuk1 |
 | `docs/design/` | zavdaria | afilistovich, kakocuk1 |
 | Остальные файлы, включая Go-сервисы, deploy и workflows | afilistovich, kakocuk1 | afilistovich, kakocuk1 |
