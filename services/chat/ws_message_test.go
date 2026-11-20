@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -269,6 +271,60 @@ func TestWSMessageSendKeepsHeartbeatAlive(t *testing.T) {
 	}
 }
 
+func TestWSMessageFanoutSurvivesSenderDisconnect(t *testing.T) {
+	lookupStarted, releaseLookup := make(chan struct{}), make(chan struct{})
+	history := startTestHistoryRPC(t, messageTestServer{
+		membershipTestServer: membershipTestServer{members: func(ctx context.Context, _ *historyv1.GetChatMembersRequest) (*historyv1.GetChatMembersResponse, error) {
+			close(lookupStarted)
+			select {
+			case <-releaseLookup:
+				return &historyv1.GetChatMembersResponse{UserIds: []string{fanoutAlice, fanoutBob}}, nil
+			case <-ctx.Done():
+				return nil, status.FromContextError(ctx.Err()).Err()
+			}
+		}},
+		save: func(context.Context, *historyv1.SaveMessageRequest) (*historyv1.SaveMessageResponse, error) {
+			return &historyv1.SaveMessageResponse{
+				MessageId: sendTestMessageID, Seq: 1, CreatedAt: timestamppb.Now(),
+			}, nil
+		},
+	})
+	ws, url := startTestWSEndpoint(t, defaultWSTiming(), history)
+	alice, _ := dialTestUser(t, url, fanoutAlice)
+	bob, _ := dialTestUser(t, url, fanoutBob)
+	waitForConnections(t, ws, 2)
+
+	const body = "deliver after sender disconnects"
+	id := newWSEventID()
+	sendTestMessage(t, alice, id, sendTestClientID, body)
+	var ack wsAckPayload
+	if got := readTestEvent(t, alice, "message.ack", &ack); got != id || ack.MessageID != sendTestMessageID {
+		t.Fatalf("unexpected ack: %s %#v", got, ack)
+	}
+	select {
+	case <-lookupStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("membership RPC did not start")
+	}
+	if err := alice.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	assertSocketClose(t, alice, websocket.CloseNormalClosure)
+	// The server closes the transport after canceling Alice's socket context.
+	// Wait for that close before allowing the membership RPC to finish.
+	var remaining [1]byte
+	if _, err := alice.NetConn().Read(remaining[:]); !errors.Is(err, io.EOF) {
+		t.Fatalf("expected sender transport EOF, got %v", err)
+	}
+	close(releaseLookup)
+
+	var event wsNewPayload
+	readTestEvent(t, bob, "message.new", &event)
+	if event.wsAckPayload != ack || event.SenderID != fanoutAlice || event.Body != body {
+		t.Fatalf("wrong fanout event after sender disconnect: %#v", event)
+	}
+}
+
 func TestWSCommandValidation(t *testing.T) {
 	const id = "10000000-0000-4000-8000-000000000001"
 	const prefix = `{"type":"message.send","id":"` + id +
@@ -290,6 +346,13 @@ func TestWSCommandValidation(t *testing.T) {
 		{"text limit", command(`"` + strings.Repeat("🙂", 4096) + `"`), "", strings.Repeat("🙂", 4096), true},
 		{"too many runes", command(`"` + strings.Repeat("🙂", 4097) + `"`), "invalid_payload", "", true},
 		{"invalid datetime", strings.Replace(valid, "09:30:00Z", "09:30:00+03:00", 1), "invalid_payload", "", true},
+		{"single-digit hour", strings.Replace(valid, "09:30:00Z", "9:30:00Z", 1), "invalid_payload", "", true},
+		{"fraction with comma", strings.Replace(valid, "09:30:00Z", "09:30:00,1Z", 1), "invalid_payload", "", true},
+		{"fraction with period", strings.Replace(valid, "09:30:00Z", "09:30:00.1Z", 1), "", "hello", true},
+		{"UTC offset", strings.Replace(valid, "09:30:00Z", "09:30:00+00:00", 1), "", "hello", true},
+		{"lowercase datetime", strings.Replace(valid, "T09:30:00Z", "t09:30:00z", 1), "", "hello", true},
+		{"duplicate timestamp", strings.Replace(valid, `"payload":`, `"ts":"2026-11-20T09:30:01Z","payload":`, 1), "invalid_payload", "", true},
+		{"duplicate envelope id", strings.Replace(valid, `"payload":`, `"id":"`+id+`","payload":`, 1), "invalid_payload", "", false},
 		{"incorrect field casing", strings.Replace(valid, "chat_id", "Chat_ID", 1), "invalid_payload", "", true},
 		{"server-only field", prefix + `"hello","sender_id":"ignored"}}`, "invalid_payload", "", true},
 		{"duplicate body", prefix + `"hello","body":"again"}}`, "invalid_payload", "", true},

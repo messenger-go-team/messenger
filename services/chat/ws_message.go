@@ -64,10 +64,10 @@ func (ws *wsEndpoint) handleWSCommand(ctx context.Context, socket *socketSession
 		Body:        cmd.body,
 	})
 	cancel()
-	if ctx.Err() != nil {
-		return
-	}
 	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
 		rpcCode := status.Code(err)
 		code := saveWSErrorCode(rpcCode)
 		if code == "internal_error" {
@@ -93,7 +93,9 @@ func (ws *wsEndpoint) handleWSCommand(ctx context.Context, socket *socketSession
 		Seq:         seq,
 		CreatedAt:   created.AsTime().UTC(),
 	}
-	ws.replyWSEvent(socket, newWSEnvelope("message.ack", cmd.id, ack))
+	if ctx.Err() == nil {
+		ws.replyWSEvent(socket, newWSEnvelope("message.ack", cmd.id, ack))
+	}
 	if saved.GetDuplicate() {
 		return
 	}
@@ -108,7 +110,8 @@ func (ws *wsEndpoint) handleWSCommand(ctx context.Context, socket *socketSession
 		ws.logger.Warn("could not encode message.new")
 		return
 	}
-	if err := ws.broadcastChat(ctx, jwtauth.Identity{UserID: socket.userID}, cmd.chatID, data); err != nil && ctx.Err() == nil {
+	// A committed message can still reach the other participants after the sender leaves.
+	if err := ws.broadcastChat(ws.fanoutCtx, jwtauth.Identity{UserID: socket.userID}, cmd.chatID, data); err != nil && ws.fanoutCtx.Err() == nil {
 		ws.logger.Warn("saved message fanout failed")
 	}
 }

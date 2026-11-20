@@ -17,6 +17,9 @@ const wsSendType = "message.send"
 var wsUUIDPattern = regexp.MustCompile(
 	`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`,
 )
+var wsUTCTimestampPattern = regexp.MustCompile(
+	`^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt][0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?([Zz]|\+00:00)$`,
+)
 
 type wsCommand struct {
 	kind        string
@@ -54,6 +57,9 @@ func decodeWSObject(raw []byte) (fields map[string]json.RawMessage, duplicate bo
 		}
 		if _, exists := fields[name]; exists {
 			duplicate = true
+			// Keep the key present, but leave its value unavailable for correlation.
+			fields[name] = nil
+			continue
 		}
 		fields[name] = value
 	}
@@ -81,21 +87,17 @@ func parseWSCommand(raw []byte) (wsCommand, string) {
 	if fields == nil {
 		return wsCommand{}, "invalid_json"
 	}
-	if duplicate {
-		return wsCommand{}, "invalid_payload"
-	}
-
 	cmd := wsCommand{kind: wsString(fields["type"])}
 	if id := wsString(fields["id"]); validWSUUID(id) {
 		cmd.id = id
 	}
 	payload, payloadDuplicate := decodeWSObject(fields["payload"])
-	if cmd.kind == wsSendType && !payloadDuplicate {
+	if cmd.kind == wsSendType {
 		if id := wsString(payload["client_msg_id"]); validWSClientID(id) {
 			cmd.clientMsgID = strings.ToLower(id)
 		}
 	}
-	if len(fields) != 4 || cmd.kind == "" || cmd.id == "" ||
+	if duplicate || len(fields) != 4 || cmd.kind == "" || cmd.id == "" ||
 		!validWSTime(wsString(fields["ts"])) || payload == nil || payloadDuplicate {
 		return cmd, "invalid_payload"
 	}
@@ -113,10 +115,10 @@ func parseWSCommand(raw []byte) (wsCommand, string) {
 }
 
 func validWSTime(value string) bool {
-	if !strings.HasSuffix(value, "Z") && !strings.HasSuffix(value, "+00:00") {
+	if !wsUTCTimestampPattern.MatchString(value) {
 		return false
 	}
-	_, err := time.Parse(time.RFC3339Nano, value)
+	_, err := time.Parse(time.RFC3339Nano, strings.ToUpper(value))
 	return err == nil
 }
 
