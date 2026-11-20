@@ -126,11 +126,6 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
     })
   }, [chatId, history, snapshot.messages, snapshot.pending, user])
 
-  const restHistoryMaxSeq = useMemo(
-    () => history.reduce((max, message) => Math.max(max, message.seq), 0),
-    [history],
-  )
-
   useEffect(() => {
     if (!stickToBottomRef.current) return
     const list = listRef.current
@@ -139,6 +134,7 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   }, [messages])
 
   const connectionLabel = connectionStatusLabel(snapshot.transport)
+  const syncedCursor = client?.getSyncedCursor(chatId) ?? 0
 
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined') return
@@ -179,7 +175,7 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
       visibleMaxSeq,
       messages,
       historySyncState: snapshot.history,
-      restHistoryMaxSeq,
+      syncedCursor,
     })
     if (seqToMark <= markedSeqRef.current) return
 
@@ -212,8 +208,8 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
     historyStatus,
     messages,
     onReadCommitted,
-    restHistoryMaxSeq,
     snapshot.history,
+    syncedCursor,
     user,
     visibilityTick,
     visibleMaxSeq,
