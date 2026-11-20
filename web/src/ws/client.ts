@@ -28,6 +28,7 @@ import {
 } from './types'
 
 const OPEN = 1
+const ACK_TIMEOUT_CLOSE_CODE = 4000
 const HISTORY_SYNC_INTERVAL_MS = 30_000
 const NON_RETRYABLE_PROTOCOL_CLOSES = new Set([1000, 1002, 1003, 1007, 1009])
 
@@ -368,26 +369,34 @@ export class MessengerWebSocketClient {
 
     socket.onclose = (event) => {
       if (!this.isCurrent(socket, generation)) return
-      this.socket = null
-      this.clearStableTimer()
-      const shouldRefresh =
-        event.code === 4401 || (event.code === 1006 && isAccessTokenExpired(this.accessToken))
-      const shouldReconnect = !NON_RETRYABLE_PROTOCOL_CLOSES.has(event.code)
-      // ACK timers belong to the old socket. Send backoff survives a recoverable close.
-      this.clearPendingTimers(shouldRefresh || shouldReconnect)
-      this.historyGeneration++
-      this.historyPromise = null
-      this.clearHistoryRetryTimer()
-      this.clearHistoryPeriodicTimer()
-      const historyWasSyncing = this.historyState === 'syncing'
-      if (this.bufferingMessages) this.commitBufferedMessages()
-      if (historyWasSyncing) this.setHistoryState('error')
-      if (this.stopped) return
-      // Arm recovery before notifying subscribers that the socket is disconnected.
-      if (shouldRefresh) void this.refreshAndReconnect()
-      else if (shouldReconnect) this.scheduleReconnect()
-      if (this.transport !== 'auth_failed') this.setTransport('disconnected')
+      this.handleDisconnect(event.code)
     }
+  }
+
+  private handleDisconnect(code: number, timedOut?: MutablePending): void {
+    const socket = this.socket
+    this.socket = null
+    if (timedOut) socket?.close(code, 'message acknowledgement timed out')
+    this.clearStableTimer()
+    const shouldRefresh =
+      code === 4401 ||
+      ((code === 1006 || code === ACK_TIMEOUT_CLOSE_CODE) && isAccessTokenExpired(this.accessToken))
+    const shouldReconnect = !NON_RETRYABLE_PROTOCOL_CLOSES.has(code)
+    // ACK timers belong to the old socket. Send backoff survives a recoverable close.
+    this.clearPendingTimers(shouldRefresh || shouldReconnect)
+    this.historyGeneration++
+    this.historyPromise = null
+    this.clearHistoryRetryTimer()
+    this.clearHistoryPeriodicTimer()
+    const historyWasSyncing = this.historyState === 'syncing'
+    if (this.bufferingMessages) this.commitBufferedMessages()
+    if (historyWasSyncing) this.setHistoryState('error')
+    if (this.stopped) return
+    if (timedOut) this.scheduleMessageRetry(timedOut)
+    // Arm recovery before notifying subscribers that the socket is disconnected.
+    if (shouldRefresh) void this.refreshAndReconnect()
+    else if (shouldReconnect) this.scheduleReconnect()
+    if (this.transport !== 'auth_failed') this.setTransport('disconnected')
   }
 
   private isCurrent(socket: WebSocketLike, generation: number): boolean {
@@ -609,7 +618,10 @@ export class MessengerWebSocketClient {
     if (this.inFlight === attempt) {
       pending.errorCode = undefined
       pending.ackTimer = setTimeout(() => {
-        if (this.inFlight === attempt) this.scheduleMessageRetry(pending)
+        if (this.inFlight !== attempt || this.socket !== socket) return
+        // History may still be processing this attempt. Retire the socket before
+        // releasing the slot, even if the browser's close handshake takes time.
+        this.handleDisconnect(ACK_TIMEOUT_CLOSE_CODE, pending)
       }, this.ackTimeoutMs)
     }
     this.emit()
