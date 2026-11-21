@@ -65,6 +65,8 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   const [visibleSeqs, setVisibleSeqs] = useState<readonly number[]>([])
   const [showNewMessagesChip, setShowNewMessagesChip] = useState(false)
   const lastIncomingKeyRef = useRef<string | null>(null)
+  /** База входящих зафиксирована, пока лента была у низа — можно показывать chip при уходе вверх. */
+  const incomingBaselineReadyRef = useRef(false)
 
   const loadInitial = useCallback(async () => {
     if (!accessToken) return
@@ -148,14 +150,19 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
 
     if (stickToBottomRef.current) {
       lastIncomingKeyRef.current = latestIncomingKey
+      incomingBaselineReadyRef.current = true
       setShowNewMessagesChip(false)
       return
     }
 
-    if (latestIncomingKey != null && latestIncomingKey !== lastIncomingKeyRef.current) {
-      if (lastIncomingKeyRef.current != null) {
-        setShowNewMessagesChip(true)
-      }
+    // База могла быть null (только исходящие): первое входящее ниже fold тоже показывает chip.
+    // Без ready не реагируем на первичную подгрузку истории, пока пользователь не был у низа.
+    if (
+      incomingBaselineReadyRef.current &&
+      latestIncomingKey != null &&
+      latestIncomingKey !== lastIncomingKeyRef.current
+    ) {
+      setShowNewMessagesChip(true)
       lastIncomingKeyRef.current = latestIncomingKey
     }
   }, [messages])
