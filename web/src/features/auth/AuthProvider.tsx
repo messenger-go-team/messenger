@@ -17,6 +17,7 @@ import {
 } from '@/features/auth/authErrors'
 import { AuthContext, type AuthContextValue } from '@/features/auth/auth-context'
 import { readLogoutPending, writeLogoutPending } from '@/features/auth/logoutPending'
+import { getSharedRefreshCoordinator } from '@/features/auth/refreshCoordinator'
 
 /** Обновляем access-токен за минуту до истечения `expires_in`. */
 const REFRESH_SKEW_MS = 60_000
@@ -32,7 +33,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [logoutError, setLogoutError] = useState<string | null>(null)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const epochRef = useRef(0)
-  const refreshInFlightRef = useRef<Promise<AccessTokenResponse> | null>(null)
   const queueTailRef = useRef(Promise.resolve())
   /** Эпоха входа, чья refresh-cookie уже записана, но ещё может быть отменена. */
   const cookieOwnerRef = useRef<number | null>(null)
@@ -42,6 +42,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     (token: string, expiresInSeconds: number, epoch: number) => Promise<void>
   >(async () => undefined)
   const rotateSessionRef = useRef<(epoch: number) => Promise<void>>(async () => undefined)
+  const coordinatorRef = useRef(getSharedRefreshCoordinator(refreshRequest))
 
   const enqueue = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
     const run = queueTailRef.current.then(task, task)
@@ -52,18 +53,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return run
   }, [])
 
-  const refreshShared = useCallback(() => {
-    if (!refreshInFlightRef.current) {
-      const pending = refreshRequest().finally(() => {
-        if (refreshInFlightRef.current === pending) {
-          refreshInFlightRef.current = null
-        }
-      })
-      refreshInFlightRef.current = pending
-    }
-
-    return refreshInFlightRef.current
-  }, [])
+  const refreshShared = useCallback(() => coordinatorRef.current.requestRefresh(), [])
 
   const clearRefreshTimer = useCallback(() => {
     if (refreshTimerRef.current !== null) {
@@ -185,6 +175,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [acceptSession, rotateSession])
 
   useEffect(() => {
+    const coordinator = coordinatorRef.current
+    return coordinator.subscribeSuccess((session) => {
+      // Токен с другой вкладки / WS: принимаем только при уже опубликованной сессии.
+      if (publishedEpochRef.current === null) return
+      const epoch = epochRef.current
+      void acceptSessionRef.current(session.access_token, session.expires_in, epoch)
+    })
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
     const epoch = epochRef.current
     // Не стартуем refresh, пока незавершённый выход не отзовёт cookie.
@@ -249,6 +249,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const previousOwner = cookieOwnerRef.current
       const epoch = ++epochRef.current
       clearRefreshTimer()
+      coordinatorRef.current.cancel('account_switch')
       // Отмена предыдущего входа не ждёт его GET /me: cookie отзывается сразу.
       if (previousOwner !== null) void abandonOwnedCookie(previousOwner)
       const session = await enqueue(async () => {
@@ -280,6 +281,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const previousOwner = cookieOwnerRef.current
       const epoch = ++epochRef.current
       clearRefreshTimer()
+      coordinatorRef.current.cancel('account_switch')
       if (previousOwner !== null) void abandonOwnedCookie(previousOwner)
       const session = await enqueue(async () => {
         if (epochRef.current !== epoch) throw new AuthFlowCancelledError()
@@ -313,6 +315,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     cookieOwnerRef.current = null
     publishedEpochRef.current = null
     clearRefreshTimer()
+    coordinatorRef.current.cancel('logout')
     writeLogoutPending(true)
     setAccessToken(null)
     setUser(null)

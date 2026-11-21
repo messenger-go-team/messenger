@@ -6,6 +6,7 @@ import { ApiError } from '@/api/client'
 import { LOGOUT_FAILED_MESSAGE } from '@/features/auth/authErrors'
 import { AuthProvider } from '@/features/auth/AuthProvider'
 import { LOGOUT_PENDING_KEY } from '@/features/auth/logoutPending'
+import { resetSharedRefreshCoordinatorForTests } from '@/features/auth/refreshCoordinator'
 import { useAuth } from '@/features/auth/useAuth'
 
 const { refresh, login, logout, getMe, register } = vi.hoisted(() => ({
@@ -95,6 +96,7 @@ describe('AuthProvider session races', () => {
     vi.useRealTimers()
     vi.resetAllMocks()
     sessionStorage.clear()
+    resetSharedRefreshCoordinatorForTests()
   })
 
   it('shares one bootstrap refresh across StrictMode remounts', async () => {
