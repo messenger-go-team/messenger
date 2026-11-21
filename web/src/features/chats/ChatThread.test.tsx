@@ -655,4 +655,127 @@ describe('ChatThread', () => {
     })
     expect(readBodies).not.toContain(2)
   })
+
+  async function scrollThreadAwayFromBottom() {
+    const scroller = screen.getByTestId('chat-thread-scroll')
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 2000 })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 400 })
+    await act(async () => {
+      scroller.scrollTop = 0
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }))
+    })
+  }
+
+  function pushIncoming(
+    connection: { serverMessage: (raw: string) => void },
+    seq: number,
+    body: string,
+  ) {
+    connection.serverMessage(
+      JSON.stringify({
+        type: 'message.new',
+        id: `50000000-0000-4000-8000-0000000000${String(seq).padStart(2, '0')}`,
+        ts: `2026-11-21T12:${String(seq).padStart(2, '0')}:00Z`,
+        payload: {
+          chat_id: INITIAL_CHAT_ID,
+          client_msg_id: `30000000-0000-4000-8000-0000000000${String(seq).padStart(2, '0')}`,
+          message_id: `40000000-0000-4000-8000-0000000000${String(seq).padStart(2, '0')}`,
+          sender_id: '00000000-0000-4000-8000-000000000002',
+          seq,
+          body,
+          created_at: `2026-11-21T12:${String(seq).padStart(2, '0')}:00Z`,
+        },
+      }),
+    )
+  }
+
+  it('shows new-messages chip for the first incoming while scrolled up', async () => {
+    server.use(
+      http.get(`/chats/${INITIAL_CHAT_ID}/messages`, () =>
+        HttpResponse.json({
+          messages: [
+            {
+              id: 'm1',
+              chat_id: INITIAL_CHAT_ID,
+              seq: 1,
+              sender_id: ALICE.id,
+              body: 'only-mine',
+              created_at: '2026-11-21T12:00:00Z',
+            },
+          ],
+          next_before_seq: null,
+          next_after_seq: 1,
+          has_more_before: false,
+          has_more_after: false,
+        }),
+      ),
+      http.post(`/chats/${INITIAL_CHAT_ID}/read`, () => new HttpResponse(null, { status: 204 })),
+    )
+    const auth = await authValue()
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 1)
+    renderThread(auth, mockWs)
+
+    expect(await screen.findByText('only-mine')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Новые сообщения' })).not.toBeInTheDocument()
+
+    await scrollThreadAwayFromBottom()
+    expect(screen.queryByRole('button', { name: 'Новые сообщения' })).not.toBeInTheDocument()
+
+    await waitFor(() => expect(mockWs.connections.size).toBeGreaterThan(0))
+    const connection = Array.from(mockWs.connections)[0]!
+    await act(async () => {
+      pushIncoming(connection, 2, 'first-incoming')
+    })
+    expect(await screen.findByText('first-incoming')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
+  })
+
+  it('does not show new-messages chip when scrolling old history without new incoming', async () => {
+    server.use(
+      http.get(`/chats/${INITIAL_CHAT_ID}/messages`, () =>
+        HttpResponse.json({
+          messages: [
+            {
+              id: 'm1',
+              chat_id: INITIAL_CHAT_ID,
+              seq: 1,
+              sender_id: '00000000-0000-4000-8000-000000000002',
+              body: 'old-incoming',
+              created_at: '2026-11-21T12:00:00Z',
+            },
+            {
+              id: 'm2',
+              chat_id: INITIAL_CHAT_ID,
+              seq: 2,
+              sender_id: ALICE.id,
+              body: 'mine-reply',
+              created_at: '2026-11-21T12:01:00Z',
+            },
+          ],
+          next_before_seq: null,
+          next_after_seq: 2,
+          has_more_before: false,
+          has_more_after: false,
+        }),
+      ),
+      http.post(`/chats/${INITIAL_CHAT_ID}/read`, () => new HttpResponse(null, { status: 204 })),
+    )
+    const auth = await authValue()
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 2)
+    renderThread(auth, mockWs)
+
+    expect(await screen.findByText('old-incoming')).toBeInTheDocument()
+    await scrollThreadAwayFromBottom()
+    expect(screen.queryByRole('button', { name: 'Новые сообщения' })).not.toBeInTheDocument()
+
+    await waitFor(() => expect(mockWs.connections.size).toBeGreaterThan(0))
+    const connection = Array.from(mockWs.connections)[0]!
+    await act(async () => {
+      pushIncoming(connection, 3, 'fresh-incoming')
+    })
+    expect(await screen.findByText('fresh-incoming')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
+  })
 })
