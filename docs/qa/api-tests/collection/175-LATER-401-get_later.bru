@@ -1,0 +1,25 @@
+meta {
+  name: LATER-401-get/later
+  type: http
+  seq: 175
+}
+
+get {
+  url: {{baseUrl}}/later
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-401-get/later", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-401-get/later", bru, req, res, test, expect);
+}

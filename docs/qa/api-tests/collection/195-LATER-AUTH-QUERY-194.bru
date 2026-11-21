@@ -1,0 +1,25 @@
+meta {
+  name: LATER-AUTH-QUERY-194
+  type: http
+  seq: 195
+}
+
+get {
+  url: {{baseUrl}}/later?%
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-AUTH-QUERY-194", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-AUTH-QUERY-194", bru, req, res, test, expect);
+}

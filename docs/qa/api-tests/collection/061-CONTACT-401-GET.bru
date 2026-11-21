@@ -1,0 +1,25 @@
+meta {
+  name: CONTACT-401-GET
+  type: http
+  seq: 61
+}
+
+get {
+  url: {{baseUrl}}/contacts
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTACT-401-GET", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTACT-401-GET", bru, req, res, test, expect);
+}

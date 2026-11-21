@@ -1,0 +1,25 @@
+meta {
+  name: LATER-ACCESS-LOST
+  type: http
+  seq: 256
+}
+
+get {
+  url: {{baseUrl}}/later
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-ACCESS-LOST", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-ACCESS-LOST", bru, req, res, test, expect);
+}

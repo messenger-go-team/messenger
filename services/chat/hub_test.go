@@ -148,8 +148,9 @@ func startTestBlockedWriteSocket(t *testing.T, timing wsTiming) (*wsEndpoint, *w
 	cfg := testConfig(t)
 	var ready atomic.Bool
 	ready.Store(true)
-	ws := newWSEndpoint(cfg, &ready, timing, nil)
-	server := httptest.NewUnstartedServer(newServiceHandler(&ready, newLogger(io.Discard, "chat", cfg.LogLevel), ws))
+	logger := newLogger(io.Discard, "chat", cfg.LogLevel)
+	ws := newWSEndpoint(cfg, &ready, timing, nil, logger)
+	server := httptest.NewUnstartedServer(newServiceHandler(&ready, logger, ws, nil))
 	transport := blockedWriteListener{
 		Listener:      server.Listener,
 		blockWrites:   make(chan struct{}),

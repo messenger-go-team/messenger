@@ -148,12 +148,17 @@ func (s membershipTestServer) GetChatMembers(ctx context.Context, req *historyv1
 
 func startTestMembershipRPC(t *testing.T, members func(context.Context, *historyv1.GetChatMembersRequest) (*historyv1.GetChatMembersResponse, error)) historyv1.HistoryServiceClient {
 	t.Helper()
+	return startTestHistoryRPC(t, membershipTestServer{members: members})
+}
+
+func startTestHistoryRPC(t *testing.T, impl historyv1.HistoryServiceServer) historyv1.HistoryServiceClient {
+	t.Helper()
 	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	server := grpc.NewServer()
-	historyv1.RegisterHistoryServiceServer(server, membershipTestServer{members: members})
+	historyv1.RegisterHistoryServiceServer(server, impl)
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
 	t.Cleanup(func() {

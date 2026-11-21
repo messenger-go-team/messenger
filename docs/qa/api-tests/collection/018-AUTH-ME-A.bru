@@ -1,0 +1,25 @@
+meta {
+  name: AUTH-ME-A
+  type: http
+  seq: 18
+}
+
+get {
+  url: {{baseUrl}}/me
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("AUTH-ME-A", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("AUTH-ME-A", bru, req, res, test, expect);
+}

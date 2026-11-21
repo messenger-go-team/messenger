@@ -1,0 +1,25 @@
+meta {
+  name: LATER-B-PRIVATE
+  type: http
+  seq: 143
+}
+
+get {
+  url: {{baseUrl}}/later
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-B-PRIVATE", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-B-PRIVATE", bru, req, res, test, expect);
+}

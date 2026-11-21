@@ -104,6 +104,9 @@ jobs:
       - name: Verify workflow decisions and release outcomes
         run: python3 deploy/test-staging-workflow.py
 
+      - name: Verify QA reset against an isolated PostgreSQL
+        run: python3 deploy/test-staging-qa-reset.py
+
       - name: Verify deploy, WebSocket and rollback with real services
         run: python3 deploy/test-staging-release.py
 

@@ -1,0 +1,25 @@
+meta {
+  name: HISTORY-422-90
+  type: http
+  seq: 91
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/messages?after_seq=1&before_seq=2
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("HISTORY-422-90", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("HISTORY-422-90", bru, req, res, test, expect);
+}

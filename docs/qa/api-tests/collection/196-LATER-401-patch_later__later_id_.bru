@@ -1,0 +1,33 @@
+meta {
+  name: LATER-401-patch/later/{later_id}
+  type: http
+  seq: 196
+}
+
+patch {
+  url: {{baseUrl}}/later/{{laterID}}
+  body: json
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"due_at":"2099-01-01T00:00:00Z"}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-401-patch/later/{later_id}", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-401-patch/later/{later_id}", bru, req, res, test, expect);
+}

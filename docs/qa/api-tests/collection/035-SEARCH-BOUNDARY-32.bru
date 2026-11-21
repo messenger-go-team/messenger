@@ -1,0 +1,25 @@
+meta {
+  name: SEARCH-BOUNDARY-32
+  type: http
+  seq: 35
+}
+
+get {
+  url: {{baseUrl}}/users/search?prefix=qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("SEARCH-BOUNDARY-32", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("SEARCH-BOUNDARY-32", bru, req, res, test, expect);
+}
