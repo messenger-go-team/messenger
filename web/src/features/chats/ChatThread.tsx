@@ -15,6 +15,7 @@ import {
   CircleAlert,
   LoaderCircle,
   MessageCircle,
+  MoreVertical,
   RotateCcw,
   SendHorizontal,
 } from 'lucide-react'
@@ -65,6 +66,7 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   const [visibleSeqs, setVisibleSeqs] = useState<readonly number[]>([])
   const [showNewMessagesChip, setShowNewMessagesChip] = useState(false)
   const lastIncomingKeyRef = useRef<string | null>(null)
+  const [laterStubNotice, setLaterStubNotice] = useState<string | null>(null)
 
   const loadInitial = useCallback(async () => {
     if (!accessToken) return
@@ -406,13 +408,22 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
               ref={(node) => bindMessageNode(message.seq, node)}
               data-seq={message.seq}
               className={cn(
-                'group/bubble flex',
+                'group/bubble flex items-end gap-1',
                 message.mine ? 'justify-end' : 'justify-start',
                 message.mine &&
                   message.status === 'sending' &&
                   'animate-in fade-in slide-in-from-bottom-1 duration-200',
               )}
             >
+              {!message.mine ? (
+                <MessageMenu
+                  onLater={() =>
+                    setLaterStubNotice(
+                      '«Вернуться позже» появится после Later API (#87 / #89). Точка входа уже здесь.',
+                    )
+                  }
+                />
+              ) : null}
               <div
                 className={cn(
                   'max-w-[min(100%,28rem)] rounded-2xl px-3 py-2 text-sm shadow-sm transition-shadow',
@@ -450,10 +461,28 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
                   ) : null}
                 </div>
               </div>
+              {message.mine ? (
+                <MessageMenu
+                  onLater={() =>
+                    setLaterStubNotice(
+                      '«Вернуться позже» появится после Later API (#87 / #89). Точка входа уже здесь.',
+                    )
+                  }
+                />
+              ) : null}
             </li>
           ))}
         </ul>
       </div>
+
+      {laterStubNotice ? (
+        <p
+          className="border-t border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground"
+          role="status"
+        >
+          {laterStubNotice}
+        </p>
+      ) : null}
 
       <form
         onSubmit={send}
@@ -491,6 +520,44 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
         </p>
       ) : null}
     </section>
+  )
+}
+
+function MessageMenu({ onLater }: { onLater: () => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative opacity-0 transition-opacity group-hover/bubble:opacity-100 focus-within:opacity-100">
+      <button
+        type="button"
+        className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
+        aria-label="Действия с сообщением"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <MoreVertical className="size-4" />
+      </button>
+      {open ? (
+        <ul
+          role="menu"
+          className="absolute bottom-8 left-1/2 z-20 min-w-44 -translate-x-1/2 rounded-lg border border-border bg-card py-1 shadow-md"
+        >
+          <li role="none">
+            <button
+              type="button"
+              role="menuitem"
+              className="w-full px-3 py-2 text-left text-sm hover:bg-accent"
+              onClick={() => {
+                setOpen(false)
+                onLater()
+              }}
+            >
+              Вернуться позже
+            </button>
+          </li>
+        </ul>
+      ) : null}
+    </div>
   )
 }
 
