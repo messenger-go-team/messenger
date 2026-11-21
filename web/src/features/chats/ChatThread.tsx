@@ -64,7 +64,8 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   const [visibilityTick, setVisibilityTick] = useState(0)
   const [visibleSeqs, setVisibleSeqs] = useState<readonly number[]>([])
   const [showNewMessagesChip, setShowNewMessagesChip] = useState(false)
-  const lastIncomingKeyRef = useRef<string | null>(null)
+  /** Отпечаток последнего входящего: seq стабилен при смене key REST→WS. */
+  const lastIncomingFingerprintRef = useRef<string | null>(null)
   /** База входящих зафиксирована, пока лента была у низа — можно показывать chip при уходе вверх. */
   const incomingBaselineReadyRef = useRef(false)
 
@@ -146,10 +147,16 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   }, [messages])
 
   useEffect(() => {
-    const latestIncomingKey = [...messages].reverse().find((item) => !item.mine)?.key ?? null
+    const latestIncoming = [...messages].reverse().find((item) => !item.mine)
+    const latestFingerprint =
+      latestIncoming == null
+        ? null
+        : latestIncoming.seq != null
+          ? `seq:${latestIncoming.seq}`
+          : `key:${latestIncoming.key}`
 
     if (stickToBottomRef.current) {
-      lastIncomingKeyRef.current = latestIncomingKey
+      lastIncomingFingerprintRef.current = latestFingerprint
       incomingBaselineReadyRef.current = true
       setShowNewMessagesChip(false)
       return
@@ -157,13 +164,14 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
 
     // База могла быть null (только исходящие): первое входящее ниже fold тоже показывает chip.
     // Без ready не реагируем на первичную подгрузку истории, пока пользователь не был у низа.
+    // Сравниваем по seq, чтобы merge REST→WS с тем же seq не считался «новым».
     if (
       incomingBaselineReadyRef.current &&
-      latestIncomingKey != null &&
-      latestIncomingKey !== lastIncomingKeyRef.current
+      latestFingerprint != null &&
+      latestFingerprint !== lastIncomingFingerprintRef.current
     ) {
       setShowNewMessagesChip(true)
-      lastIncomingKeyRef.current = latestIncomingKey
+      lastIncomingFingerprintRef.current = latestFingerprint
     }
   }, [messages])
 

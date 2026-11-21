@@ -767,10 +767,17 @@ describe('ChatThread', () => {
     renderThread(auth, mockWs)
 
     expect(await screen.findByText('old-incoming')).toBeInTheDocument()
+    // Дождаться WS/history sync у низа, чтобы baseline успел зафиксировать seq до ухода вверх.
+    await waitFor(() => expect(mockWs.connections.size).toBeGreaterThan(0))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30))
+    })
     await scrollThreadAwayFromBottom()
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30))
+    })
     expect(screen.queryByRole('button', { name: 'Новые сообщения' })).not.toBeInTheDocument()
 
-    await waitFor(() => expect(mockWs.connections.size).toBeGreaterThan(0))
     const connection = Array.from(mockWs.connections)[0]!
     await act(async () => {
       pushIncoming(connection, 3, 'fresh-incoming')
