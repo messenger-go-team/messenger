@@ -343,12 +343,18 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     return memoryOutcome.session
   }
 
-  const readFreshFinalFailure = (epoch: number): RefreshFinalError | null => {
+  const isUsableOutcomeAt = (at: number, ttlMs: number, queuedAt?: number) => {
+    if (now() - at <= ttlMs) return true
+    // Отказ/успех лидера, завершённый пока мы стояли в очереди lock.
+    return queuedAt != null && at >= queuedAt
+  }
+
+  const readFreshFinalFailure = (epoch: number, queuedAt?: number): RefreshFinalError | null => {
     const fromMemory =
       memoryOutcome?.kind === 'failure' &&
       memoryOutcome.final &&
       memoryOutcome.sessionEpoch === epoch &&
-      now() - memoryOutcome.at <= recentFinalFailureMs
+      isUsableOutcomeAt(memoryOutcome.at, recentFinalFailureMs, queuedAt)
         ? memoryOutcome
         : null
     if (fromMemory) return new RefreshFinalError(fromMemory.status)
@@ -356,7 +362,7 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     const meta = store.readMeta()
     if (!meta || meta.kind !== 'failure' || !meta.final) return null
     if (meta.sessionEpoch !== epoch) return null
-    if (now() - meta.at > recentFinalFailureMs) return null
+    if (!isUsableOutcomeAt(meta.at, recentFinalFailureMs, queuedAt)) return null
     return new RefreshFinalError(meta.status)
   }
 
@@ -450,8 +456,8 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
   }
 
   /** Если отказ узнали из store/meta — всё равно уведомить Auth (один раз). */
-  const adoptStoreFinalFailure = (epoch: number): RefreshFinalError | null => {
-    const failed = readFreshFinalFailure(epoch)
+  const adoptStoreFinalFailure = (epoch: number, queuedAt?: number): RefreshFinalError | null => {
+    const failed = readFreshFinalFailure(epoch, queuedAt)
     if (!failed) return null
     const meta = store.readMeta()
     if (meta?.kind === 'failure' && meta.final && meta.sessionEpoch === epoch) {
@@ -543,7 +549,7 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
   const waitForLeaderBroadcast = async (epoch: number, signal: AbortSignal, queuedAt: number) => {
     const cached = readFreshSuccess(epoch)
     if (cached) return cached
-    const finalFailure = adoptStoreFinalFailure(epoch)
+    const finalFailure = adoptStoreFinalFailure(epoch, queuedAt)
     if (finalFailure) throw finalFailure
 
     const bound = leaderSuccessMeta(epoch)
@@ -559,7 +565,7 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
       const fromMemory = readSuccessForOp(epoch, boundOpId)
       if (fromMemory) return fromMemory
 
-      const failed = adoptStoreFinalFailure(epoch)
+      const failed = adoptStoreFinalFailure(epoch, queuedAt)
       if (failed) throw failed
 
       const current = store.readMeta()
@@ -589,7 +595,7 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
 
     const cached = readFreshSuccess(epoch)
     if (cached) return cached
-    const finalFailure = adoptStoreFinalFailure(epoch)
+    const finalFailure = adoptStoreFinalFailure(epoch, queuedAt)
     if (finalFailure) throw finalFailure
 
     const fromLeader = await waitForLeaderBroadcast(epoch, signal, queuedAt)
@@ -599,13 +605,16 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
 
     // Success лидера (свежий или пока мы стояли в очереди) без JWT — без второго POST.
     const leaderMeta = leaderSuccessMeta(epoch)
-    const joinLeader =
-      leaderMeta && (now() - leaderMeta.at <= recentSuccessMs || leaderMeta.at >= queuedAt)
+    const joinLeader = leaderMeta && isUsableOutcomeAt(leaderMeta.at, recentSuccessMs, queuedAt)
     if (joinLeader && leaderMeta) {
       const late = readSuccessForOp(epoch, leaderMeta.opId) ?? readFreshSuccess(epoch)
       if (late) return late
       throw new RefreshTimeoutError('refresh_leader_jwt_timeout')
     }
+
+    // Final 401 лидера после TTL, но завершённый пока мы в очереди — без второго POST.
+    const leaderFailure = adoptStoreFinalFailure(epoch, queuedAt)
+    if (leaderFailure) throw leaderFailure
 
     localStartedOpId = opId
     const refreshPromise = refresh(signal)

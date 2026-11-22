@@ -804,6 +804,74 @@ describe('createRefreshCoordinator', () => {
     tabB.dispose()
   })
 
+  it('adopts leader final 401 when lock callback starts after failure TTL', async () => {
+    let nowMs = 1_000
+    let releaseSecondGrant!: () => void
+    const secondGrantGate = new Promise<void>((resolve) => {
+      releaseSecondGrant = resolve
+    })
+    const refresh = vi.fn(async () => {
+      throw new ApiError(401, 'unauthorized', 'refresh rejected')
+    })
+    const baseLocks = createSerialLockManager()
+    let grantIndex = 0
+    const locks: Pick<LockManager, 'request'> = {
+      request: ((...args: Parameters<LockManager['request']>) => {
+        const idx = grantIndex++
+        if (idx !== 1) {
+          return (
+            baseLocks.request as (...a: Parameters<LockManager['request']>) => Promise<unknown>
+          )(...args)
+        }
+        return secondGrantGate.then(() =>
+          (baseLocks.request as (...a: Parameters<LockManager['request']>) => Promise<unknown>)(
+            ...args,
+          ),
+        )
+      }) as LockManager['request'],
+    }
+    // BC намеренно не успевает: B должна принять 401 из store после TTL по правилу очереди.
+    const hub = createChannelHub({ delayMs: 60_000 })
+    const store = createMemoryRefreshStore()
+    const opts = {
+      refresh,
+      locks,
+      createChannel: hub.createChannel,
+      store,
+      now: () => nowMs,
+      recentFinalFailureMs: 5_000,
+    }
+    const tabA = createRefreshCoordinator(opts)
+    const tabB = createRefreshCoordinator(opts)
+    const finalA = vi.fn()
+    const finalB = vi.fn()
+    tabA.subscribeFinalFailure(finalA)
+    tabB.subscribeFinalFailure(finalB)
+
+    const pendingA = tabA.requestRefresh()
+    const pendingB = tabB.requestRefresh()
+    const settled = Promise.allSettled([pendingA, pendingB])
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+    await expect(pendingA).rejects.toBeInstanceOf(RefreshFinalError)
+    expect(finalA).toHaveBeenCalledTimes(1)
+    expect(finalB).not.toHaveBeenCalled()
+    expect(store.readMeta()?.kind).toBe('failure')
+
+    nowMs += 5_200
+    releaseSecondGrant()
+    const [a, b] = await settled
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(a.status).toBe('rejected')
+    expect(b.status).toBe('rejected')
+    if (a.status === 'rejected') expect(a.reason).toBeInstanceOf(RefreshFinalError)
+    if (b.status === 'rejected') expect(b.reason).toBeInstanceOf(RefreshFinalError)
+    expect(finalA).toHaveBeenCalledTimes(1)
+    expect(finalB).toHaveBeenCalledTimes(1)
+
+    tabA.dispose()
+    tabB.dispose()
+  })
+
   it('times out waiting for a vanished leader JWT without issuing another POST', async () => {
     vi.useFakeTimers()
     let releaseRefresh!: (value: AccessTokenResponse) => void
