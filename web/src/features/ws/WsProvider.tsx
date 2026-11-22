@@ -3,6 +3,12 @@ import { refresh as refreshRequest } from '@/api/auth'
 import { ApiError } from '@/api/client'
 import { getMessageHistory, listChats } from '@/api/history'
 import { useAuth } from '@/features/auth/useAuth'
+import {
+  getSharedRefreshCoordinator,
+  isFinalRefreshFailure,
+  RefreshCancelledError,
+  RefreshTimeoutError,
+} from '@/features/auth/refreshCoordinator'
 import { idleSnapshot, WsContext } from '@/features/ws/ws-context'
 import {
   MessengerWebSocketClient,
@@ -40,9 +46,17 @@ export function WsProvider({
     () => ({
       async refreshAccessToken() {
         try {
-          const session = await refreshRequest()
+          const session = await getSharedRefreshCoordinator((signal) =>
+            refreshRequest({ signal }),
+          ).requestRefresh()
           return { kind: 'success', accessToken: session.access_token }
         } catch (error) {
+          if (error instanceof RefreshCancelledError || isFinalRefreshFailure(error)) {
+            return { kind: 'unauthorized' }
+          }
+          if (error instanceof RefreshTimeoutError) {
+            return { kind: 'temporary_failure' }
+          }
           if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
             return { kind: 'unauthorized' }
           }
