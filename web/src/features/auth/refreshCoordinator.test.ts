@@ -17,8 +17,12 @@ function session(token: string): AccessTokenResponse {
 }
 
 /** Общий exclusive lock с поддержкой AbortSignal (очередь + отмена ожидания). */
-function createSerialLockManager(): Pick<LockManager, 'request'> {
+function createSerialLockManager(lockOptions?: {
+  /** Задержка перед запуском callback после получения lock (по порядковому номеру grant). */
+  delayGrantedCallbackMs?: (grantIndex: number) => number
+}): Pick<LockManager, 'request'> {
   let tail: Promise<void> = Promise.resolve()
+  let grantIndex = 0
   const abortedError = () => new DOMException('Aborted', 'AbortError')
 
   const request = ((
@@ -44,6 +48,13 @@ function createSerialLockManager(): Pick<LockManager, 'request'> {
 
       const run = async () => {
         if (cancelled || signal?.aborted) return
+        const delayMs = lockOptions?.delayGrantedCallbackMs?.(grantIndex++) ?? 0
+        if (delayMs > 0) {
+          await new Promise<void>((r) => {
+            window.setTimeout(r, delayMs)
+          })
+          if (cancelled || signal?.aborted) return
+        }
         try {
           resolve(await callback({ name } as Lock))
         } catch (error) {
@@ -495,20 +506,36 @@ describe('createRefreshCoordinator', () => {
     const refresh = vi.fn(async () => {
       throw new ApiError(401, 'unauthorized', 'refresh rejected')
     })
-    const locks = createSerialLockManager()
+    // Callback B стартует с задержкой: 401 от A доходит, пока B ещё только в очереди (opId уже выделен).
+    const locks = createSerialLockManager({
+      delayGrantedCallbackMs: (grantIndex) => (grantIndex === 1 ? 30 : 0),
+    })
     const hub = createChannelHub({ asyncDelivery: true })
     const store = createMemoryRefreshStore()
 
     const tabA = createTab(refresh, locks, hub, store)
     const tabB = createTab(refresh, locks, hub, store)
+    const finalA = vi.fn()
+    const finalB = vi.fn()
+    tabA.subscribeFinalFailure(finalA)
+    tabB.subscribeFinalFailure(finalB)
 
-    const [a, b] = await Promise.allSettled([tabA.requestRefresh(), tabB.requestRefresh()])
+    const pendingA = tabA.requestRefresh()
+    const pendingB = tabB.requestRefresh()
+    const settled = Promise.allSettled([pendingA, pendingB])
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+    // Дать async BC доставить 401 на B до её lock-callback.
+    await vi.waitFor(() => expect(finalB).toHaveBeenCalledTimes(1))
+
+    const [a, b] = await settled
 
     expect(refresh).toHaveBeenCalledTimes(1)
     expect(a.status).toBe('rejected')
     expect(b.status).toBe('rejected')
     if (a.status === 'rejected') expect(a.reason).toBeInstanceOf(RefreshFinalError)
     if (b.status === 'rejected') expect(b.reason).toBeInstanceOf(RefreshFinalError)
+    expect(finalA).toHaveBeenCalledTimes(1)
+    expect(finalB).toHaveBeenCalledTimes(1)
 
     tabA.dispose()
     tabB.dispose()
@@ -716,6 +743,66 @@ describe('createRefreshCoordinator', () => {
     tabA.dispose()
     tabB.dispose()
   }, 15_000)
+
+  it('waits for leader JWT when lock callback itself starts after cache TTL', async () => {
+    let nowMs = 1_000
+    let releaseRefresh!: (value: AccessTokenResponse) => void
+    let releaseSecondGrant!: () => void
+    const secondGrantGate = new Promise<void>((resolve) => {
+      releaseSecondGrant = resolve
+    })
+    const refresh = vi.fn(
+      () =>
+        new Promise<AccessTokenResponse>((resolve) => {
+          releaseRefresh = resolve
+        }),
+    )
+    const baseLocks = createSerialLockManager()
+    let grantIndex = 0
+    const locks: Pick<LockManager, 'request'> = {
+      request: ((...args: Parameters<LockManager['request']>) => {
+        const idx = grantIndex++
+        if (idx !== 1) {
+          return (
+            baseLocks.request as (...a: Parameters<LockManager['request']>) => Promise<unknown>
+          )(...args)
+        }
+        // Второй grant: ждём явное освобождение после истечения TTL.
+        return secondGrantGate.then(() =>
+          (baseLocks.request as (...a: Parameters<LockManager['request']>) => Promise<unknown>)(
+            ...args,
+          ),
+        )
+      }) as LockManager['request'],
+    }
+    // JWT доезжает уже после старта callback B.
+    const hub = createChannelHub({ delayMs: 40 })
+    const store = createMemoryRefreshStore()
+    const opts = {
+      refresh,
+      locks,
+      createChannel: hub.createChannel,
+      store,
+      now: () => nowMs,
+      recentSuccessMs: 5_000,
+    }
+    const tabA = createRefreshCoordinator(opts)
+    const tabB = createRefreshCoordinator(opts)
+
+    const pendingA = tabA.requestRefresh()
+    const pendingB = tabB.requestRefresh()
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+    releaseRefresh(session('leader-late-lock'))
+    await expect(pendingA).resolves.toMatchObject({ access_token: 'leader-late-lock' })
+
+    nowMs += 5_200
+    releaseSecondGrant()
+    await expect(pendingB).resolves.toMatchObject({ access_token: 'leader-late-lock' })
+    expect(refresh).toHaveBeenCalledTimes(1)
+
+    tabA.dispose()
+    tabB.dispose()
+  })
 
   it('times out waiting for a vanished leader JWT without issuing another POST', async () => {
     vi.useFakeTimers()
