@@ -666,11 +666,16 @@ describe('ChatThread', () => {
     })
   }
 
-  function pushIncoming(
+  function pushMessageNew(
     connection: { serverMessage: (raw: string) => void },
-    seq: number,
-    body: string,
+    {
+      seq,
+      body,
+      senderId,
+      messageId,
+    }: { seq: number; body: string; senderId: string; messageId?: string },
   ) {
+    const id = messageId ?? `40000000-0000-4000-8000-0000000000${String(seq).padStart(2, '0')}`
     connection.serverMessage(
       JSON.stringify({
         type: 'message.new',
@@ -679,8 +684,8 @@ describe('ChatThread', () => {
         payload: {
           chat_id: INITIAL_CHAT_ID,
           client_msg_id: `30000000-0000-4000-8000-0000000000${String(seq).padStart(2, '0')}`,
-          message_id: `40000000-0000-4000-8000-0000000000${String(seq).padStart(2, '0')}`,
-          sender_id: '00000000-0000-4000-8000-000000000002',
+          message_id: id,
+          sender_id: senderId,
           seq,
           body,
           created_at: `2026-11-21T12:${String(seq).padStart(2, '0')}:00Z`,
@@ -689,45 +694,159 @@ describe('ChatThread', () => {
     )
   }
 
-  it('shows new-messages chip for the first incoming while scrolled up', async () => {
+  function pushIncoming(
+    connection: { serverMessage: (raw: string) => void },
+    seq: number,
+    body: string,
+    messageId?: string,
+  ) {
+    pushMessageNew(connection, {
+      seq,
+      body,
+      senderId: '00000000-0000-4000-8000-000000000002',
+      messageId,
+    })
+  }
+
+  it('shows chip for late incoming with smaller seq via WS while scrolled up', async () => {
+    const gapIncomingId = '40000000-0000-4000-8000-000000000021'
     server.use(
       http.get(`/chats/${INITIAL_CHAT_ID}/messages`, () =>
         HttpResponse.json({
           messages: [
             {
-              id: 'm1',
+              id: '40000000-0000-4000-8000-000000000020',
               chat_id: INITIAL_CHAT_ID,
-              seq: 1,
+              seq: 20,
               sender_id: ALICE.id,
-              body: 'only-mine',
-              created_at: '2026-11-21T12:00:00Z',
+              body: 'mine-seq-20',
+              created_at: '2026-11-21T12:20:00Z',
             },
           ],
           next_before_seq: null,
-          next_after_seq: 1,
+          next_after_seq: 20,
           has_more_before: false,
           has_more_after: false,
         }),
       ),
       http.post(`/chats/${INITIAL_CHAT_ID}/read`, () => new HttpResponse(null, { status: 204 })),
     )
+
     const auth = await authValue()
     const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
-    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 1)
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 20)
     renderThread(auth, mockWs)
 
-    expect(await screen.findByText('only-mine')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Новые сообщения' })).not.toBeInTheDocument()
-
-    await scrollThreadAwayFromBottom()
-    expect(screen.queryByRole('button', { name: 'Новые сообщения' })).not.toBeInTheDocument()
-
+    expect(await screen.findByText('mine-seq-20')).toBeInTheDocument()
     await waitFor(() => expect(mockWs.connections.size).toBeGreaterThan(0))
     const connection = Array.from(mockWs.connections)[0]!
     await act(async () => {
-      pushIncoming(connection, 2, 'first-incoming')
+      pushMessageNew(connection, {
+        seq: 22,
+        body: 'mine-seq-22',
+        senderId: ALICE.id,
+        messageId: '40000000-0000-4000-8000-000000000022',
+      })
     })
-    expect(await screen.findByText('first-incoming')).toBeInTheDocument()
+    expect(await screen.findByText('mine-seq-22')).toBeInTheDocument()
+
+    await scrollThreadAwayFromBottom()
+    await act(async () => {
+      pushIncoming(connection, 21, 'gap-incoming-ws', gapIncomingId)
+    })
+    expect(await screen.findByText('gap-incoming-ws')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
+  })
+
+  it('shows chip when gap incoming arrives only via after_seq while scrolled up', async () => {
+    const bobId = '00000000-0000-4000-8000-000000000002'
+    const gapIncomingId = '40000000-0000-4000-8000-000000000031'
+    let afterSeqCatchUp: Array<{
+      id: string
+      chat_id: string
+      seq: number
+      sender_id: string
+      body: string
+      created_at: string
+    }> = []
+    server.use(
+      http.get(`/chats/${INITIAL_CHAT_ID}/messages`, ({ request }) => {
+        const url = new URL(request.url)
+        const afterRaw = url.searchParams.get('after_seq')
+        if (afterRaw != null) {
+          const after = Number(afterRaw)
+          const messages = afterSeqCatchUp.filter((item) => item.seq > after)
+          const nextAfter =
+            messages.length > 0 ? Math.max(...messages.map((item) => item.seq)) : after
+          return HttpResponse.json({
+            messages,
+            next_before_seq: messages[0]?.seq ?? null,
+            next_after_seq: nextAfter,
+            has_more_before: false,
+            has_more_after: false,
+          })
+        }
+        return HttpResponse.json({
+          messages: [
+            {
+              id: '40000000-0000-4000-8000-000000000030',
+              chat_id: INITIAL_CHAT_ID,
+              seq: 20,
+              sender_id: ALICE.id,
+              body: 'mine-seq-20',
+              created_at: '2026-11-21T12:20:00Z',
+            },
+          ],
+          next_before_seq: null,
+          next_after_seq: 20,
+          has_more_before: false,
+          has_more_after: false,
+        })
+      }),
+      http.post(`/chats/${INITIAL_CHAT_ID}/read`, () => new HttpResponse(null, { status: 204 })),
+    )
+
+    const auth = await authValue()
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 20)
+    renderThread(auth, mockWs)
+
+    expect(await screen.findByText('mine-seq-20')).toBeInTheDocument()
+    await waitFor(() => expect(mockWs.connections.size).toBeGreaterThan(0))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40))
+    })
+    const connection = Array.from(mockWs.connections)[0]!
+    await act(async () => {
+      pushMessageNew(connection, {
+        seq: 22,
+        body: 'mine-seq-22',
+        senderId: ALICE.id,
+        messageId: '40000000-0000-4000-8000-000000000032',
+      })
+    })
+    expect(await screen.findByText('mine-seq-22')).toBeInTheDocument()
+
+    await scrollThreadAwayFromBottom()
+    afterSeqCatchUp = [
+      {
+        id: gapIncomingId,
+        chat_id: INITIAL_CHAT_ID,
+        seq: 21,
+        sender_id: bobId,
+        body: 'gap-incoming-after-seq',
+        created_at: '2026-11-21T12:21:00Z',
+      },
+    ]
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 22)
+    await act(async () => {
+      mockWs.disconnectAll(1013, 'mock disconnect for after_seq gap')
+    })
+    await waitFor(() => expect(mockWs.connections.size).toBeGreaterThan(0), { timeout: 5_000 })
+    await waitFor(() => expect(screen.queryByText(/Переподключение/i)).not.toBeInTheDocument(), {
+      timeout: 5_000,
+    })
+    expect(await screen.findByText('gap-incoming-after-seq')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
   })
 
@@ -804,58 +923,98 @@ describe('ChatThread', () => {
     expect(await screen.findByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
   })
 
-  it('does not show new-messages chip when scrolling old history without new incoming', async () => {
+  it('dedupes the same incoming across WS and REST and chip click returns to bottom', async () => {
+    const messageId = '40000000-0000-4000-8000-000000000041'
+    let afterSeqCatchUp: Array<{
+      id: string
+      chat_id: string
+      seq: number
+      sender_id: string
+      body: string
+      created_at: string
+    }> = []
     server.use(
-      http.get(`/chats/${INITIAL_CHAT_ID}/messages`, () =>
-        HttpResponse.json({
+      http.get(`/chats/${INITIAL_CHAT_ID}/messages`, ({ request }) => {
+        const url = new URL(request.url)
+        const afterRaw = url.searchParams.get('after_seq')
+        if (afterRaw != null) {
+          const after = Number(afterRaw)
+          const messages = afterSeqCatchUp.filter((item) => item.seq > after)
+          const nextAfter =
+            messages.length > 0 ? Math.max(...messages.map((item) => item.seq)) : after
+          return HttpResponse.json({
+            messages,
+            next_before_seq: messages[0]?.seq ?? null,
+            next_after_seq: nextAfter,
+            has_more_before: false,
+            has_more_after: false,
+          })
+        }
+        return HttpResponse.json({
           messages: [
             {
-              id: 'm1',
+              id: '40000000-0000-4000-8000-000000000040',
               chat_id: INITIAL_CHAT_ID,
               seq: 1,
-              sender_id: '00000000-0000-4000-8000-000000000002',
-              body: 'old-incoming',
-              created_at: '2026-11-21T12:00:00Z',
-            },
-            {
-              id: 'm2',
-              chat_id: INITIAL_CHAT_ID,
-              seq: 2,
               sender_id: ALICE.id,
-              body: 'mine-reply',
-              created_at: '2026-11-21T12:01:00Z',
+              body: 'only-mine',
+              created_at: '2026-11-21T12:00:00Z',
             },
           ],
           next_before_seq: null,
-          next_after_seq: 2,
+          next_after_seq: 1,
           has_more_before: false,
           has_more_after: false,
-        }),
-      ),
+        })
+      }),
       http.post(`/chats/${INITIAL_CHAT_ID}/read`, () => new HttpResponse(null, { status: 204 })),
     )
+
     const auth = await authValue()
     const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
-    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 2)
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 1)
     renderThread(auth, mockWs)
 
-    expect(await screen.findByText('old-incoming')).toBeInTheDocument()
-    // Дождаться WS/history sync у низа, чтобы baseline успел зафиксировать seq до ухода вверх.
+    expect(await screen.findByText('only-mine')).toBeInTheDocument()
     await waitFor(() => expect(mockWs.connections.size).toBeGreaterThan(0))
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 30))
-    })
     await scrollThreadAwayFromBottom()
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 30))
-    })
-    expect(screen.queryByRole('button', { name: 'Новые сообщения' })).not.toBeInTheDocument()
 
     const connection = Array.from(mockWs.connections)[0]!
     await act(async () => {
-      pushIncoming(connection, 3, 'fresh-incoming')
+      pushIncoming(connection, 2, 'same-incoming', messageId)
     })
-    expect(await screen.findByText('fresh-incoming')).toBeInTheDocument()
+    expect(await screen.findByText('same-incoming')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
+    expect(screen.getAllByText('same-incoming')).toHaveLength(1)
+
+    afterSeqCatchUp = [
+      {
+        id: messageId,
+        chat_id: INITIAL_CHAT_ID,
+        seq: 2,
+        sender_id: '00000000-0000-4000-8000-000000000002',
+        body: 'same-incoming',
+        created_at: '2026-11-21T12:02:00Z',
+      },
+    ]
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 2)
+    await act(async () => {
+      mockWs.disconnectAll(1013, 'mock disconnect for rest twin')
+    })
+    await waitFor(() => expect(mockWs.connections.size).toBeGreaterThan(0), { timeout: 5_000 })
+    await waitFor(() => expect(screen.queryByText(/Переподключение/i)).not.toBeInTheDocument(), {
+      timeout: 5_000,
+    })
+    expect(screen.getAllByText('same-incoming')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
+
+    const scroller = screen.getByTestId('chat-thread-scroll')
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 2000 })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 400 })
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Новые сообщения' }))
+    })
+    expect(screen.queryByRole('button', { name: 'Новые сообщения' })).not.toBeInTheDocument()
+    expect(scroller.scrollTop).toBe(scroller.scrollHeight)
   })
 })

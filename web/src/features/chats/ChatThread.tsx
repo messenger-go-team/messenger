@@ -64,18 +64,19 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   const [visibilityTick, setVisibilityTick] = useState(0)
   const [visibleSeqs, setVisibleSeqs] = useState<readonly number[]>([])
   const [showNewMessagesChip, setShowNewMessagesChip] = useState(false)
-  /** Отпечаток последнего входящего: seq стабилен при смене key REST→WS. */
-  const lastIncomingFingerprintRef = useRef<string | null>(null)
-  /** Макс. seq ленты, пока были у низа — пагинация before_seq не должна включать chip. */
-  const baselineMaxSeqRef = useRef(0)
-  /** База входящих зафиксирована, пока лента была у низа — можно показывать chip при уходе вверх. */
-  const incomingBaselineReadyRef = useRef(false)
+  /**
+   * Уже виденные message id / key. Chip — на первое появление входящего из WS/after_seq
+   * ниже fold; before_seq помечает id в loadOlder без chip. seq только для порядка ленты.
+   */
+  const knownMessageIdsRef = useRef(new Set<string>())
 
   const loadInitial = useCallback(async () => {
     if (!accessToken) return
     const requestId = ++historyRequestRef.current
     setHistoryStatus('loading')
     setHistoryError(null)
+    knownMessageIdsRef.current = new Set()
+    setShowNewMessagesChip(false)
     try {
       const page = await getMessageHistory(chatId, accessToken, { limit: HISTORY_PAGE_SIZE })
       if (requestId !== historyRequestRef.current) return
@@ -83,6 +84,7 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
       setHasMoreBefore(page.has_more_before)
       setHistoryStatus(page.messages.length === 0 ? 'empty' : 'ready')
       stickToBottomRef.current = true
+      for (const item of page.messages) knownMessageIdsRef.current.add(item.id)
     } catch {
       if (requestId !== historyRequestRef.current) return
       setHistoryStatus('error')
@@ -115,6 +117,7 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
       setHistory((prev) => {
         const seen = new Set(prev.map((item) => item.id))
         const older = page.messages.filter((item) => !seen.has(item.id))
+        for (const item of older) knownMessageIdsRef.current.add(item.id)
         return [...older, ...prev]
       })
       setHasMoreBefore(page.has_more_before)
@@ -149,35 +152,20 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   }, [messages])
 
   useEffect(() => {
-    const latestIncoming = [...messages].reverse().find((item) => !item.mine)
-    const latestFingerprint =
-      latestIncoming == null
-        ? null
-        : latestIncoming.seq != null
-          ? `seq:${latestIncoming.seq}`
-          : `key:${latestIncoming.key}`
-    let maxSeq = 0
-    for (const item of messages) {
-      if (item.seq != null && item.seq > maxSeq) maxSeq = item.seq
-    }
-
     if (stickToBottomRef.current) {
-      lastIncomingFingerprintRef.current = latestFingerprint
-      baselineMaxSeqRef.current = maxSeq
-      incomingBaselineReadyRef.current = true
+      for (const item of messages) knownMessageIdsRef.current.add(item.id ?? item.key)
       setShowNewMessagesChip(false)
       return
     }
 
-    // Только входящие новее max seq у низа (WS/after), не старые страницы before_seq.
-    if (!incomingBaselineReadyRef.current || latestIncoming == null) return
-    const newerBySeq = latestIncoming.seq != null && latestIncoming.seq > baselineMaxSeqRef.current
-    if (!newerBySeq) return
-    if (latestFingerprint === lastIncomingFingerprintRef.current) return
-
-    setShowNewMessagesChip(true)
-    lastIncomingFingerprintRef.current = latestFingerprint
-    baselineMaxSeqRef.current = Math.max(baselineMaxSeqRef.current, latestIncoming.seq ?? 0)
+    let sawNewIncoming = false
+    for (const item of messages) {
+      const id = item.id ?? item.key
+      if (knownMessageIdsRef.current.has(id)) continue
+      knownMessageIdsRef.current.add(id)
+      if (!item.mine) sawNewIncoming = true
+    }
+    if (sawNewIncoming) setShowNewMessagesChip(true)
   }, [messages])
 
   const connectionLabel = connectionStatusLabel(snapshot.transport)
