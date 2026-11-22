@@ -536,4 +536,221 @@ describe('createRefreshCoordinator', () => {
     leader.dispose()
     waiter.dispose()
   })
+
+  it('rejects a queued refresh that still holds the old epoch after account switch', async () => {
+    let releaseBlocker!: (value: AccessTokenResponse) => void
+    const refresh = vi.fn(async () => session('old-account'))
+    const baseLocks = createSerialLockManager()
+    let lockRequests = 0
+    const locks: Pick<LockManager, 'request'> = {
+      request: ((...args: Parameters<LockManager['request']>) => {
+        lockRequests += 1
+        return (baseLocks.request as (...a: Parameters<LockManager['request']>) => Promise<unknown>)(
+          ...args,
+        )
+      }) as LockManager['request'],
+    }
+    // session-cancelled доходит после того, как B уже взяла lock со старой эпохой.
+    const hub = createChannelHub({ delayMs: 30 })
+    const store = createMemoryRefreshStore()
+    const tabA = createTab(refresh, locks, hub, store)
+    const tabB = createTab(refresh, locks, hub, store)
+    const tabBlocker = createTab(refresh, locks, hub, store)
+    const heardB: string[] = []
+
+    await tabB.requestRefresh()
+    const postsAfterSeed = refresh.mock.calls.length
+    tabB.subscribeSuccess((s) => heardB.push(s.access_token))
+    // Убираем shared meta, иначе blocker будет ждать JWT лидера вместо своего POST.
+    store.writeMeta(null)
+
+    refresh.mockImplementation(
+      () =>
+        new Promise<AccessTokenResponse>((resolve) => {
+          releaseBlocker = resolve
+        }),
+    )
+    const blockerPending = tabBlocker.requestRefresh()
+    await vi.waitFor(() => expect(typeof releaseBlocker).toBe('function'))
+    const lockRequestsAfterBlocker = lockRequests
+
+    // A первой в очереди после blocker; B следом со старой эпохой (store ещё 0).
+    const switchPending = tabA.withSessionChange('account_switch', async () => {
+      /* cookie уже сменена под lock */
+    })
+    await vi.waitFor(() => expect(lockRequests).toBe(lockRequestsAfterBlocker + 1))
+    const staleRefresh = tabB.requestRefresh()
+    expect(tabB.getSessionEpoch()).toBe(0)
+
+    releaseBlocker(session('blocker'))
+    await blockerPending
+    await switchPending
+    expect(store.getEpoch()).toBe(1)
+
+    await expect(staleRefresh).rejects.toBeInstanceOf(RefreshCancelledError)
+    expect(heardB).not.toContain('old-account')
+    expect(refresh.mock.calls.length).toBe(postsAfterSeed + 1)
+
+    tabA.dispose()
+    tabB.dispose()
+    tabBlocker.dispose()
+  })
+
+  it('keeps a refresh for the new epoch when a delayed session-cancelled arrives', async () => {
+    vi.useFakeTimers()
+    let releaseRefresh!: (value: AccessTokenResponse) => void
+    const refresh = vi.fn(
+      () =>
+        new Promise<AccessTokenResponse>((resolve) => {
+          releaseRefresh = resolve
+        }),
+    )
+    const locks = createSerialLockManager()
+    const hub = createChannelHub({ delayMs: 1_000 })
+    const store = createMemoryRefreshStore()
+    const tabA = createTab(refresh, locks, hub, store)
+    const tabB = createTab(refresh, locks, hub, store)
+    const invalidated = vi.fn()
+    tabB.subscribeInvalidated(invalidated)
+
+    await tabA.withSessionChange('account_switch', async () => undefined)
+    expect(store.getEpoch()).toBe(1)
+
+    const pendingB = tabB.requestRefresh()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(tabB.getSessionEpoch()).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(invalidated).toHaveBeenCalledTimes(1)
+
+    releaseRefresh(session('new-epoch'))
+    await expect(pendingB).resolves.toMatchObject({ access_token: 'new-epoch' })
+    expect(invalidated).toHaveBeenCalledTimes(1)
+
+    tabA.dispose()
+    tabB.dispose()
+  })
+
+  it('ignores a delayed final 401 from an older opId during a newer refresh', async () => {
+    let nowMs = 1_000
+    let releaseSecond!: (value: AccessTokenResponse) => void
+    const refresh = vi
+      .fn<(signal: AbortSignal) => Promise<AccessTokenResponse>>()
+      .mockResolvedValueOnce(session('first'))
+      .mockImplementationOnce(
+        () =>
+          new Promise<AccessTokenResponse>((resolve) => {
+            releaseSecond = resolve
+          }),
+      )
+    const locks = createSerialLockManager()
+    const hub = createChannelHub()
+    const store = createMemoryRefreshStore()
+    const tab = createRefreshCoordinator({
+      refresh,
+      locks,
+      createChannel: hub.createChannel,
+      store,
+      now: () => nowMs,
+      recentSuccessMs: 5_000,
+    })
+    const finalFailure = vi.fn()
+    tab.subscribeFinalFailure(finalFailure)
+
+    await tab.requestRefresh()
+    expect(store.readMeta()?.opId).toBe(1)
+
+    nowMs += 6_000
+    const pending = tab.requestRefresh()
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(2))
+
+    const probe = hub.createChannel('probe')
+    probe.postMessage({
+      v: 1,
+      type: 'refresh-failure',
+      sessionEpoch: tab.getSessionEpoch(),
+      opId: 1,
+      status: 401,
+      final: true,
+    })
+    await Promise.resolve()
+
+    releaseSecond(session('second-ok'))
+    await expect(pending).resolves.toMatchObject({ access_token: 'second-ok' })
+    expect(finalFailure).not.toHaveBeenCalled()
+
+    tab.dispose()
+    probe.close()
+  })
+
+  it(
+    'waits for leader JWT after cache TTL without a second POST',
+    async () => {
+      vi.useFakeTimers()
+      let releaseRefresh!: (value: AccessTokenResponse) => void
+      const refresh = vi.fn(
+        () =>
+          new Promise<AccessTokenResponse>((resolve) => {
+            releaseRefresh = resolve
+          }),
+      )
+      const locks = createSerialLockManager()
+      const hub = createChannelHub({ delayMs: 5_200 })
+      const store = createMemoryRefreshStore()
+      const tabA = createTab(refresh, locks, hub, store)
+      const tabB = createTab(refresh, locks, hub, store)
+
+      const pendingA = tabA.requestRefresh()
+      const pendingB = tabB.requestRefresh()
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(refresh).toHaveBeenCalledTimes(1)
+      releaseRefresh(session('leader-after-ttl'))
+
+      await vi.advanceTimersByTimeAsync(5_200)
+      const [a, b] = await Promise.all([pendingA, pendingB])
+      expect(refresh).toHaveBeenCalledTimes(1)
+      expect(a.access_token).toBe('leader-after-ttl')
+      expect(b.access_token).toBe('leader-after-ttl')
+
+      tabA.dispose()
+      tabB.dispose()
+    },
+    15_000,
+  )
+
+  it('times out waiting for a vanished leader JWT without issuing another POST', async () => {
+    vi.useFakeTimers()
+    let releaseRefresh!: (value: AccessTokenResponse) => void
+    const refresh = vi.fn(
+      () =>
+        new Promise<AccessTokenResponse>((resolve) => {
+          releaseRefresh = resolve
+        }),
+    )
+    const locks = createSerialLockManager()
+    // Лидер «закрылся»: BC никогда не доставит JWT.
+    const hub = createChannelHub({ delayMs: 60_000 })
+    const store = createMemoryRefreshStore()
+    const tabA = createTab(refresh, locks, hub, store, { waitTimeoutMs: 15_000 })
+    const tabB = createTab(refresh, locks, hub, store, { waitTimeoutMs: 1_000 })
+
+    const pendingA = tabA.requestRefresh()
+    const pendingB = tabB.requestRefresh()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(refresh).toHaveBeenCalledTimes(1)
+    releaseRefresh(session('leader-gone'))
+
+    const waiterRejected = expect(pendingB).rejects.toBeInstanceOf(RefreshTimeoutError)
+    await vi.advanceTimersByTimeAsync(1_000)
+    await waiterRejected
+    await expect(pendingA).resolves.toMatchObject({ access_token: 'leader-gone' })
+    expect(refresh).toHaveBeenCalledTimes(1)
+
+    tabA.dispose()
+    tabB.dispose()
+  })
 })
