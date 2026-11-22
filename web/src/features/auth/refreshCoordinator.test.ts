@@ -100,7 +100,7 @@ function createTab(
   locks: Pick<LockManager, 'request'>,
   hub: ReturnType<typeof createChannelHub>,
   store: RefreshSharedStore,
-  extras?: { waitTimeoutMs?: number },
+  extras?: { waitTimeoutMs?: number; postLockBcWaitMs?: number },
 ) {
   return createRefreshCoordinator({
     refresh,
@@ -108,6 +108,7 @@ function createTab(
     createChannel: hub.createChannel,
     store,
     waitTimeoutMs: extras?.waitTimeoutMs,
+    postLockBcWaitMs: extras?.postLockBcWaitMs ?? 20,
   })
 }
 
@@ -247,10 +248,146 @@ describe('createRefreshCoordinator', () => {
 
     resolveRefresh(session('late-token'))
     await Promise.resolve()
-    expect(store.readOutcome()).toBeNull()
+    expect(store.readMeta()).toBeNull()
 
     leader.dispose()
     follower.dispose()
+  })
+
+  it('ignores a late session-cancelled that would wipe a newer success', async () => {
+    const refresh = vi.fn(async () => session('fresh'))
+    const locks = createSerialLockManager()
+    const hub = createChannelHub({ asyncDelivery: true })
+    const store = createMemoryRefreshStore()
+    const tab = createTab(refresh, locks, hub, store)
+
+    await tab.cancel('logout')
+    await tab.requestRefresh()
+    expect(store.readMeta()?.kind).toBe('success')
+
+    // Запоздалый cancel той же эпохи не должен сбросить свежий outcome.
+    const channel = hub.createChannel('probe')
+    channel.postMessage({ v: 1, type: 'session-cancelled', sessionEpoch: tab.getSessionEpoch() })
+    await Promise.resolve()
+    expect(store.readMeta()?.kind).toBe('success')
+
+    tab.dispose()
+    channel.close()
+  })
+
+  it('ignores a late refresh-success with an older opId', async () => {
+    let nowMs = 1_000
+    const refresh = vi
+      .fn<(signal: AbortSignal) => Promise<AccessTokenResponse>>()
+      .mockResolvedValueOnce(session('first'))
+      .mockResolvedValueOnce(session('second'))
+    const locks = createSerialLockManager()
+    const hub = createChannelHub()
+    const store = createMemoryRefreshStore()
+    const tab = createRefreshCoordinator({
+      refresh,
+      locks,
+      createChannel: hub.createChannel,
+      store,
+      now: () => nowMs,
+      recentSuccessMs: 5_000,
+      postLockBcWaitMs: 0,
+    })
+    const heard: string[] = []
+    tab.subscribeSuccess((s) => heard.push(s.access_token))
+
+    await tab.requestRefresh()
+    nowMs += 6_000
+    await tab.requestRefresh()
+    expect(heard.at(-1)).toBe('second')
+
+    const channel = hub.createChannel('probe')
+    channel.postMessage({
+      v: 1,
+      type: 'refresh-success',
+      sessionEpoch: tab.getSessionEpoch(),
+      opId: 1,
+      token_type: 'Bearer',
+      access_token: 'stale-late',
+      expires_in: 900,
+    })
+    await Promise.resolve()
+    expect(heard.at(-1)).toBe('second')
+    expect(heard).not.toContain('stale-late')
+
+    tab.dispose()
+    channel.close()
+  })
+
+  it('withSessionChange waits until a remote refresh releases the lock', async () => {
+    let releaseRefresh!: (value: AccessTokenResponse) => void
+    const refresh = vi.fn(
+      () =>
+        new Promise<AccessTokenResponse>((resolve) => {
+          releaseRefresh = resolve
+        }),
+    )
+    const locks = createSerialLockManager()
+    const hub = createChannelHub({ asyncDelivery: true })
+    const store = createMemoryRefreshStore()
+    const tabA = createTab(refresh, locks, hub, store)
+    const tabB = createTab(refresh, locks, hub, store)
+
+    const pendingRefresh = tabB.requestRefresh()
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+
+    let logoutDone = false
+    const logoutPending = tabA.withSessionChange('logout', async () => {
+      logoutDone = true
+    })
+
+    await Promise.resolve()
+    expect(logoutDone).toBe(false)
+
+    releaseRefresh(session('from-b'))
+    await expect(pendingRefresh).rejects.toBeInstanceOf(RefreshCancelledError)
+    await logoutPending
+    expect(logoutDone).toBe(true)
+
+    tabA.dispose()
+    tabB.dispose()
+  })
+
+  it('notifies final-failure listeners for local and remote tabs', async () => {
+    const refresh = vi.fn(async () => {
+      throw new ApiError(401, 'unauthorized', 'refresh rejected')
+    })
+    const locks = createSerialLockManager()
+    const hub = createChannelHub()
+    const store = createMemoryRefreshStore()
+    const leader = createTab(refresh, locks, hub, store, { postLockBcWaitMs: 0 })
+    const follower = createTab(refresh, locks, hub, store, { postLockBcWaitMs: 0 })
+    const localFinal = vi.fn()
+    const remoteFinal = vi.fn()
+    leader.subscribeFinalFailure(localFinal)
+    follower.subscribeFinalFailure(remoteFinal)
+
+    await expect(leader.requestRefresh()).rejects.toBeInstanceOf(RefreshFinalError)
+    await vi.waitFor(() => {
+      expect(localFinal).toHaveBeenCalled()
+      expect(remoteFinal).toHaveBeenCalled()
+    })
+
+    leader.dispose()
+    follower.dispose()
+  })
+
+  it('does not persist access JWT in the shared store meta', async () => {
+    const refresh = vi.fn(async () => session('secret-jwt'))
+    const locks = createSerialLockManager()
+    const hub = createChannelHub()
+    const store = createMemoryRefreshStore()
+    const tab = createTab(refresh, locks, hub, store, { postLockBcWaitMs: 0 })
+
+    await tab.requestRefresh()
+    expect(JSON.stringify(store.readMeta())).not.toContain('secret-jwt')
+
+    tab.dispose()
   })
 
   it('timeout aborts a queued lock wait so a late grant does not POST', async () => {
