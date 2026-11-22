@@ -66,6 +66,8 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   const [showNewMessagesChip, setShowNewMessagesChip] = useState(false)
   /** Отпечаток последнего входящего: seq стабилен при смене key REST→WS. */
   const lastIncomingFingerprintRef = useRef<string | null>(null)
+  /** Макс. seq ленты, пока были у низа — пагинация before_seq не должна включать chip. */
+  const baselineMaxSeqRef = useRef(0)
   /** База входящих зафиксирована, пока лента была у низа — можно показывать chip при уходе вверх. */
   const incomingBaselineReadyRef = useRef(false)
 
@@ -154,25 +156,28 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
         : latestIncoming.seq != null
           ? `seq:${latestIncoming.seq}`
           : `key:${latestIncoming.key}`
+    let maxSeq = 0
+    for (const item of messages) {
+      if (item.seq != null && item.seq > maxSeq) maxSeq = item.seq
+    }
 
     if (stickToBottomRef.current) {
       lastIncomingFingerprintRef.current = latestFingerprint
+      baselineMaxSeqRef.current = maxSeq
       incomingBaselineReadyRef.current = true
       setShowNewMessagesChip(false)
       return
     }
 
-    // База могла быть null (только исходящие): первое входящее ниже fold тоже показывает chip.
-    // Без ready не реагируем на первичную подгрузку истории, пока пользователь не был у низа.
-    // Сравниваем по seq, чтобы merge REST→WS с тем же seq не считался «новым».
-    if (
-      incomingBaselineReadyRef.current &&
-      latestFingerprint != null &&
-      latestFingerprint !== lastIncomingFingerprintRef.current
-    ) {
-      setShowNewMessagesChip(true)
-      lastIncomingFingerprintRef.current = latestFingerprint
-    }
+    // Только входящие новее max seq у низа (WS/after), не старые страницы before_seq.
+    if (!incomingBaselineReadyRef.current || latestIncoming == null) return
+    const newerBySeq = latestIncoming.seq != null && latestIncoming.seq > baselineMaxSeqRef.current
+    if (!newerBySeq) return
+    if (latestFingerprint === lastIncomingFingerprintRef.current) return
+
+    setShowNewMessagesChip(true)
+    lastIncomingFingerprintRef.current = latestFingerprint
+    baselineMaxSeqRef.current = Math.max(baselineMaxSeqRef.current, latestIncoming.seq ?? 0)
   }, [messages])
 
   const connectionLabel = connectionStatusLabel(snapshot.transport)
