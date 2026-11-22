@@ -1,4 +1,6 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
+import { apiBaseUrl } from '@/config/runtimeEnv'
+
+const API_BASE_URL = apiBaseUrl()
 
 /** Типизированная ошибка HTTP API с сохранением статуса и машинного кода backend. */
 export class ApiError extends Error {

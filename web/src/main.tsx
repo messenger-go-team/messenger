@@ -1,6 +1,7 @@
 import { BrowserRouter } from 'react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { isApiMockEnabled } from '@/config/runtimeEnv'
 import './index.css'
 import App from './App.tsx'
 
@@ -9,7 +10,7 @@ import App from './App.tsx'
  * Это не добавляет worker в startup path приложения, работающего с реальным backend.
  */
 async function enableMocking() {
-  if (import.meta.env.VITE_API_MOCK !== 'true') {
+  if (!isApiMockEnabled()) {
     return
   }
 

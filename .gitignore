@@ -37,9 +37,14 @@ node_modules/
 web/dist/
 web/coverage/
 
-# Локальные окружения (шаблон .env.example остаётся в репозитории)
+# Локальные окружения (шаблоны .env.example / staging / production остаются в репо)
 .env.*
 !.env.example
+!.env.production
+!.env.staging.example
+**/.env.example
+**/.env.production
+**/.env.staging.example
 
 # Сборка и мусор
 /bin/

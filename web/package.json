@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:real": "VITE_API_MOCK=false vite",
     "build": "tsc -b && vite build",
+    "build:staging": "tsc -b && vite build --mode production",
     "lint": "eslint .",
     "preview": "vite preview",
+    "preview:real": "VITE_API_MOCK=false vite preview",
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

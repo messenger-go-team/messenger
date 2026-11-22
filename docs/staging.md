@@ -6,6 +6,14 @@
 Предлагайте подпротоколы `messenger.v1` и `bearer.<access JWT>`.
 Отчёт о приёмке ведётся в [#38](https://github.com/messenger-go-team/messenger/issues/38).
 
+### Веб-клиент (#46)
+
+Production-сборка SPA: `web/.env.production` (`VITE_API_MOCK=false`, same-origin).
+Образ: `docker build -f web/Dockerfile -t messenger-web:<tag> web` (порт 8080,
+`/healthz`). Пока rootless compose и ingress не отдают SPA на `/`, UI на
+публичном URL недоступен — нужен сервис `web` и proxy `location /` на него.
+Подробности и чек-лист приёмки: [web/README.md](../web/README.md#staging-46).
+
 ## Доступ и тестовые данные
 
 Ответственный за staging выдаёт выделенные тестовые учётки по согласованному

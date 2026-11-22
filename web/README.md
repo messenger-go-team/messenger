@@ -167,6 +167,8 @@ GET `/chats`, GET `/chats/{chat_id}/messages` и POST `/chats/{chat_id}/read`.
 Для реального backend:
 
 ```bash
+npm run dev:real
+# или явно:
 VITE_API_MOCK=false VITE_API_BASE_URL=http://localhost:8080 npm run dev
 ```
 
@@ -177,6 +179,32 @@ credentials, если origin отличается. Все запросы отп�
 Шаблон переменных — `.env.example`. Скопируйте его в `.env.local` и при
 необходимости измените значения; после изменения перезапустите Vite.
 Не помещайте секреты в `VITE_*`: они доступны в клиентской сборке.
+
+### Staging (#46)
+
+Целевой режим на [staging.tidingm.ru](https://staging.tidingm.ru): **same-origin**
+(пустые `VITE_API_BASE_URL` / `VITE_WS_ORIGIN`, `VITE_API_MOCK=false`) — REST на
+HTTPS, WS на `wss://staging.tidingm.ru/ws`. Профиль зафиксирован в
+`.env.production` и `.env.staging.example`.
+
+Образ SPA:
+
+```bash
+docker build -f web/Dockerfile -t messenger-web:local web
+```
+
+Контейнер слушает `:8080` (`/healthz`, SPA `try_files`). Публичный ingress сейчас
+отвечает `404` на `/` и **не** включает web в compose/release — подключение
+образа и `location /` → web делает devops в рамках #46. До этого сквозная
+приёмка UI на публичном URL заблокирована; локально — `npm run build` +
+`npm run preview:real` против локального/проксируемого API.
+
+Чек-лист приёмки web на staging (когда SPA отдаётся):
+
+1. Login / refresh cookie / logout по HTTPS.
+2. Две вкладки: оба WS `4401` → один `POST /auth/refresh` → оба сокета снова up (SHA в #46).
+3. Отправка сообщения: ack/new, история, unread.
+4. Контакты / Later — после merge #70 / #90.
 
 Публичные пользователи исключительно для локального MSW: `alice_1` и `bob_2`,
 пароль обоих — `correct-horse-battery`. Между ними подготовлен личный чат с

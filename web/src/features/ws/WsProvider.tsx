@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { refresh as refreshRequest } from '@/api/auth'
 import { ApiError } from '@/api/client'
 import { getMessageHistory, listChats } from '@/api/history'
+import { isApiMockEnabled } from '@/config/runtimeEnv'
 import { useAuth } from '@/features/auth/useAuth'
 import {
   getSharedRefreshCoordinator,
@@ -109,7 +110,7 @@ export function WsProvider({
 
       // Клиент живёт на user.id: refresh JWT идёт через AuthAdapter, без reconnect.
       let factory = webSocketFactory
-      if (!factory && !disableApiMockSocket && import.meta.env.VITE_API_MOCK === 'true') {
+      if (!factory && !disableApiMockSocket && isApiMockEnabled()) {
         const mock = new MockWebSocketServer({ senderId: user.id })
         mockServerRef.current = mock
         factory = mock.webSocketFactory

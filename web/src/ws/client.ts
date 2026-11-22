@@ -1,3 +1,4 @@
+import { wsOrigin as resolveWsOrigin } from '@/config/runtimeEnv'
 import {
   createMessageSendEvent,
   isValidOutgoingMessage,
@@ -105,10 +106,7 @@ function defaultFactory(url: string, protocols: string[]): WebSocketLike {
 }
 
 function defaultWsOrigin(): string {
-  const configured = import.meta.env.VITE_WS_ORIGIN as string | undefined
-  if (configured) return configured.replace(/\/+$/, '')
-  const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${scheme}//${window.location.host}`
+  return resolveWsOrigin()
 }
 
 function clonePending(message: MutablePending): PendingMessage {
