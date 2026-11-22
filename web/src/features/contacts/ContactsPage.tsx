@@ -15,6 +15,13 @@ import {
 const SEARCH_DEBOUNCE_MS = 300
 
 type ListStatus = 'loading' | 'ready' | 'error'
+type ActionKind = 'write' | 'toggle'
+
+type PendingAction = {
+  kind: ActionKind
+  target: UserSummary
+  isContact: boolean
+}
 
 /** Экран контактов (#70): список, empty, локальный фильтр + глобальный поиск. */
 export function ContactsPage() {
@@ -22,6 +29,7 @@ export function ContactsPage() {
   const navigate = useNavigate()
   const searchId = useId()
   const mountedRef = useRef(true)
+  const listRequestRef = useRef(0)
   const searchRequestRef = useRef(0)
 
   const [contacts, setContacts] = useState<UserSummary[]>([])
@@ -33,29 +41,36 @@ export function ContactsPage() {
   const [globalResults, setGlobalResults] = useState<UserSummary[]>([])
   const [globalPrefix, setGlobalPrefix] = useState<string | null>(null)
   const [globalStatus, setGlobalStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [searchRetryKey, setSearchRetryKey] = useState(0)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
 
   useEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
+      listRequestRef.current += 1
       searchRequestRef.current += 1
     }
   }, [])
 
   useEffect(() => {
     if (!accessToken) return
+    const requestId = ++listRequestRef.current
     const timer = window.setTimeout(() => {
       void (async () => {
-        setListStatus('loading')
+        // Уже готовый список не прячем на время обновления — иначе мигает empty/error.
+        setListStatus((status) => (status === 'ready' ? 'ready' : 'loading'))
         setListError(null)
         try {
           const response = await getContacts(accessToken)
-          if (!mountedRef.current) return
+          if (!mountedRef.current || requestId !== listRequestRef.current) return
           setContacts(response.contacts)
           setListStatus('ready')
+          setListError(null)
         } catch {
-          if (!mountedRef.current) return
+          if (!mountedRef.current || requestId !== listRequestRef.current) return
           setListStatus((status) => (status === 'ready' ? 'ready' : 'error'))
           setListError('Не удалось загрузить контакты. Повторите попытку.')
         }
@@ -78,7 +93,8 @@ export function ContactsPage() {
       }, 0)
       return () => window.clearTimeout(clearTimer)
     }
-    const requestId = ++searchRequestRef.current
+
+  const requestId = ++searchRequestRef.current
     const prefixForRequest = prefix
     const timer = window.setTimeout(() => {
       void (async () => {
@@ -98,25 +114,45 @@ export function ContactsPage() {
       })()
     }, SEARCH_DEBOUNCE_MS)
     return () => window.clearTimeout(timer)
-  }, [accessToken, prefix, searchInvalid, searching, user])
+  }, [accessToken, prefix, searchInvalid, searching, searchRetryKey, user])
 
   const contactIds = new Set(contacts.map((item) => item.id))
   const filteredContacts = searching
     ? contacts.filter((item) => item.username.toLowerCase().includes(prefix.toLowerCase()))
     : contacts
+  // Пока префикс не совпал с последним ответом — не показываем empty/error прошлого запроса.
+  const searchMatchesCurrent = globalPrefix === prefix
   const globalVisible =
-    globalPrefix === prefix && globalStatus === 'ready'
+    searchMatchesCurrent && globalStatus === 'ready'
       ? globalResults.filter((item) => !contactIds.has(item.id))
       : []
 
-  const openChat = useCallback(
-    async (target: UserSummary) => {
+  const runAction = useCallback(
+    async (action: PendingAction) => {
       if (!accessToken || busyId) return
-      setBusyId(target.id)
+      setBusyId(action.target.id)
+      setActionError(null)
+      setPendingAction(action)
       try {
-        const chat = await createPersonalChat(target.id, accessToken)
+        if (action.kind === 'write') {
+          const chat = await createPersonalChat(action.target.id, accessToken)
+          if (!mountedRef.current) return
+          setPendingAction(null)
+          navigate(`/chats/${chat.id}`, { state: { peerUsername: action.target.username } })
+          return
+        }
+        if (action.isContact) await removeContact(action.target.id, accessToken)
+        else await addContact(action.target.id, accessToken)
         if (!mountedRef.current) return
-        navigate(`/chats/${chat.id}`, { state: { peerUsername: target.username } })
+        setPendingAction(null)
+        setReloadKey((value) => value + 1)
+      } catch {
+        if (!mountedRef.current) return
+        setActionError(
+          action.kind === 'write'
+            ? 'Не удалось начать чат. Повторите попытку.'
+            : 'Не удалось обновить контакт. Повторите попытку.',
+        )
       } finally {
         if (mountedRef.current) setBusyId(null)
       }
@@ -124,21 +160,34 @@ export function ContactsPage() {
     [accessToken, busyId, navigate],
   )
 
-  const toggleContact = useCallback(
-    async (target: UserSummary, isContact: boolean) => {
-      if (!accessToken || busyId) return
-      setBusyId(target.id)
-      try {
-        if (isContact) await removeContact(target.id, accessToken)
-        else await addContact(target.id, accessToken)
-        if (!mountedRef.current) return
-        setReloadKey((value) => value + 1)
-      } finally {
-        if (mountedRef.current) setBusyId(null)
-      }
+  const openChat = useCallback(
+    (target: UserSummary) => {
+      void runAction({ kind: 'write', target, isContact: false })
     },
-    [accessToken, busyId],
+    [runAction],
   )
+
+  const toggleContact = useCallback(
+    (target: UserSummary, isContact: boolean) => {
+      void runAction({ kind: 'toggle', target, isContact })
+    },
+    [runAction],
+  )
+
+  const showListRetry = Boolean(listError)
+  const showGlobalEmpty =
+    searching &&
+    !searchInvalid &&
+    searchMatchesCurrent &&
+    globalStatus === 'ready' &&
+    globalVisible.length === 0 &&
+    filteredContacts.length === 0
+  const showGlobalError =
+    searching && !searchInvalid && searchMatchesCurrent && globalStatus === 'error'
+  const showGlobalLoading =
+    searching &&
+    !searchInvalid &&
+    (!searchMatchesCurrent || globalStatus === 'loading' || globalStatus === 'idle')
 
   return (
     <div className="flex h-svh min-h-0 overflow-hidden bg-background text-foreground">
@@ -220,7 +269,7 @@ export function ContactsPage() {
             <p className="px-4 py-6 text-sm text-muted-foreground">{USER_SEARCH_HINT}</p>
           ) : null}
 
-          {listStatus === 'loading' ? (
+          {listStatus === 'loading' && contacts.length === 0 ? (
             <p className="px-4 py-6 text-sm text-muted-foreground" role="status">
               Загрузка контактов…
             </p>
@@ -235,7 +284,7 @@ export function ContactsPage() {
             </div>
           ) : null}
 
-          {listStatus === 'ready' && !searching && contacts.length === 0 ? (
+          {listStatus === 'ready' && !searching && contacts.length === 0 && !listError ? (
             <div className="flex flex-col items-center gap-4 px-6 py-12 text-center">
               <span
                 aria-hidden
@@ -265,8 +314,8 @@ export function ContactsPage() {
                     isContact
                     busy={busyId === item.id}
                     disabled={busyId !== null}
-                    onWrite={() => void openChat(item)}
-                    onToggle={() => void toggleContact(item, true)}
+                    onWrite={() => openChat(item)}
+                    onToggle={() => toggleContact(item, true)}
                   />
                 ))}
               </ul>
@@ -278,17 +327,23 @@ export function ContactsPage() {
               <p className="px-4 pt-3 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
                 Найдено
               </p>
-              {globalStatus === 'loading' ? (
+              {showGlobalLoading ? (
                 <p className="px-4 py-4 text-sm text-muted-foreground">Ищем пользователей…</p>
               ) : null}
-              {globalStatus === 'error' ? (
-                <p className="px-4 py-4 text-sm text-destructive" role="alert">
-                  Не удалось найти пользователей
-                </p>
+              {showGlobalError ? (
+                <div className="flex flex-col items-start gap-2 px-4 py-4" role="alert">
+                  <p className="text-sm text-destructive">Не удалось найти пользователей</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSearchRetryKey((value) => value + 1)}
+                  >
+                    Повторить поиск
+                  </Button>
+                </div>
               ) : null}
-              {globalStatus === 'ready' &&
-              globalVisible.length === 0 &&
-              filteredContacts.length === 0 ? (
+              {showGlobalEmpty ? (
                 <p className="px-4 py-6 text-sm text-muted-foreground">Никого не нашли</p>
               ) : null}
               <ul>
@@ -299,15 +354,15 @@ export function ContactsPage() {
                     isContact={false}
                     busy={busyId === item.id}
                     disabled={busyId !== null}
-                    onWrite={() => void openChat(item)}
-                    onToggle={() => void toggleContact(item, false)}
+                    onWrite={() => openChat(item)}
+                    onToggle={() => toggleContact(item, false)}
                   />
                 ))}
               </ul>
             </div>
           ) : null}
 
-          {listError && listStatus === 'ready' ? (
+          {showListRetry && contacts.length > 0 ? (
             <div className="border-t border-border px-4 py-3" role="alert">
               <p className="text-sm text-destructive">{listError}</p>
               <Button
@@ -318,6 +373,22 @@ export function ContactsPage() {
                 onClick={() => setReloadKey((v) => v + 1)}
               >
                 Повторить
+              </Button>
+            </div>
+          ) : null}
+
+          {actionError && pendingAction ? (
+            <div className="border-t border-border px-4 py-3" role="alert">
+              <p className="text-sm text-destructive">{actionError}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                disabled={busyId !== null}
+                onClick={() => void runAction(pendingAction)}
+              >
+                Повторить действие
               </Button>
             </div>
           ) : null}
