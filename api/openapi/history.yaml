@@ -323,8 +323,10 @@ paths:
         активном чате. Пользователь определяется по access JWT, право
         проверяется по участию в чате. Курсор только увеличивается, поэтому
         повторный запрос безопасен. Значение seq не может быть больше last_seq
-        чата. Операция не рассылает событие собеседнику: message.read остаётся
-        функцией этапа 2.
+        чата. Операция меняет только приватный курсор для unread_count,
+        включая после включения этапа 2. Она не меняет публичные курсоры
+        и не рассылает событие message.read. Публичное подтверждение
+        выполняется отдельной командой WebSocket.
       security:
         - accessToken: []
       parameters:
@@ -354,6 +356,91 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /chats/{chat_id}/receipts:
+    get:
+      tags: [Chats]
+      operationId: getChatReceipts
+      summary: Получить публичные курсоры доставки и прочтения личного чата
+      description: >-
+        Контракт этапа 2. При первом открытии личного чата и после reconnect
+        возвращает публичные курсоры обоих текущих участников из одного
+        согласованного снимка History. Пользователь определяется по access JWT.
+        Операция проверяет текущее членство и не меняет курсоры или unread_count.
+        Публичные значения начинаются с нуля. Приватные значения MVP из
+        существующих столбцов last_read_seq и last_delivered_seq не служат
+        источником для снимка или начальных значений. Клиент объединяет снимок и
+        события WebSocket по (chat_id, user_id), применяя максимум отдельно
+        для каждого курсора. Событие read также подтверждает delivered до
+        того же seq. Ошибка снимка не сбрасывает известные значения.
+        Query-параметры и тело запроса не предусмотрены. Access JWT проверяется
+        до проверки пути и query. Любая непустая строка query, включая
+        неизвестные параметры или неверное кодирование, возвращает 422.
+        Для существующего чата членство проверяется до проверки его типа.
+        Ответ со снимком отправляется с Cache-Control: no-store.
+      security:
+        - accessToken: []
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          description: Ненулевой UUID личного чата.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Публичные курсоры обоих текущих участников.
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatReceipts'
+              examples:
+                initial:
+                  summary: Публичные курсоры ещё не продвигались
+                  value:
+                    chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
+                    members:
+                      - user_id: 23968cc7-c30c-47b0-a741-6b81249aa5e7
+                        last_delivered_seq: 0
+                        last_read_seq: 0
+                      - user_id: 8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0
+                        last_delivered_seq: 0
+                        last_read_seq: 0
+                advanced:
+                  summary: Доставка опережает показ для одного из участников
+                  value:
+                    chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
+                    members:
+                      - user_id: 23968cc7-c30c-47b0-a741-6b81249aa5e7
+                        last_delivered_seq: 42
+                        last_read_seq: 38
+                      - user_id: 8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0
+                        last_delivered_seq: 40
+                        last_read_seq: 40
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Некорректный chat_id, непустой query или чат участника не является личным.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                code: validation_error
+                message: Некорректный запрос.
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
@@ -736,6 +823,47 @@ components:
           minimum: 0
           maximum: 9007199254740991
           description: Число сообщений других участников после last_read_seq текущего пользователя.
+    ChatReceipts:
+      type: object
+      additionalProperties: false
+      required: [chat_id, members]
+      properties:
+        chat_id:
+          type: string
+          format: uuid
+        members:
+          type: array
+          minItems: 2
+          maxItems: 2
+          description: >-
+            Одна запись на каждого из двух участников, включая запрашивающего.
+            user_id различаются. Потребитель сопоставляет записи по user_id;
+            порядок массива значения не имеет.
+          items:
+            $ref: '#/components/schemas/MemberReceipts'
+    MemberReceipts:
+      type: object
+      additionalProperties: false
+      required: [user_id, last_delivered_seq, last_read_seq]
+      description: >-
+        Публичные курсоры участника. Выполняется
+        0 <= last_read_seq <= last_delivered_seq <= last_seq чата.
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        last_delivered_seq:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+          description: Последняя подтверждённая граница доставки.
+        last_read_seq:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+          description: Последняя публично подтверждённая граница прочтения.
     MarkChatReadRequest:
       type: object
       additionalProperties: false

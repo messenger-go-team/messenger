@@ -22,6 +22,55 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type ReceiptKind int32
+
+const (
+	ReceiptKind_RECEIPT_KIND_UNSPECIFIED ReceiptKind = 0
+	ReceiptKind_RECEIPT_KIND_DELIVERED   ReceiptKind = 1
+	ReceiptKind_RECEIPT_KIND_READ        ReceiptKind = 2
+)
+
+// Enum value maps for ReceiptKind.
+var (
+	ReceiptKind_name = map[int32]string{
+		0: "RECEIPT_KIND_UNSPECIFIED",
+		1: "RECEIPT_KIND_DELIVERED",
+		2: "RECEIPT_KIND_READ",
+	}
+	ReceiptKind_value = map[string]int32{
+		"RECEIPT_KIND_UNSPECIFIED": 0,
+		"RECEIPT_KIND_DELIVERED":   1,
+		"RECEIPT_KIND_READ":        2,
+	}
+)
+
+func (x ReceiptKind) Enum() *ReceiptKind {
+	p := new(ReceiptKind)
+	*p = x
+	return p
+}
+
+func (x ReceiptKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ReceiptKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_history_proto_enumTypes[0].Descriptor()
+}
+
+func (ReceiptKind) Type() protoreflect.EnumType {
+	return &file_history_proto_enumTypes[0]
+}
+
+func (x ReceiptKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ReceiptKind.Descriptor instead.
+func (ReceiptKind) EnumDescriptor() ([]byte, []int) {
+	return file_history_proto_rawDescGZIP(), []int{0}
+}
+
 type SaveMessageRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Required UUID of a chat already created through history REST.
@@ -367,6 +416,146 @@ func (x *CheckMembershipResponse) GetIsMember() bool {
 	return false
 }
 
+type AdvanceReceiptRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Required canonical, non-zero UUID of the chat.
+	ChatId string `protobuf:"bytes,1,opt,name=chat_id,json=chatId,proto3" json:"chat_id,omitempty"`
+	// Required canonical, non-zero UUID from the access JWT verified by Chat.
+	ActorId string `protobuf:"bytes,2,opt,name=actor_id,json=actorId,proto3" json:"actor_id,omitempty"`
+	// Only DELIVERED and READ are accepted.
+	Kind ReceiptKind `protobuf:"varint,3,opt,name=kind,proto3,enum=messenger.history.v1.ReceiptKind" json:"kind,omitempty"`
+	// Must be present. Zero is a valid cursor, distinct from an omitted field.
+	Seq           *int64 `protobuf:"varint,4,opt,name=seq,proto3,oneof" json:"seq,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AdvanceReceiptRequest) Reset() {
+	*x = AdvanceReceiptRequest{}
+	mi := &file_history_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdvanceReceiptRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdvanceReceiptRequest) ProtoMessage() {}
+
+func (x *AdvanceReceiptRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_history_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdvanceReceiptRequest.ProtoReflect.Descriptor instead.
+func (*AdvanceReceiptRequest) Descriptor() ([]byte, []int) {
+	return file_history_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *AdvanceReceiptRequest) GetChatId() string {
+	if x != nil {
+		return x.ChatId
+	}
+	return ""
+}
+
+func (x *AdvanceReceiptRequest) GetActorId() string {
+	if x != nil {
+		return x.ActorId
+	}
+	return ""
+}
+
+func (x *AdvanceReceiptRequest) GetKind() ReceiptKind {
+	if x != nil {
+		return x.Kind
+	}
+	return ReceiptKind_RECEIPT_KIND_UNSPECIFIED
+}
+
+func (x *AdvanceReceiptRequest) GetSeq() int64 {
+	if x != nil && x.Seq != nil {
+		return *x.Seq
+	}
+	return 0
+}
+
+type AdvanceReceiptResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The actor's committed public cursors after the operation, initially zero.
+	// Neither cursor is initialized or derived from the legacy MVP columns.
+	// DELIVERED takes max(old delivered, seq) and leaves both read cursors alone.
+	// READ takes max(current, seq) for public delivered, public read and private
+	// last_read_seq (unread_count) in the same transaction.
+	// 0 <= public read <= public delivered <= chat.last_seq at commit.
+	LastDeliveredSeq int64 `protobuf:"varint,1,opt,name=last_delivered_seq,json=lastDeliveredSeq,proto3" json:"last_delivered_seq,omitempty"`
+	LastReadSeq      int64 `protobuf:"varint,2,opt,name=last_read_seq,json=lastReadSeq,proto3" json:"last_read_seq,omitempty"`
+	// True if this transaction increased public last_delivered_seq, compared
+	// with its value before the update. False for a repeat without advancement.
+	DeliveredAdvanced bool `protobuf:"varint,3,opt,name=delivered_advanced,json=deliveredAdvanced,proto3" json:"delivered_advanced,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *AdvanceReceiptResponse) Reset() {
+	*x = AdvanceReceiptResponse{}
+	mi := &file_history_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdvanceReceiptResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdvanceReceiptResponse) ProtoMessage() {}
+
+func (x *AdvanceReceiptResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_history_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdvanceReceiptResponse.ProtoReflect.Descriptor instead.
+func (*AdvanceReceiptResponse) Descriptor() ([]byte, []int) {
+	return file_history_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *AdvanceReceiptResponse) GetLastDeliveredSeq() int64 {
+	if x != nil {
+		return x.LastDeliveredSeq
+	}
+	return 0
+}
+
+func (x *AdvanceReceiptResponse) GetLastReadSeq() int64 {
+	if x != nil {
+		return x.LastReadSeq
+	}
+	return 0
+}
+
+func (x *AdvanceReceiptResponse) GetDeliveredAdvanced() bool {
+	if x != nil {
+		return x.DeliveredAdvanced
+	}
+	return false
+}
+
 var File_history_proto protoreflect.FileDescriptor
 
 const file_history_proto_rawDesc = "" +
@@ -393,11 +582,26 @@ const file_history_proto_rawDesc = "" +
 	"\achat_id\x18\x01 \x01(\tR\x06chatId\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\"6\n" +
 	"\x17CheckMembershipResponse\x12\x1b\n" +
-	"\tis_member\x18\x01 \x01(\bR\bisMember2\xd1\x02\n" +
+	"\tis_member\x18\x01 \x01(\bR\bisMember\"\xa1\x01\n" +
+	"\x15AdvanceReceiptRequest\x12\x17\n" +
+	"\achat_id\x18\x01 \x01(\tR\x06chatId\x12\x19\n" +
+	"\bactor_id\x18\x02 \x01(\tR\aactorId\x125\n" +
+	"\x04kind\x18\x03 \x01(\x0e2!.messenger.history.v1.ReceiptKindR\x04kind\x12\x15\n" +
+	"\x03seq\x18\x04 \x01(\x03H\x00R\x03seq\x88\x01\x01B\x06\n" +
+	"\x04_seq\"\x99\x01\n" +
+	"\x16AdvanceReceiptResponse\x12,\n" +
+	"\x12last_delivered_seq\x18\x01 \x01(\x03R\x10lastDeliveredSeq\x12\"\n" +
+	"\rlast_read_seq\x18\x02 \x01(\x03R\vlastReadSeq\x12-\n" +
+	"\x12delivered_advanced\x18\x03 \x01(\bR\x11deliveredAdvanced*^\n" +
+	"\vReceiptKind\x12\x1c\n" +
+	"\x18RECEIPT_KIND_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16RECEIPT_KIND_DELIVERED\x10\x01\x12\x15\n" +
+	"\x11RECEIPT_KIND_READ\x10\x022\xbe\x03\n" +
 	"\x0eHistoryService\x12b\n" +
 	"\vSaveMessage\x12(.messenger.history.v1.SaveMessageRequest\x1a).messenger.history.v1.SaveMessageResponse\x12k\n" +
 	"\x0eGetChatMembers\x12+.messenger.history.v1.GetChatMembersRequest\x1a,.messenger.history.v1.GetChatMembersResponse\x12n\n" +
-	"\x0fCheckMembership\x12,.messenger.history.v1.CheckMembershipRequest\x1a-.messenger.history.v1.CheckMembershipResponseBEZCgithub.com/messenger-go-team/messenger/api/gen/history/v1;historyv1b\x06proto3"
+	"\x0fCheckMembership\x12,.messenger.history.v1.CheckMembershipRequest\x1a-.messenger.history.v1.CheckMembershipResponse\x12k\n" +
+	"\x0eAdvanceReceipt\x12+.messenger.history.v1.AdvanceReceiptRequest\x1a,.messenger.history.v1.AdvanceReceiptResponseBEZCgithub.com/messenger-go-team/messenger/api/gen/history/v1;historyv1b\x06proto3"
 
 var (
 	file_history_proto_rawDescOnce sync.Once
@@ -411,29 +615,36 @@ func file_history_proto_rawDescGZIP() []byte {
 	return file_history_proto_rawDescData
 }
 
-var file_history_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_history_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_history_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_history_proto_goTypes = []any{
-	(*SaveMessageRequest)(nil),      // 0: messenger.history.v1.SaveMessageRequest
-	(*SaveMessageResponse)(nil),     // 1: messenger.history.v1.SaveMessageResponse
-	(*GetChatMembersRequest)(nil),   // 2: messenger.history.v1.GetChatMembersRequest
-	(*GetChatMembersResponse)(nil),  // 3: messenger.history.v1.GetChatMembersResponse
-	(*CheckMembershipRequest)(nil),  // 4: messenger.history.v1.CheckMembershipRequest
-	(*CheckMembershipResponse)(nil), // 5: messenger.history.v1.CheckMembershipResponse
-	(*timestamppb.Timestamp)(nil),   // 6: google.protobuf.Timestamp
+	(ReceiptKind)(0),                // 0: messenger.history.v1.ReceiptKind
+	(*SaveMessageRequest)(nil),      // 1: messenger.history.v1.SaveMessageRequest
+	(*SaveMessageResponse)(nil),     // 2: messenger.history.v1.SaveMessageResponse
+	(*GetChatMembersRequest)(nil),   // 3: messenger.history.v1.GetChatMembersRequest
+	(*GetChatMembersResponse)(nil),  // 4: messenger.history.v1.GetChatMembersResponse
+	(*CheckMembershipRequest)(nil),  // 5: messenger.history.v1.CheckMembershipRequest
+	(*CheckMembershipResponse)(nil), // 6: messenger.history.v1.CheckMembershipResponse
+	(*AdvanceReceiptRequest)(nil),   // 7: messenger.history.v1.AdvanceReceiptRequest
+	(*AdvanceReceiptResponse)(nil),  // 8: messenger.history.v1.AdvanceReceiptResponse
+	(*timestamppb.Timestamp)(nil),   // 9: google.protobuf.Timestamp
 }
 var file_history_proto_depIdxs = []int32{
-	6, // 0: messenger.history.v1.SaveMessageResponse.created_at:type_name -> google.protobuf.Timestamp
-	0, // 1: messenger.history.v1.HistoryService.SaveMessage:input_type -> messenger.history.v1.SaveMessageRequest
-	2, // 2: messenger.history.v1.HistoryService.GetChatMembers:input_type -> messenger.history.v1.GetChatMembersRequest
-	4, // 3: messenger.history.v1.HistoryService.CheckMembership:input_type -> messenger.history.v1.CheckMembershipRequest
-	1, // 4: messenger.history.v1.HistoryService.SaveMessage:output_type -> messenger.history.v1.SaveMessageResponse
-	3, // 5: messenger.history.v1.HistoryService.GetChatMembers:output_type -> messenger.history.v1.GetChatMembersResponse
-	5, // 6: messenger.history.v1.HistoryService.CheckMembership:output_type -> messenger.history.v1.CheckMembershipResponse
-	4, // [4:7] is the sub-list for method output_type
-	1, // [1:4] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	9, // 0: messenger.history.v1.SaveMessageResponse.created_at:type_name -> google.protobuf.Timestamp
+	0, // 1: messenger.history.v1.AdvanceReceiptRequest.kind:type_name -> messenger.history.v1.ReceiptKind
+	1, // 2: messenger.history.v1.HistoryService.SaveMessage:input_type -> messenger.history.v1.SaveMessageRequest
+	3, // 3: messenger.history.v1.HistoryService.GetChatMembers:input_type -> messenger.history.v1.GetChatMembersRequest
+	5, // 4: messenger.history.v1.HistoryService.CheckMembership:input_type -> messenger.history.v1.CheckMembershipRequest
+	7, // 5: messenger.history.v1.HistoryService.AdvanceReceipt:input_type -> messenger.history.v1.AdvanceReceiptRequest
+	2, // 6: messenger.history.v1.HistoryService.SaveMessage:output_type -> messenger.history.v1.SaveMessageResponse
+	4, // 7: messenger.history.v1.HistoryService.GetChatMembers:output_type -> messenger.history.v1.GetChatMembersResponse
+	6, // 8: messenger.history.v1.HistoryService.CheckMembership:output_type -> messenger.history.v1.CheckMembershipResponse
+	8, // 9: messenger.history.v1.HistoryService.AdvanceReceipt:output_type -> messenger.history.v1.AdvanceReceiptResponse
+	6, // [6:10] is the sub-list for method output_type
+	2, // [2:6] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_history_proto_init() }
@@ -441,18 +652,20 @@ func file_history_proto_init() {
 	if File_history_proto != nil {
 		return
 	}
+	file_history_proto_msgTypes[6].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_history_proto_rawDesc), len(file_history_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   6,
+			NumEnums:      1,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_history_proto_goTypes,
 		DependencyIndexes: file_history_proto_depIdxs,
+		EnumInfos:         file_history_proto_enumTypes,
 		MessageInfos:      file_history_proto_msgTypes,
 	}.Build()
 	File_history_proto = out.File
