@@ -59,9 +59,10 @@ export function getMe(accessToken: string): Promise<User> {
 }
 
 /** Получает новую пару сессии через HttpOnly refresh cookie, отправляемую `apiRequest`. */
-export function refresh(): Promise<AccessTokenResponse> {
+export function refresh(init?: { signal?: AbortSignal }): Promise<AccessTokenResponse> {
   return apiRequest<AccessTokenResponse>('/auth/refresh', {
     method: 'POST',
+    signal: init?.signal,
   })
 }
 

@@ -96,6 +96,7 @@ describe('AuthProvider session races', () => {
     vi.useRealTimers()
     vi.resetAllMocks()
     sessionStorage.clear()
+    localStorage.clear()
     resetSharedRefreshCoordinatorForTests()
   })
 

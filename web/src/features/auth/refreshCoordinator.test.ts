@@ -1,32 +1,70 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AccessTokenResponse } from '@/api/auth'
+import { ApiError } from '@/api/client'
 import {
+  createMemoryRefreshStore,
   createRefreshCoordinator,
   RefreshCancelledError,
+  RefreshFinalError,
+  RefreshTimeoutError,
   type BroadcastChannelLike,
   type RefreshCoordinatorMessage,
+  type RefreshSharedStore,
 } from '@/features/auth/refreshCoordinator'
 
 function session(token: string): AccessTokenResponse {
   return { token_type: 'Bearer', access_token: token, expires_in: 900 }
 }
 
-/** Общий exclusive lock для нескольких «вкладок» в одном процессе. */
+/** Общий exclusive lock с поддержкой AbortSignal (очередь + отмена ожидания). */
 function createSerialLockManager(): Pick<LockManager, 'request'> {
-  let chain: Promise<unknown> = Promise.resolve()
-  const request = (<T>(_name: string, callback: LockGrantedCallback<T>): Promise<T> => {
-    const run = chain.then(() => callback({ name: _name } as Lock))
-    chain = run.then(
-      () => undefined,
-      () => undefined,
-    )
-    return run as Promise<T>
+  let tail: Promise<void> = Promise.resolve()
+  const abortedError = () => new DOMException('Aborted', 'AbortError')
+
+  const request = ((
+    name: string,
+    optionsOrCallback: LockOptions | LockGrantedCallback<unknown>,
+    maybeCallback?: LockGrantedCallback<unknown>,
+  ) => {
+    const callback = typeof optionsOrCallback === 'function' ? optionsOrCallback : maybeCallback!
+    const options = typeof optionsOrCallback === 'function' ? undefined : optionsOrCallback
+    const signal = options?.signal
+
+    if (signal?.aborted) {
+      return Promise.reject(abortedError())
+    }
+
+    return new Promise<unknown>((resolve, reject) => {
+      let cancelled = false
+      const onAbort = () => {
+        cancelled = true
+        reject(abortedError())
+      }
+      signal?.addEventListener('abort', onAbort)
+
+      const run = async () => {
+        if (cancelled || signal?.aborted) return
+        try {
+          resolve(await callback({ name } as Lock))
+        } catch (error) {
+          reject(error)
+        } finally {
+          signal?.removeEventListener('abort', onAbort)
+        }
+      }
+
+      tail = tail.then(run, run).then(
+        () => undefined,
+        () => undefined,
+      )
+    })
   }) as LockManager['request']
   return { request }
 }
 
-function createChannelHub() {
+function createChannelHub(options?: { asyncDelivery?: boolean }) {
   const subscribers = new Set<(message: RefreshCoordinatorMessage) => void>()
+  const asyncDelivery = options?.asyncDelivery ?? false
 
   return {
     createChannel(name: string): BroadcastChannelLike {
@@ -35,10 +73,14 @@ function createChannelHub() {
       const channel: BroadcastChannelLike = {
         onmessage: null,
         postMessage(message) {
-          // Как настоящий BroadcastChannel: отправитель своё сообщение не получает.
-          for (const notify of subscribers) {
-            if (notify !== deliver) notify(message)
+          const send = () => {
+            for (const notify of subscribers) {
+              if (notify !== deliver) notify(message)
+            }
           }
+          // Как в спецификации: доставка другим контекстам не синхронна с postMessage.
+          if (asyncDelivery) queueMicrotask(send)
+          else send()
         },
         close() {
           if (deliver) subscribers.delete(deliver)
@@ -53,26 +95,35 @@ function createChannelHub() {
   }
 }
 
+function createTab(
+  refresh: (signal: AbortSignal) => Promise<AccessTokenResponse>,
+  locks: Pick<LockManager, 'request'>,
+  hub: ReturnType<typeof createChannelHub>,
+  store: RefreshSharedStore,
+  extras?: { waitTimeoutMs?: number },
+) {
+  return createRefreshCoordinator({
+    refresh,
+    locks,
+    createChannel: hub.createChannel,
+    store,
+    waitTimeoutMs: extras?.waitTimeoutMs,
+  })
+}
+
 describe('createRefreshCoordinator', () => {
   afterEach(() => {
     vi.useRealTimers()
   })
 
   it('runs a single refresh when two tabs request at once', async () => {
-    const refresh = vi.fn().mockResolvedValue(session('access-1'))
+    const refresh = vi.fn(async () => session('access-1'))
     const locks = createSerialLockManager()
     const hub = createChannelHub()
+    const store = createMemoryRefreshStore()
 
-    const tabA = createRefreshCoordinator({
-      refresh,
-      locks,
-      createChannel: hub.createChannel,
-    })
-    const tabB = createRefreshCoordinator({
-      refresh,
-      locks,
-      createChannel: hub.createChannel,
-    })
+    const tabA = createTab(refresh, locks, hub, store)
+    const tabB = createTab(refresh, locks, hub, store)
 
     const [a, b] = await Promise.all([tabA.requestRefresh(), tabB.requestRefresh()])
 
@@ -84,29 +135,81 @@ describe('createRefreshCoordinator', () => {
     tabB.dispose()
   })
 
-  it('delivers remote success to success listeners without a second refresh', async () => {
-    const refresh = vi.fn().mockResolvedValue(session('access-2'))
+  it('still runs a single refresh when BroadcastChannel delivery is async', async () => {
+    let releaseRefresh!: (value: AccessTokenResponse) => void
+    const refresh = vi.fn(
+      () =>
+        new Promise<AccessTokenResponse>((resolve) => {
+          releaseRefresh = resolve
+        }),
+    )
+    const locks = createSerialLockManager()
+    const hub = createChannelHub({ asyncDelivery: true })
+    const store = createMemoryRefreshStore()
+
+    const tabA = createTab(refresh, locks, hub, store)
+    const tabB = createTab(refresh, locks, hub, store)
+
+    const pendingA = tabA.requestRefresh()
+    const pendingB = tabB.requestRefresh()
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+
+    releaseRefresh(session('access-async'))
+    const [a, b] = await Promise.all([pendingA, pendingB])
+
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(a.access_token).toBe('access-async')
+    expect(b.access_token).toBe('access-async')
+
+    tabA.dispose()
+    tabB.dispose()
+  })
+
+  it('keeps one POST after account_switch when tabs share sessionEpoch', async () => {
+    const refresh = vi.fn(async () => session('after-switch'))
+    const locks = createSerialLockManager()
+    const hub = createChannelHub({ asyncDelivery: true })
+    const store = createMemoryRefreshStore(0)
+
+    const tabA = createTab(refresh, locks, hub, store)
+    await tabA.cancel('account_switch')
+    expect(tabA.getSessionEpoch()).toBe(1)
+    expect(store.getEpoch()).toBe(1)
+
+    // Новая вкладка читает общий epoch, а не локальный 0.
+    const tabB = createTab(refresh, locks, hub, store)
+    expect(tabB.getSessionEpoch()).toBe(1)
+
+    const [a, b] = await Promise.all([tabA.requestRefresh(), tabB.requestRefresh()])
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(a.access_token).toBe('after-switch')
+    expect(b.access_token).toBe('after-switch')
+
+    tabA.dispose()
+    tabB.dispose()
+  })
+
+  it('delivers success to listeners for local and remote refresh', async () => {
+    const refresh = vi.fn(async () => session('access-2'))
     const locks = createSerialLockManager()
     const hub = createChannelHub()
-    const heard: string[] = []
+    const store = createMemoryRefreshStore()
+    const localHeard: string[] = []
+    const remoteHeard: string[] = []
 
-    const leader = createRefreshCoordinator({
-      refresh,
-      locks,
-      createChannel: hub.createChannel,
-    })
-    const follower = createRefreshCoordinator({
-      refresh,
-      locks,
-      createChannel: hub.createChannel,
+    const leader = createTab(refresh, locks, hub, store)
+    const follower = createTab(refresh, locks, hub, store)
+    leader.subscribeSuccess((next) => {
+      localHeard.push(next.access_token)
     })
     follower.subscribeSuccess((next) => {
-      heard.push(next.access_token)
+      remoteHeard.push(next.access_token)
     })
 
     await leader.requestRefresh()
     await vi.waitFor(() => {
-      expect(heard).toEqual(['access-2'])
+      expect(localHeard).toEqual(['access-2'])
+      expect(remoteHeard).toEqual(['access-2'])
     })
     expect(refresh).toHaveBeenCalledTimes(1)
 
@@ -114,55 +217,109 @@ describe('createRefreshCoordinator', () => {
     follower.dispose()
   })
 
-  it('cancel rejects in-flight refresh and ignores a late success', async () => {
+  it('cancel aborts the in-flight refresh signal and remote tab adopts epoch', async () => {
+    const signals: AbortSignal[] = []
     let resolveRefresh!: (value: AccessTokenResponse) => void
     const refresh = vi.fn(
-      () =>
+      (signal: AbortSignal) =>
         new Promise<AccessTokenResponse>((resolve) => {
+          signals.push(signal)
           resolveRefresh = resolve
         }),
     )
     const locks = createSerialLockManager()
     const hub = createChannelHub()
-    const coordinator = createRefreshCoordinator({
-      refresh,
-      locks,
-      createChannel: hub.createChannel,
-    })
+    const store = createMemoryRefreshStore()
+    const leader = createTab(refresh, locks, hub, store)
+    const follower = createTab(refresh, locks, hub, store)
+    const invalidated = vi.fn()
+    follower.subscribeInvalidated(invalidated)
 
-    const pending = coordinator.requestRefresh()
+    const pending = leader.requestRefresh()
     await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
-    coordinator.cancel('logout')
 
+    await leader.cancel('logout')
     await expect(pending).rejects.toBeInstanceOf(RefreshCancelledError)
+    expect(signals[0]?.aborted).toBe(true)
 
-    const lateListener = vi.fn()
-    coordinator.subscribeSuccess(lateListener)
+    await vi.waitFor(() => expect(invalidated).toHaveBeenCalled())
+    expect(follower.getSessionEpoch()).toBe(leader.getSessionEpoch())
+
     resolveRefresh(session('late-token'))
     await Promise.resolve()
-    expect(lateListener).not.toHaveBeenCalled()
+    expect(store.readOutcome()).toBeNull()
 
-    coordinator.dispose()
+    leader.dispose()
+    follower.dispose()
   })
 
-  it('lets the waiting tab refresh after the leader fails without a success broadcast', async () => {
+  it('timeout aborts a queued lock wait so a late grant does not POST', async () => {
+    let releaseLeader!: (value: AccessTokenResponse) => void
+    const refresh = vi.fn(
+      () =>
+        new Promise<AccessTokenResponse>((resolve) => {
+          releaseLeader = resolve
+        }),
+    )
+    const locks = createSerialLockManager()
+    const hub = createChannelHub()
+    const store = createMemoryRefreshStore()
+
+    const leader = createTab(refresh, locks, hub, store, { waitTimeoutMs: 5_000 })
+    const waiter = createTab(refresh, locks, hub, store, { waitTimeoutMs: 30 })
+
+    const leaderPending = leader.requestRefresh()
+    const waiterPending = waiter.requestRefresh()
+    // Подписываемся до таймаута, иначе Vitest видит unhandled rejection.
+    const waiterRejected = expect(waiterPending).rejects.toBeInstanceOf(RefreshTimeoutError)
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+    await waiterRejected
+
+    releaseLeader(session('leader-done'))
+    await expect(leaderPending).resolves.toMatchObject({ access_token: 'leader-done' })
+    // После таймаута waiter не должен стартовать свой POST, когда lock освободится.
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(refresh).toHaveBeenCalledTimes(1)
+
+    leader.dispose()
+    waiter.dispose()
+  })
+
+  it('final 401 is shared: one POST, both tabs fail without a second refresh', async () => {
+    const refresh = vi.fn(async () => {
+      throw new ApiError(401, 'unauthorized', 'refresh rejected')
+    })
+    const locks = createSerialLockManager()
+    const hub = createChannelHub({ asyncDelivery: true })
+    const store = createMemoryRefreshStore()
+
+    const tabA = createTab(refresh, locks, hub, store)
+    const tabB = createTab(refresh, locks, hub, store)
+
+    const [a, b] = await Promise.allSettled([tabA.requestRefresh(), tabB.requestRefresh()])
+
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(a.status).toBe('rejected')
+    expect(b.status).toBe('rejected')
+    if (a.status === 'rejected') expect(a.reason).toBeInstanceOf(RefreshFinalError)
+    if (b.status === 'rejected') expect(b.reason).toBeInstanceOf(RefreshFinalError)
+
+    tabA.dispose()
+    tabB.dispose()
+  })
+
+  it('lets the waiting tab refresh after a temporary leader failure', async () => {
     const refresh = vi
-      .fn()
+      .fn<(signal: AbortSignal) => Promise<AccessTokenResponse>>()
       .mockRejectedValueOnce(new Error('leader_tab_crashed'))
       .mockResolvedValueOnce(session('recovered'))
     const locks = createSerialLockManager()
     const hub = createChannelHub()
+    const store = createMemoryRefreshStore()
 
-    const leader = createRefreshCoordinator({
-      refresh,
-      locks,
-      createChannel: hub.createChannel,
-    })
-    const waiter = createRefreshCoordinator({
-      refresh,
-      locks,
-      createChannel: hub.createChannel,
-    })
+    const leader = createTab(refresh, locks, hub, store)
+    const waiter = createTab(refresh, locks, hub, store)
 
     const leaderPending = leader.requestRefresh()
     const waiterPending = waiter.requestRefresh()
