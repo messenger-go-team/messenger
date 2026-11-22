@@ -40,6 +40,7 @@ function renderContacts(auth: AuthContextValue) {
         <Routes>
           <Route path="/contacts" element={<ContactsPage />} />
           <Route path="/chats/:chatId" element={<h1>Чат</h1>} />
+          <Route path="/profile" element={<h1>Профиль</h1>} />
         </Routes>
       </MemoryRouter>
     </AuthContext.Provider>,
@@ -47,6 +48,16 @@ function renderContacts(auth: AuthContextValue) {
 }
 
 describe('ContactsPage', () => {
+  it('opens profile from the navigation link', async () => {
+    server.use(http.get('/contacts', () => HttpResponse.json({ contacts: [] })))
+    const auth = await authValue()
+    const user = userEvent.setup()
+    renderContacts(auth)
+
+    await user.click(await screen.findByRole('link', { name: 'Профиль' }))
+    expect(await screen.findByRole('heading', { name: 'Профиль' })).toBeInTheDocument()
+  })
+
   it('shows empty state when there are no contacts', async () => {
     server.use(http.get('/contacts', () => HttpResponse.json({ contacts: [] })))
     const auth = await authValue()

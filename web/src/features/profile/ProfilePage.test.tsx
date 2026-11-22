@@ -31,6 +31,7 @@ function renderProfile(logout: AuthContextValue['logout'] = vi.fn(async () => un
         <MemoryRouter initialEntries={['/profile']}>
           <Routes>
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/change-password" element={<h1>Смена пароля</h1>} />
           </Routes>
         </MemoryRouter>
       </AuthContext.Provider>,
@@ -97,5 +98,11 @@ describe('ProfilePage', () => {
     renderProfile()
     const main = screen.getByRole('main')
     expect(main.className).toMatch(/overflow-y-auto/)
+  })
+
+  it('opens change-password from the profile action', async () => {
+    const { user } = renderProfile()
+    await user.click(screen.getByRole('link', { name: 'Сменить пароль' }))
+    expect(await screen.findByRole('heading', { name: 'Смена пароля' })).toBeInTheDocument()
   })
 })
