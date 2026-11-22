@@ -94,7 +94,7 @@ export function ContactsPage() {
       return () => window.clearTimeout(clearTimer)
     }
 
-  const requestId = ++searchRequestRef.current
+    const requestId = ++searchRequestRef.current
     const prefixForRequest = prefix
     const timer = window.setTimeout(() => {
       void (async () => {
