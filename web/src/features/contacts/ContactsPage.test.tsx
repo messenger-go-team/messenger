@@ -215,6 +215,53 @@ describe('ContactsPage', () => {
     expect(screen.queryByText('Пока нет контактов')).not.toBeInTheDocument()
   })
 
+  it('shows list retry after add when refresh fails on empty contacts', async () => {
+    addUser({
+      id: CHARLIE_ID,
+      username: 'charlie_3',
+      password: 'test-password',
+      created_at: '2026-11-01T10:10:00Z',
+    })
+    let contactsCalls = 0
+    let putCalls = 0
+    server.use(
+      http.get('/contacts', () => {
+        contactsCalls += 1
+        if (contactsCalls === 1) return HttpResponse.json({ contacts: [] })
+        if (contactsCalls === 2) {
+          return HttpResponse.json({ code: 'unavailable', message: 'down' }, { status: 503 })
+        }
+        return HttpResponse.json({
+          contacts: [{ id: CHARLIE_ID, username: 'charlie_3' }],
+        })
+      }),
+      http.get('/users/search', () =>
+        HttpResponse.json({ users: [{ id: CHARLIE_ID, username: 'charlie_3' }] }),
+      ),
+      http.put(`/contacts/${CHARLIE_ID}`, () => {
+        putCalls += 1
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    const auth = await authValue()
+    const user = userEvent.setup()
+    renderContacts(auth)
+
+    expect(await screen.findByText('Пока нет контактов')).toBeInTheDocument()
+    await user.type(screen.getByRole('searchbox'), 'char')
+    expect(await screen.findByRole('button', { name: /Добавить charlie_3/i })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Добавить charlie_3/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/не удалось загрузить контакты/i)
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Добавить charlie_3/i })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByRole('button', { name: /Удалить charlie_3/i })).toBeInTheDocument()
+    expect(putCalls).toBe(1)
+  })
+
   it('keeps the last contacts list and shows retry when reload fails', async () => {
     addUser({
       id: CHARLIE_ID,

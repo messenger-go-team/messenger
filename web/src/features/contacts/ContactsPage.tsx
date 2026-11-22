@@ -275,7 +275,7 @@ export function ContactsPage() {
             </p>
           ) : null}
 
-          {listStatus === 'error' && contacts.length === 0 ? (
+          {listError && contacts.length === 0 ? (
             <div className="flex flex-col items-start gap-3 px-4 py-6" role="alert">
               <p className="text-sm text-destructive">{listError}</p>
               <Button type="button" variant="outline" onClick={() => setReloadKey((v) => v + 1)}>
