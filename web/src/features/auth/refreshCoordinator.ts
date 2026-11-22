@@ -453,7 +453,8 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     // Отмена только при реальном продвижении эпохи; запоздалый cancel той же эпохи
     // не рвёт refresh, уже стартовавший после sync из store.
     if (advancing) {
-      if (localAbort) abortWith(localAbort, new RefreshCancelledError(`refresh_cancelled_${reason}`))
+      if (localAbort)
+        abortWith(localAbort, new RefreshCancelledError(`refresh_cancelled_${reason}`))
       localAbort = null
       localInFlight = null
       localInFlightOpId = null

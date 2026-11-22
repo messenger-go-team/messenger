@@ -545,9 +545,9 @@ describe('createRefreshCoordinator', () => {
     const locks: Pick<LockManager, 'request'> = {
       request: ((...args: Parameters<LockManager['request']>) => {
         lockRequests += 1
-        return (baseLocks.request as (...a: Parameters<LockManager['request']>) => Promise<unknown>)(
-          ...args,
-        )
+        return (
+          baseLocks.request as (...a: Parameters<LockManager['request']>) => Promise<unknown>
+        )(...args)
       }) as LockManager['request'],
     }
     // session-cancelled доходит после того, как B уже взяла lock со старой эпохой.
@@ -685,41 +685,37 @@ describe('createRefreshCoordinator', () => {
     probe.close()
   })
 
-  it(
-    'waits for leader JWT after cache TTL without a second POST',
-    async () => {
-      vi.useFakeTimers()
-      let releaseRefresh!: (value: AccessTokenResponse) => void
-      const refresh = vi.fn(
-        () =>
-          new Promise<AccessTokenResponse>((resolve) => {
-            releaseRefresh = resolve
-          }),
-      )
-      const locks = createSerialLockManager()
-      const hub = createChannelHub({ delayMs: 5_200 })
-      const store = createMemoryRefreshStore()
-      const tabA = createTab(refresh, locks, hub, store)
-      const tabB = createTab(refresh, locks, hub, store)
+  it('waits for leader JWT after cache TTL without a second POST', async () => {
+    vi.useFakeTimers()
+    let releaseRefresh!: (value: AccessTokenResponse) => void
+    const refresh = vi.fn(
+      () =>
+        new Promise<AccessTokenResponse>((resolve) => {
+          releaseRefresh = resolve
+        }),
+    )
+    const locks = createSerialLockManager()
+    const hub = createChannelHub({ delayMs: 5_200 })
+    const store = createMemoryRefreshStore()
+    const tabA = createTab(refresh, locks, hub, store)
+    const tabB = createTab(refresh, locks, hub, store)
 
-      const pendingA = tabA.requestRefresh()
-      const pendingB = tabB.requestRefresh()
-      await Promise.resolve()
-      await Promise.resolve()
-      expect(refresh).toHaveBeenCalledTimes(1)
-      releaseRefresh(session('leader-after-ttl'))
+    const pendingA = tabA.requestRefresh()
+    const pendingB = tabB.requestRefresh()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(refresh).toHaveBeenCalledTimes(1)
+    releaseRefresh(session('leader-after-ttl'))
 
-      await vi.advanceTimersByTimeAsync(5_200)
-      const [a, b] = await Promise.all([pendingA, pendingB])
-      expect(refresh).toHaveBeenCalledTimes(1)
-      expect(a.access_token).toBe('leader-after-ttl')
-      expect(b.access_token).toBe('leader-after-ttl')
+    await vi.advanceTimersByTimeAsync(5_200)
+    const [a, b] = await Promise.all([pendingA, pendingB])
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(a.access_token).toBe('leader-after-ttl')
+    expect(b.access_token).toBe('leader-after-ttl')
 
-      tabA.dispose()
-      tabB.dispose()
-    },
-    15_000,
-  )
+    tabA.dispose()
+    tabB.dispose()
+  }, 15_000)
 
   it('times out waiting for a vanished leader JWT without issuing another POST', async () => {
     vi.useFakeTimers()
