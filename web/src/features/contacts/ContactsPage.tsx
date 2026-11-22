@@ -215,7 +215,7 @@ export function ContactsPage() {
         </div>
         <div className="flex flex-col items-center gap-2">
           <Link
-            to="/change-password"
+            to="/profile"
             className="inline-flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent"
             aria-label="Профиль"
           >

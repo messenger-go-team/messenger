@@ -250,7 +250,7 @@ export function ChatListPage() {
           </NavIcon>
         </div>
         <div className="flex flex-col items-center gap-2">
-          <NavIcon label="Профиль" to="/change-password">
+          <NavIcon label="Профиль" to="/profile">
             <User className="size-5" />
           </NavIcon>
           <Button
