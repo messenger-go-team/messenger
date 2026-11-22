@@ -731,6 +731,79 @@ describe('ChatThread', () => {
     expect(await screen.findByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
   })
 
+  it('does not show new-messages chip when before_seq pagination prepends older incoming', async () => {
+    server.use(
+      http.get(`/chats/${INITIAL_CHAT_ID}/messages`, ({ request }) => {
+        const url = new URL(request.url)
+        const before = url.searchParams.get('before_seq')
+        if (before === '2') {
+          return HttpResponse.json({
+            messages: [
+              {
+                id: '20000000-0000-4000-8000-000000000001',
+                chat_id: INITIAL_CHAT_ID,
+                seq: 1,
+                sender_id: '00000000-0000-4000-8000-000000000002',
+                body: 'old-incoming-page',
+                created_at: '2026-11-21T11:00:00Z',
+              },
+            ],
+            next_before_seq: null,
+            next_after_seq: 1,
+            has_more_before: false,
+            has_more_after: true,
+          })
+        }
+        return HttpResponse.json({
+          messages: Array.from({ length: 5 }, (_, index) => {
+            const seq = index + 2
+            return {
+              id: `20000000-0000-4000-8000-00000000000${seq}`,
+              chat_id: INITIAL_CHAT_ID,
+              seq,
+              sender_id: ALICE.id,
+              body: `mine-${seq}`,
+              created_at: `2026-11-21T12:${String(seq).padStart(2, '0')}:00Z`,
+            }
+          }),
+          next_before_seq: 2,
+          next_after_seq: null,
+          has_more_before: true,
+          has_more_after: false,
+        })
+      }),
+      http.post(`/chats/${INITIAL_CHAT_ID}/read`, () => new HttpResponse(null, { status: 204 })),
+    )
+    const auth = await authValue()
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 6)
+    renderThread(auth, mockWs)
+
+    expect(await screen.findByText('mine-6')).toBeInTheDocument()
+    await waitFor(() => expect(mockWs.connections.size).toBeGreaterThan(0))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30))
+    })
+
+    const scroller = screen.getByTestId('chat-thread-scroll')
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 4000 })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 400 })
+    await act(async () => {
+      scroller.scrollTop = 0
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }))
+    })
+
+    expect(await screen.findByText('old-incoming-page')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Новые сообщения' })).not.toBeInTheDocument()
+
+    const connection = Array.from(mockWs.connections)[0]!
+    await act(async () => {
+      pushIncoming(connection, 7, 'fresh-after-pagination')
+    })
+    expect(await screen.findByText('fresh-after-pagination')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
+  })
+
   it('does not show new-messages chip when scrolling old history without new incoming', async () => {
     server.use(
       http.get(`/chats/${INITIAL_CHAT_ID}/messages`, () =>
