@@ -62,9 +62,10 @@ function createSerialLockManager(): Pick<LockManager, 'request'> {
   return { request }
 }
 
-function createChannelHub(options?: { asyncDelivery?: boolean }) {
+function createChannelHub(options?: { asyncDelivery?: boolean; delayMs?: number }) {
   const subscribers = new Set<(message: RefreshCoordinatorMessage) => void>()
   const asyncDelivery = options?.asyncDelivery ?? false
+  const delayMs = options?.delayMs ?? 0
 
   return {
     createChannel(name: string): BroadcastChannelLike {
@@ -79,7 +80,8 @@ function createChannelHub(options?: { asyncDelivery?: boolean }) {
             }
           }
           // Как в спецификации: доставка другим контекстам не синхронна с postMessage.
-          if (asyncDelivery) queueMicrotask(send)
+          if (delayMs > 0) window.setTimeout(send, delayMs)
+          else if (asyncDelivery) queueMicrotask(send)
           else send()
         },
         close() {
@@ -100,7 +102,7 @@ function createTab(
   locks: Pick<LockManager, 'request'>,
   hub: ReturnType<typeof createChannelHub>,
   store: RefreshSharedStore,
-  extras?: { waitTimeoutMs?: number; postLockBcWaitMs?: number },
+  extras?: { waitTimeoutMs?: number },
 ) {
   return createRefreshCoordinator({
     refresh,
@@ -108,7 +110,6 @@ function createTab(
     createChannel: hub.createChannel,
     store,
     waitTimeoutMs: extras?.waitTimeoutMs,
-    postLockBcWaitMs: extras?.postLockBcWaitMs ?? 20,
   })
 }
 
@@ -291,7 +292,6 @@ describe('createRefreshCoordinator', () => {
       store,
       now: () => nowMs,
       recentSuccessMs: 5_000,
-      postLockBcWaitMs: 0,
     })
     const heard: string[] = []
     tab.subscribeSuccess((s) => heard.push(s.access_token))
@@ -319,7 +319,7 @@ describe('createRefreshCoordinator', () => {
     channel.close()
   })
 
-  it('withSessionChange waits until a remote refresh releases the lock', async () => {
+  it('withSessionChange waits for the lock and only then publishes a new epoch', async () => {
     let releaseRefresh!: (value: AccessTokenResponse) => void
     const refresh = vi.fn(
       () =>
@@ -336,18 +336,20 @@ describe('createRefreshCoordinator', () => {
     const pendingRefresh = tabB.requestRefresh()
     await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
 
-    let logoutDone = false
+    let epochInsideLock = -1
     const logoutPending = tabA.withSessionChange('logout', async () => {
-      logoutDone = true
+      epochInsideLock = store.getEpoch()
     })
 
     await Promise.resolve()
-    expect(logoutDone).toBe(false)
+    expect(store.getEpoch()).toBe(0)
+    expect(epochInsideLock).toBe(-1)
 
     releaseRefresh(session('from-b'))
-    await expect(pendingRefresh).rejects.toBeInstanceOf(RefreshCancelledError)
+    await expect(pendingRefresh).resolves.toMatchObject({ access_token: 'from-b' })
     await logoutPending
-    expect(logoutDone).toBe(true)
+    expect(epochInsideLock).toBe(1)
+    expect(store.getEpoch()).toBe(1)
 
     tabA.dispose()
     tabB.dispose()
@@ -360,8 +362,8 @@ describe('createRefreshCoordinator', () => {
     const locks = createSerialLockManager()
     const hub = createChannelHub()
     const store = createMemoryRefreshStore()
-    const leader = createTab(refresh, locks, hub, store, { postLockBcWaitMs: 0 })
-    const follower = createTab(refresh, locks, hub, store, { postLockBcWaitMs: 0 })
+    const leader = createTab(refresh, locks, hub, store)
+    const follower = createTab(refresh, locks, hub, store)
     const localFinal = vi.fn()
     const remoteFinal = vi.fn()
     leader.subscribeFinalFailure(localFinal)
@@ -382,12 +384,78 @@ describe('createRefreshCoordinator', () => {
     const locks = createSerialLockManager()
     const hub = createChannelHub()
     const store = createMemoryRefreshStore()
-    const tab = createTab(refresh, locks, hub, store, { postLockBcWaitMs: 0 })
+    const tab = createTab(refresh, locks, hub, store)
 
     await tab.requestRefresh()
     expect(JSON.stringify(store.readMeta())).not.toContain('secret-jwt')
 
     tab.dispose()
+  })
+
+  it('uses a shared opId so a new tab does not drop a fresh success', async () => {
+    let nowMs = 1_000
+    const refresh = vi
+      .fn<(signal: AbortSignal) => Promise<AccessTokenResponse>>()
+      .mockResolvedValueOnce(session('a1'))
+      .mockResolvedValueOnce(session('a2'))
+      .mockResolvedValueOnce(session('b1'))
+    const locks = createSerialLockManager()
+    const hub = createChannelHub()
+    const store = createMemoryRefreshStore()
+    const opts = {
+      refresh,
+      locks,
+      createChannel: hub.createChannel,
+      store,
+      now: () => nowMs,
+      recentSuccessMs: 5_000,
+    }
+    const tabA = createRefreshCoordinator(opts)
+    const heardB: string[] = []
+
+    await tabA.requestRefresh()
+    nowMs += 6_000
+    await tabA.requestRefresh()
+    expect(store.readMeta()?.opId).toBe(2)
+
+    nowMs += 6_000
+    const tabB = createRefreshCoordinator(opts)
+    tabB.subscribeSuccess((s) => heardB.push(s.access_token))
+    const result = await tabB.requestRefresh()
+    expect(result.access_token).toBe('b1')
+    expect(heardB).toEqual(['b1'])
+    expect(store.readMeta()?.opId).toBe(3)
+
+    tabA.dispose()
+    tabB.dispose()
+  })
+
+  it('waits for a BroadcastChannel success delayed beyond 50ms without a second POST', async () => {
+    let releaseRefresh!: (value: AccessTokenResponse) => void
+    const refresh = vi.fn(
+      () =>
+        new Promise<AccessTokenResponse>((resolve) => {
+          releaseRefresh = resolve
+        }),
+    )
+    const locks = createSerialLockManager()
+    const hub = createChannelHub({ delayMs: 80 })
+    const store = createMemoryRefreshStore()
+    const tabA = createTab(refresh, locks, hub, store)
+    const tabB = createTab(refresh, locks, hub, store)
+
+    const pendingA = tabA.requestRefresh()
+    const pendingB = tabB.requestRefresh()
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+    releaseRefresh(session('shared-late-bc'))
+
+    const [a, b] = await Promise.all([pendingA, pendingB])
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(a.access_token).toBe('shared-late-bc')
+    expect(b.access_token).toBe('shared-late-bc')
+
+    tabA.dispose()
+    tabB.dispose()
   })
 
   it('timeout aborts a queued lock wait so a late grant does not POST', async () => {

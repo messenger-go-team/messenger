@@ -208,8 +208,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       void acceptSessionRef.current(session.access_token, session.expires_in, epoch)
     })
     const unsubscribeInvalidated = coordinator.subscribeInvalidated((sessionEpoch) => {
+      // Только UI/epoch: не ставим logoutPending — иначе reload отозвал бы новую cookie соседа.
       invalidateLocalAuth(sessionEpoch)
-      writeLogoutPending(true)
     })
     const unsubscribeFinal = coordinator.subscribeFinalFailure((_status, sessionEpoch) => {
       invalidateLocalAuth(sessionEpoch)

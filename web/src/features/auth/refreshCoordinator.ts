@@ -5,12 +5,13 @@ const LOCK_NAME = 'messenger:auth-refresh'
 const CHANNEL_NAME = 'messenger:auth-refresh'
 const EPOCH_STORAGE_KEY = 'messenger:auth-refresh-epoch'
 const META_STORAGE_KEY = 'messenger:auth-refresh-meta'
+const OP_ID_STORAGE_KEY = 'messenger:auth-refresh-opid'
 /** Кэш успеха в памяти вкладки; JWT в localStorage не пишем. */
 const RECENT_SUCCESS_MS = 5_000
 const RECENT_FINAL_FAILURE_MS = 5_000
 const DEFAULT_WAIT_MS = 15_000
-/** После взятия lock ждём BC от лидера, прежде чем слать второй POST. */
-const POST_LOCK_BC_WAIT_MS = 50
+/** Интервал опроса памяти, пока ждём JWT по BC после meta success. */
+const BC_POLL_MS = 10
 
 export type RefreshCoordinatorMessage =
   | {
@@ -70,12 +71,14 @@ type MemoryOutcome =
   | (Extract<RefreshOutcomeMeta, { kind: 'success' }> & { session: AccessTokenResponse })
   | Extract<RefreshOutcomeMeta, { kind: 'failure' }>
 
-/** Epoch + meta без секретов; JWT только в памяти координатора и BC. */
+/** Epoch + meta + общий opId без секретов; JWT только в памяти координатора и BC. */
 export interface RefreshSharedStore {
   getEpoch(): number
   setEpoch(epoch: number): void
   readMeta(): RefreshOutcomeMeta | null
   writeMeta(meta: RefreshOutcomeMeta | null): void
+  /** Монотонный opId на весь origin (localStorage / общая память тестов). */
+  allocateOpId(): number
 }
 
 export interface RefreshCoordinatorOptions {
@@ -87,7 +90,6 @@ export interface RefreshCoordinatorOptions {
   recentSuccessMs?: number
   recentFinalFailureMs?: number
   waitTimeoutMs?: number
-  postLockBcWaitMs?: number
 }
 
 export class RefreshCancelledError extends Error {
@@ -129,6 +131,7 @@ export function refreshBackoffMs(attempt: number, baseMs = 1_000, maxMs = 30_000
 export function createMemoryRefreshStore(initialEpoch = 0): RefreshSharedStore {
   let epoch = initialEpoch
   let meta: RefreshOutcomeMeta | null = null
+  let opId = 0
   return {
     getEpoch: () => epoch,
     setEpoch: (next) => {
@@ -137,6 +140,10 @@ export function createMemoryRefreshStore(initialEpoch = 0): RefreshSharedStore {
     readMeta: () => meta,
     writeMeta: (next) => {
       meta = next
+    },
+    allocateOpId: () => {
+      opId += 1
+      return opId
     },
   }
 }
@@ -179,6 +186,17 @@ function createLocalStorageRefreshStore(): RefreshSharedStore {
         localStorage.setItem(META_STORAGE_KEY, JSON.stringify(meta))
       } catch {
         // ignore
+      }
+    },
+    allocateOpId() {
+      try {
+        const raw = localStorage.getItem(OP_ID_STORAGE_KEY)
+        const current = raw == null ? 0 : Number(raw)
+        const next = (Number.isFinite(current) && current >= 0 ? current : 0) + 1
+        localStorage.setItem(OP_ID_STORAGE_KEY, String(next))
+        return next
+      } catch {
+        return Date.now()
       }
     },
   }
@@ -246,13 +264,11 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
   const recentSuccessMs = options.recentSuccessMs ?? RECENT_SUCCESS_MS
   const recentFinalFailureMs = options.recentFinalFailureMs ?? RECENT_FINAL_FAILURE_MS
   const waitTimeoutMs = options.waitTimeoutMs ?? DEFAULT_WAIT_MS
-  const postLockBcWaitMs = options.postLockBcWaitMs ?? POST_LOCK_BC_WAIT_MS
   const createChannel =
     options.createChannel ??
     ((name: string) => new BroadcastChannel(name) as unknown as BroadcastChannelLike)
 
   let sessionEpoch = store.getEpoch()
-  let nextOpId = 1
   let disposed = false
   let localInFlight: Promise<AccessTokenResponse> | null = null
   let localAbort: AbortController | null = null
@@ -458,26 +474,31 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     }
   }
 
+  const leaderMetaFresh = (epoch: number) => {
+    const meta = store.readMeta()
+    return (
+      meta?.kind === 'success' && meta.sessionEpoch === epoch && now() - meta.at <= recentSuccessMs
+    )
+  }
+
+  /**
+   * Если лидер уже записал meta success — ждём JWT по BC и не шлём второй POST,
+   * пока окно recentSuccess не истечёт (или abort/timeout сигнала).
+   */
   const waitForLeaderBroadcast = async (epoch: number, signal: AbortSignal) => {
     const cached = readFreshSuccess(epoch)
     if (cached) return cached
     const finalFailure = readFreshFinalFailure(epoch)
     if (finalFailure) throw finalFailure
+    if (!leaderMetaFresh(epoch)) return null
 
-    // Ждём BC только если другая вкладка уже записала meta success без JWT в нашей памяти.
-    const meta = store.readMeta()
-    const leaderFinished =
-      meta?.kind === 'success' && meta.sessionEpoch === epoch && now() - meta.at <= recentSuccessMs
-    if (!leaderFinished) return null
-
-    const deadline = now() + postLockBcWaitMs
-    while (now() < deadline) {
+    while (leaderMetaFresh(epoch)) {
       if (signal.aborted || epoch !== sessionEpoch) throw abortError(signal)
       const next = readFreshSuccess(epoch)
       if (next) return next
       const failed = readFreshFinalFailure(epoch)
       if (failed) throw failed
-      await sleep(Math.min(10, Math.max(0, deadline - now())), signal)
+      await sleep(BC_POLL_MS, signal)
     }
     return readFreshSuccess(epoch)
   }
@@ -496,6 +517,12 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
 
     const fromLeader = await waitForLeaderBroadcast(epoch, signal)
     if (fromLeader) return fromLeader
+    // Meta success ещё свежий, но JWT так и не пришёл — не дублируем POST.
+    if (leaderMetaFresh(epoch)) {
+      const late = readFreshSuccess(epoch)
+      if (late) return late
+      throw new RefreshTimeoutError('refresh_leader_jwt_timeout')
+    }
 
     const refreshPromise = refresh(signal)
     // Второй handler: если abort выиграл race, запоздалый reject refresh не станет unhandled.
@@ -562,7 +589,7 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
 
     syncEpochFromStore()
     const epoch = sessionEpoch
-    const opId = nextOpId++
+    const opId = store.allocateOpId()
     const abort = new AbortController()
     localAbort = abort
     const timer = setTimeout(() => {
@@ -584,7 +611,8 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     return slot.promise
   }
 
-  const bumpEpoch = (reason: 'logout' | 'account_switch' | 'dispose') => {
+  /** Только под Web Lock (или после abort локального flight). */
+  const bumpEpochLocked = (reason: 'logout' | 'account_switch' | 'dispose') => {
     syncEpochFromStore()
     const next = sessionEpoch + 1
     sessionEpoch = next
@@ -594,10 +622,6 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
       store.writeMeta(null)
       memoryOutcome = null
     }
-    const pending = localInFlight
-    if (localAbort) abortWith(localAbort, new RefreshCancelledError(`refresh_cancelled_${reason}`))
-    localAbort = null
-    localInFlight = null
     if (channel && reason !== 'dispose') {
       try {
         channel.postMessage({ v: 1, type: 'session-cancelled', sessionEpoch: next })
@@ -605,29 +629,41 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
         // ignore
       }
     }
-    // Локальный AuthProvider сам поднимает epochRef; notify только удалённым (adoptEpoch).
-    return { next, pending }
+    return next
+  }
+
+  const abortLocalFlight = (reason: 'logout' | 'account_switch' | 'dispose') => {
+    const pending = localInFlight
+    if (localAbort) abortWith(localAbort, new RefreshCancelledError(`refresh_cancelled_${reason}`))
+    localAbort = null
+    localInFlight = null
+    return pending
   }
 
   return {
     requestRefresh,
     /**
-     * Logout / login: bump epoch, abort local+remote refresh (через общий lock),
-     * затем выполнить cookie-операцию под тем же lock.
+     * Logout / login: abort локального refresh, под Web Lock — bump epoch + cookie-операция.
+     * Эпоха не публикуется до захвата lock, чтобы сосед не обновился по старой cookie.
      */
     async withSessionChange<T>(
       reason: 'logout' | 'account_switch',
       fn: () => Promise<T>,
     ): Promise<T> {
-      const { pending } = bumpEpoch(reason)
+      const pending = abortLocalFlight(reason)
       await settleFlight(pending)
-      return withLock(undefined, fn)
+      return withLock(undefined, async () => {
+        bumpEpochLocked(reason)
+        return fn()
+      })
     },
     /** @deprecated предпочтите withSessionChange для cookie-операций */
     async cancel(reason: 'logout' | 'account_switch' = 'logout') {
-      const { pending } = bumpEpoch(reason)
+      const pending = abortLocalFlight(reason)
       await settleFlight(pending)
-      await withLock(undefined, async () => undefined)
+      await withLock(undefined, async () => {
+        bumpEpochLocked(reason)
+      })
     },
     getSessionEpoch() {
       syncEpochFromStore()
@@ -655,7 +691,7 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
       }
     },
     dispose() {
-      const { pending } = bumpEpoch('dispose')
+      const pending = abortLocalFlight('dispose')
       disposed = true
       successListeners.clear()
       invalidatedListeners.clear()
@@ -670,6 +706,11 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
         channel = null
       }
       void settleFlight(pending)
+      try {
+        bumpEpochLocked('dispose')
+      } catch {
+        // ignore
+      }
     },
   }
 }
@@ -693,6 +734,7 @@ export function resetSharedRefreshCoordinatorForTests() {
   try {
     localStorage.removeItem(EPOCH_STORAGE_KEY)
     localStorage.removeItem(META_STORAGE_KEY)
+    localStorage.removeItem(OP_ID_STORAGE_KEY)
     localStorage.removeItem('messenger:auth-refresh-outcome')
   } catch {
     // jsdom / private mode
