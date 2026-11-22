@@ -53,6 +53,7 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   const visibleSeqsRef = useRef(new Set<number>())
   const historyRequestRef = useRef(0)
   const messageNodeRefs = useRef(new Map<number, Element>())
+  const messageElByIdRef = useRef(new Map<string, HTMLElement>())
 
   const [history, setHistory] = useState<Message[]>([])
   const [historyStatus, setHistoryStatus] = useState<HistoryStatus>('loading')
@@ -64,9 +65,12 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
   const [visibilityTick, setVisibilityTick] = useState(0)
   const [visibleSeqs, setVisibleSeqs] = useState<readonly number[]>([])
   const [showNewMessagesChip, setShowNewMessagesChip] = useState(false)
+  /** Тик после restore scroll (before_seq) — пересчитать chip по геометрии. */
+  const [layoutTick, setLayoutTick] = useState(0)
   /**
-   * Уже виденные message id / key. Chip — на первое появление входящего из WS/after_seq
-   * ниже fold; before_seq помечает id в loadOlder без chip. seq только для порядка ленты.
+   * Серверные message id, уже учтённые для chip.
+   * Chip — только на первое появление входящего ниже/на нижней границе окна ленты.
+   * before_seq помечает id без chip; seq только для порядка ленты.
    */
   const knownMessageIdsRef = useRef(new Set<string>())
 
@@ -125,6 +129,8 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
       requestAnimationFrame(() => {
         if (!list) return
         list.scrollTop = list.scrollHeight - previousHeight
+        // После восстановления прокрутки — измерить новые входящие (WS во время before_seq).
+        requestAnimationFrame(() => setLayoutTick((value) => value + 1))
       })
     } catch {
       setHistoryError('Не удалось подгрузить историю.')
@@ -153,20 +159,46 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
 
   useEffect(() => {
     if (stickToBottomRef.current) {
-      for (const item of messages) knownMessageIdsRef.current.add(item.id ?? item.key)
+      for (const item of messages) {
+        if (item.id) knownMessageIdsRef.current.add(item.id)
+      }
       setShowNewMessagesChip(false)
       return
     }
 
-    let sawNewIncoming = false
-    for (const item of messages) {
-      const id = item.id ?? item.key
-      if (knownMessageIdsRef.current.has(id)) continue
-      knownMessageIdsRef.current.add(id)
-      if (!item.mine) sawNewIncoming = true
+    let cancelled = false
+    const measure = () => {
+      if (cancelled || stickToBottomRef.current) return
+      const list = listRef.current
+      if (!list) return
+      const listBottom = list.getBoundingClientRect().bottom
+      let showChip = false
+      for (const item of messages) {
+        if (!item.id) continue
+        if (item.mine) {
+          knownMessageIdsRef.current.add(item.id)
+          continue
+        }
+        if (knownMessageIdsRef.current.has(item.id)) continue
+        const row = messageElByIdRef.current.get(item.id)
+        if (!row) continue
+        knownMessageIdsRef.current.add(item.id)
+        // Верх строки на нижней границе окна или ниже → chip. Частично видимое / выше — нет.
+        // Уже показанный chip не гасим видимым входящим.
+        if (row.getBoundingClientRect().top >= listBottom) showChip = true
+      }
+      if (showChip) setShowNewMessagesChip(true)
     }
-    if (sawNewIncoming) setShowNewMessagesChip(true)
-  }, [messages])
+
+    // Два кадра: после отрисовки строки и после возможного restore scroll.
+    const frame = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(measure)
+    })
+    return () => {
+      cancelled = true
+      window.cancelAnimationFrame(frame)
+    }
+  }, [layoutTick, messages])
 
   const connectionLabel = connectionStatusLabel(snapshot.transport)
   const syncedCursor = client?.getSyncedCursor(chatId) ?? 0
@@ -267,10 +299,15 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
     if (target.scrollTop < 48) void loadOlder()
   }
 
-  const bindMessageNode = (seq: number | undefined, node: HTMLElement | null) => {
-    if (seq == null) return
-    if (node) messageNodeRefs.current.set(seq, node)
-    else messageNodeRefs.current.delete(seq)
+  const bindMessageNode = (message: ThreadMessage, node: HTMLElement | null) => {
+    if (message.seq != null) {
+      if (node) messageNodeRefs.current.set(message.seq, node)
+      else messageNodeRefs.current.delete(message.seq)
+    }
+    if (message.id) {
+      if (node) messageElByIdRef.current.set(message.id, node)
+      else messageElByIdRef.current.delete(message.id)
+    }
   }
 
   const send = (event: FormEvent) => {
@@ -411,8 +448,9 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
           {messages.map((message) => (
             <li
               key={message.key}
-              ref={(node) => bindMessageNode(message.seq, node)}
+              ref={(node) => bindMessageNode(message, node)}
               data-seq={message.seq}
+              data-message-id={message.id}
               className={cn(
                 'group/bubble flex',
                 message.mine ? 'justify-end' : 'justify-start',

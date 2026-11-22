@@ -315,7 +315,9 @@ describe('ChatThread', () => {
       expect(readBodies.length).toBeGreaterThan(0)
     })
     expect(readBodies.at(-1)).toEqual({ seq: 6 })
-    expect(onRead).toHaveBeenCalled()
+    await waitFor(() => {
+      expect(onRead).toHaveBeenCalled()
+    })
   })
 
   it('queues the next mark-read while a previous POST is in flight', async () => {
@@ -656,14 +658,69 @@ describe('ChatThread', () => {
     expect(readBodies).not.toContain(2)
   })
 
+  const LIST_TOP = 0
+  const LIST_BOTTOM = 400
+
+  function stubRect(
+    el: Element,
+    rect: { top: number; bottom: number; left?: number; right?: number },
+  ) {
+    const left = rect.left ?? 0
+    const right = rect.right ?? 300
+    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+      x: left,
+      y: rect.top,
+      top: rect.top,
+      bottom: rect.bottom,
+      left,
+      right,
+      width: right - left,
+      height: rect.bottom - rect.top,
+      toJSON() {
+        return {}
+      },
+    } as DOMRect)
+  }
+
   async function scrollThreadAwayFromBottom() {
     const scroller = screen.getByTestId('chat-thread-scroll')
     Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 2000 })
-    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 400 })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: LIST_BOTTOM })
+    stubRect(scroller, { top: LIST_TOP, bottom: LIST_BOTTOM })
     await act(async () => {
       scroller.scrollTop = 0
       scroller.dispatchEvent(new Event('scroll', { bubbles: true }))
     })
+    return scroller
+  }
+
+  async function flushChipLayout() {
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      })
+    })
+  }
+
+  type RowPlacement = 'below' | 'inside' | 'above' | 'partial-bottom'
+
+  async function placeRows(placements: Record<string, RowPlacement>) {
+    const scroller = screen.getByTestId('chat-thread-scroll')
+    stubRect(scroller, { top: LIST_TOP, bottom: LIST_BOTTOM })
+    for (const [body, place] of Object.entries(placements)) {
+      const row = screen.getByText(body).closest('li')
+      expect(row).toBeTruthy()
+      const rect =
+        place === 'below'
+          ? { top: LIST_BOTTOM, bottom: LIST_BOTTOM + 40 }
+          : place === 'partial-bottom'
+            ? { top: LIST_BOTTOM - 20, bottom: LIST_BOTTOM + 20 }
+            : place === 'above'
+              ? { top: LIST_TOP - 40, bottom: LIST_TOP - 8 }
+              : { top: 120, bottom: 160 }
+      stubRect(row as HTMLElement, rect)
+    }
+    await flushChipLayout()
   }
 
   function pushMessageNew(
@@ -708,7 +765,7 @@ describe('ChatThread', () => {
     })
   }
 
-  it('shows chip for late incoming with smaller seq via WS while scrolled up', async () => {
+  it('1a · chip for late incoming seq=21 below fold via message.new after own seq=22', async () => {
     const gapIncomingId = '40000000-0000-4000-8000-000000000021'
     server.use(
       http.get(`/chats/${INITIAL_CHAT_ID}/messages`, () =>
@@ -755,10 +812,11 @@ describe('ChatThread', () => {
       pushIncoming(connection, 21, 'gap-incoming-ws', gapIncomingId)
     })
     expect(await screen.findByText('gap-incoming-ws')).toBeInTheDocument()
+    await placeRows({ 'gap-incoming-ws': 'below', 'mine-seq-22': 'below', 'mine-seq-20': 'inside' })
     expect(await screen.findByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
   })
 
-  it('shows chip when gap incoming arrives only via after_seq while scrolled up', async () => {
+  it('1b · chip for late incoming seq=21 below fold via after_seq after reconnect', async () => {
     const bobId = '00000000-0000-4000-8000-000000000002'
     const gapIncomingId = '40000000-0000-4000-8000-000000000031'
     let afterSeqCatchUp: Array<{
@@ -847,15 +905,120 @@ describe('ChatThread', () => {
       timeout: 5_000,
     })
     expect(await screen.findByText('gap-incoming-after-seq')).toBeInTheDocument()
+    await placeRows({
+      'gap-incoming-after-seq': 'below',
+      'mine-seq-22': 'below',
+      'mine-seq-20': 'inside',
+    })
     expect(await screen.findByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
   })
 
-  it('does not show new-messages chip when before_seq pagination prepends older incoming', async () => {
+  it('2 · chip stays hidden for inside / partial-bottom / above placements', async () => {
     server.use(
-      http.get(`/chats/${INITIAL_CHAT_ID}/messages`, ({ request }) => {
+      http.get(`/chats/${INITIAL_CHAT_ID}/messages`, () =>
+        HttpResponse.json({
+          messages: [
+            {
+              id: '40000000-0000-4000-8000-000000000050',
+              chat_id: INITIAL_CHAT_ID,
+              seq: 1,
+              sender_id: ALICE.id,
+              body: 'anchor-mine',
+              created_at: '2026-11-21T12:00:00Z',
+            },
+          ],
+          next_before_seq: null,
+          next_after_seq: 1,
+          has_more_before: false,
+          has_more_after: false,
+        }),
+      ),
+      http.post(`/chats/${INITIAL_CHAT_ID}/read`, () => new HttpResponse(null, { status: 204 })),
+    )
+    const auth = await authValue()
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 1)
+    renderThread(auth, mockWs)
+    expect(await screen.findByText('anchor-mine')).toBeInTheDocument()
+    await waitFor(() => expect(mockWs.connections.size).toBeGreaterThan(0))
+    await scrollThreadAwayFromBottom()
+    const connection = Array.from(mockWs.connections)[0]!
+
+    for (const [body, place, seq] of [
+      ['inside-incoming', 'inside', 2],
+      ['partial-incoming', 'partial-bottom', 3],
+      ['above-incoming', 'above', 4],
+    ] as const) {
+      await act(async () => {
+        pushIncoming(connection, seq, body)
+      })
+      expect(await screen.findByText(body)).toBeInTheDocument()
+      await placeRows({ [body]: place, 'anchor-mine': 'inside' })
+      expect(screen.queryByRole('button', { name: 'Новые сообщения' })).not.toBeInTheDocument()
+    }
+  })
+
+  it('2b · visible incoming does not clear chip already shown for below-fold message', async () => {
+    server.use(
+      http.get(`/chats/${INITIAL_CHAT_ID}/messages`, () =>
+        HttpResponse.json({
+          messages: [
+            {
+              id: '40000000-0000-4000-8000-000000000060',
+              chat_id: INITIAL_CHAT_ID,
+              seq: 1,
+              sender_id: ALICE.id,
+              body: 'anchor-mine',
+              created_at: '2026-11-21T12:00:00Z',
+            },
+          ],
+          next_before_seq: null,
+          next_after_seq: 1,
+          has_more_before: false,
+          has_more_after: false,
+        }),
+      ),
+      http.post(`/chats/${INITIAL_CHAT_ID}/read`, () => new HttpResponse(null, { status: 204 })),
+    )
+    const auth = await authValue()
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 1)
+    renderThread(auth, mockWs)
+    expect(await screen.findByText('anchor-mine')).toBeInTheDocument()
+    await waitFor(() => expect(mockWs.connections.size).toBeGreaterThan(0))
+    await scrollThreadAwayFromBottom()
+    const connection = Array.from(mockWs.connections)[0]!
+
+    await act(async () => {
+      pushIncoming(connection, 2, 'below-incoming')
+    })
+    expect(await screen.findByText('below-incoming')).toBeInTheDocument()
+    await placeRows({ 'below-incoming': 'below', 'anchor-mine': 'inside' })
+    expect(await screen.findByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
+
+    await act(async () => {
+      pushIncoming(connection, 3, 'visible-incoming')
+    })
+    expect(await screen.findByText('visible-incoming')).toBeInTheDocument()
+    await placeRows({
+      'below-incoming': 'below',
+      'visible-incoming': 'inside',
+      'anchor-mine': 'inside',
+    })
+    expect(screen.getByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
+  })
+
+  it('3 · before_seq prepend hides chip; WS below fold during before_seq shows it', async () => {
+    let releaseBefore!: () => void
+    const beforeGate = new Promise<void>((resolve) => {
+      releaseBefore = resolve
+    })
+    server.use(
+      http.get(`/chats/${INITIAL_CHAT_ID}/messages`, async ({ request }) => {
         const url = new URL(request.url)
         const before = url.searchParams.get('before_seq')
         if (before === '2') {
+          await beforeGate
           return HttpResponse.json({
             messages: [
               {
@@ -906,24 +1069,32 @@ describe('ChatThread', () => {
 
     const scroller = screen.getByTestId('chat-thread-scroll')
     Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 4000 })
-    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 400 })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: LIST_BOTTOM })
+    stubRect(scroller, { top: LIST_TOP, bottom: LIST_BOTTOM })
     await act(async () => {
       scroller.scrollTop = 0
       scroller.dispatchEvent(new Event('scroll', { bubbles: true }))
     })
 
-    expect(await screen.findByText('old-incoming-page')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Новые сообщения' })).not.toBeInTheDocument()
-
     const connection = Array.from(mockWs.connections)[0]!
     await act(async () => {
-      pushIncoming(connection, 7, 'fresh-after-pagination')
+      pushIncoming(connection, 7, 'fresh-during-before')
     })
-    expect(await screen.findByText('fresh-after-pagination')).toBeInTheDocument()
-    expect(await screen.findByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
+    expect(await screen.findByText('fresh-during-before')).toBeInTheDocument()
+
+    await act(async () => {
+      releaseBefore()
+    })
+    expect(await screen.findByText('old-incoming-page')).toBeInTheDocument()
+    await placeRows({
+      'old-incoming-page': 'above',
+      'fresh-during-before': 'below',
+      'mine-6': 'inside',
+    })
+    expect(screen.getByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
   })
 
-  it('dedupes the same incoming across WS and REST and chip click returns to bottom', async () => {
+  it('4 · chip click / manual bottom hide; same id after re-scroll keeps chip hidden', async () => {
     const messageId = '40000000-0000-4000-8000-000000000041'
     let afterSeqCatchUp: Array<{
       id: string
@@ -977,13 +1148,14 @@ describe('ChatThread', () => {
 
     expect(await screen.findByText('only-mine')).toBeInTheDocument()
     await waitFor(() => expect(mockWs.connections.size).toBeGreaterThan(0))
-    await scrollThreadAwayFromBottom()
+    const scroller = await scrollThreadAwayFromBottom()
 
     const connection = Array.from(mockWs.connections)[0]!
     await act(async () => {
       pushIncoming(connection, 2, 'same-incoming', messageId)
     })
     expect(await screen.findByText('same-incoming')).toBeInTheDocument()
+    await placeRows({ 'same-incoming': 'below', 'only-mine': 'inside' })
     expect(await screen.findByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
     expect(screen.getAllByText('same-incoming')).toHaveLength(1)
 
@@ -1007,14 +1179,45 @@ describe('ChatThread', () => {
     })
     expect(screen.getAllByText('same-incoming')).toHaveLength(1)
     expect(screen.getByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
+    const liveConnection = Array.from(mockWs.connections)[0]!
 
-    const scroller = screen.getByTestId('chat-thread-scroll')
     Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 2000 })
-    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 400 })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: LIST_BOTTOM })
     await act(async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Новые сообщения' }))
     })
     expect(screen.queryByRole('button', { name: 'Новые сообщения' })).not.toBeInTheDocument()
     expect(scroller.scrollTop).toBe(scroller.scrollHeight)
+
+    await scrollThreadAwayFromBottom()
+    await act(async () => {
+      pushIncoming(liveConnection, 2, 'same-incoming', messageId)
+    })
+    await placeRows({ 'same-incoming': 'below', 'only-mine': 'inside' })
+    expect(screen.getAllByText('same-incoming')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Новые сообщения' })).not.toBeInTheDocument()
+
+    // Снова у низа: новое входящее — автопрокрутка, без chip.
+    await act(async () => {
+      scroller.scrollTop = scroller.scrollHeight
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }))
+    })
+    await act(async () => {
+      pushIncoming(liveConnection, 3, 'tail-incoming')
+    })
+    expect(await screen.findByText('tail-incoming')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Новые сообщения' })).not.toBeInTheDocument()
+
+    await scrollThreadAwayFromBottom()
+    await act(async () => {
+      pushIncoming(liveConnection, 4, 'manual-hide-setup')
+    })
+    await placeRows({ 'manual-hide-setup': 'below' })
+    expect(await screen.findByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
+    await act(async () => {
+      scroller.scrollTop = scroller.scrollHeight
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }))
+    })
+    expect(screen.queryByRole('button', { name: 'Новые сообщения' })).not.toBeInTheDocument()
   })
 })
