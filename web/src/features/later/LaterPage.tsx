@@ -26,14 +26,10 @@ export function LaterPage() {
   const [entries, setEntries] = useState<LaterEntry[]>([])
   const [reloadKey, setReloadKey] = useState(0)
   const [completingId, setCompletingId] = useState<string | null>(null)
+  const sessionActive = Boolean(accessToken && isAuthenticated)
 
   useEffect(() => {
-    if (!accessToken || !isAuthenticated) {
-      setEntries([])
-      setStatus('ready')
-      setError(null)
-      return
-    }
+    if (!sessionActive || !accessToken) return
     let cancelled = false
     const timer = window.setTimeout(() => {
       void (async () => {
@@ -55,7 +51,11 @@ export function LaterPage() {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [accessToken, isAuthenticated, reloadKey])
+  }, [accessToken, sessionActive, reloadKey])
+
+  const visibleEntries = useMemo(() => (sessionActive ? entries : []), [sessionActive, entries])
+  const visibleStatus: Status = sessionActive ? status : 'ready'
+  const visibleError = sessionActive ? error : null
 
   const groups = useMemo(() => {
     const map: Record<LaterStatus, LaterEntry[]> = {
@@ -63,13 +63,13 @@ export function LaterPage() {
       scheduled: [],
       unscheduled: [],
     }
-    for (const entry of entries) {
+    for (const entry of visibleEntries) {
       map[entry.status].push(entry)
     }
     return GROUP_ORDER.map((key) => ({ key, title: GROUP_TITLE[key], items: map[key] })).filter(
       (group) => group.items.length > 0,
     )
-  }, [entries])
+  }, [visibleEntries])
 
   async function onComplete(entryId: string) {
     if (!accessToken) return
@@ -135,16 +135,16 @@ export function LaterPage() {
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {status === 'loading' ? (
+          {visibleStatus === 'loading' ? (
             <p className="px-4 py-6 text-sm text-muted-foreground" role="status">
               Загрузка…
             </p>
           ) : null}
 
-          {status === 'error' ? (
+          {visibleStatus === 'error' ? (
             <div className="flex flex-col items-start gap-3 px-4 py-6" role="alert">
               <p className="text-sm text-destructive">
-                {error ?? 'Не удалось загрузить напоминания. Повторите попытку.'}
+                {visibleError ?? 'Не удалось загрузить напоминания. Повторите попытку.'}
               </p>
               <Button type="button" variant="outline" onClick={() => setReloadKey((v) => v + 1)}>
                 Повторить
@@ -152,13 +152,13 @@ export function LaterPage() {
             </div>
           ) : null}
 
-          {status === 'ready' && error ? (
+          {visibleStatus === 'ready' && visibleError ? (
             <p className="px-4 pt-3 text-sm text-destructive" role="alert">
-              {error}
+              {visibleError}
             </p>
           ) : null}
 
-          {status === 'ready' && entries.length === 0 ? (
+          {visibleStatus === 'ready' && visibleEntries.length === 0 ? (
             <div className="flex flex-col items-center gap-4 px-6 py-16 text-center">
               <span
                 aria-hidden
@@ -175,7 +175,7 @@ export function LaterPage() {
             </div>
           ) : null}
 
-          {status === 'ready' && groups.length > 0 ? (
+          {visibleStatus === 'ready' && groups.length > 0 ? (
             <div className="flex flex-col gap-4 pb-6">
               {groups.map((group) => (
                 <section key={group.key} aria-labelledby={`later-group-${group.key}`}>
