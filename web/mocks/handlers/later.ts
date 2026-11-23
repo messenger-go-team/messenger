@@ -150,8 +150,7 @@ export const laterHandlers = [
 
     const serverTime = new Date().toISOString()
     const existing = laterEntries.find(
-      (entry) =>
-        entry.ownerId === userId && !entry.done && entry.message.id === messageId,
+      (entry) => entry.ownerId === userId && !entry.done && entry.message.id === messageId,
     )
 
     if (existing) {

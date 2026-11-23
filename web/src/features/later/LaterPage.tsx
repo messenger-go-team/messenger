@@ -2,12 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { ArrowLeft, Bell, MessageCircle, User, Users } from 'lucide-react'
-import {
-  completeLater,
-  listLater,
-  type LaterEntry,
-  type LaterStatus,
-} from '@/api/later'
+import { completeLater, listLater, type LaterEntry, type LaterStatus } from '@/api/later'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/useAuth'
 import { formatChatListTime } from '@/features/chats/formatChatListTime'
@@ -201,10 +196,7 @@ export function LaterPage() {
                           className="min-w-0 flex-1 space-y-1 hover:opacity-90"
                         >
                           {entry.due_at ? (
-                            <time
-                              className="text-xs text-muted-foreground"
-                              dateTime={entry.due_at}
-                            >
+                            <time className="text-xs text-muted-foreground" dateTime={entry.due_at}>
                               {formatChatListTime(entry.due_at)}
                             </time>
                           ) : null}

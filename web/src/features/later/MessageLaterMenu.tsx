@@ -202,7 +202,10 @@ export function MessageLaterMenu({
       ) : null}
 
       {error ? (
-        <p className="absolute top-8 left-1/2 z-20 w-48 -translate-x-1/2 rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive" role="alert">
+        <p
+          className="absolute top-8 left-1/2 z-20 w-48 -translate-x-1/2 rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive"
+          role="alert"
+        >
           {error}
         </p>
       ) : null}
