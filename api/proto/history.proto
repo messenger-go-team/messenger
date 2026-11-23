@@ -100,7 +100,9 @@ message AdvanceReceiptResponse {
   // Neither cursor is initialized or derived from the legacy MVP columns.
   // DELIVERED takes max(old delivered, seq) and leaves both read cursors alone.
   // READ takes max(current, seq) for public delivered, public read and private
-  // last_read_seq (unread_count) in the same transaction.
+  // last_read_seq (unread_count) in one transaction. If retaining both MVP
+  // columns, also set private last_delivered_seq to
+  // max(previous private delivered, new private read) in that transaction.
   // 0 <= public read <= public delivered <= chat.last_seq at commit.
   int64 last_delivered_seq = 1;
   int64 last_read_seq = 2;
