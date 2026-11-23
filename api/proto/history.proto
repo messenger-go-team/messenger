@@ -6,7 +6,7 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/messenger-go-team/messenger/api/gen/history/v1;historyv1";
 
-// HistoryService is internal to chat -> history. See README.md for status codes.
+// HistoryService is internal to chat -> history. See README.md for the MVP RPCs.
 service HistoryService {
   // SaveMessage checks membership and commits before returning OK.
   // Same key and body return the original result with duplicate=true;
@@ -16,6 +16,17 @@ service HistoryService {
   rpc GetChatMembers(GetChatMembersRequest) returns (GetChatMembersResponse);
   // CheckMembership is a snapshot, not authorization for a subsequent write.
   rpc CheckMembership(CheckMembershipRequest) returns (CheckMembershipResponse);
+  // AdvanceReceipt is available for personal chats in stage 2.
+  // Validate actor membership, chat type and seq in the same transaction as the
+  // update. Return OK only after commit, including for a repeat or older seq.
+  // INVALID_ARGUMENT: malformed request (UUID, kind or missing seq).
+  // NOT_FOUND: missing chat. PERMISSION_DENIED: actor is not a member.
+  // Check membership before reporting chat type or bounds based on last_seq.
+  // FAILED_PRECONDITION: chat is not personal. OUT_OF_RANGE: seq outside
+  // 0..min(chat.last_seq, 9007199254740991). A seq need not identify a row.
+  // UNAVAILABLE: storage unavailable or commit result unknown. Deadline and
+  // cancellation may leave the caller uncertain whether the update committed.
+  rpc AdvanceReceipt(AdvanceReceiptRequest) returns (AdvanceReceiptResponse);
 }
 
 message SaveMessageRequest {
@@ -65,4 +76,37 @@ message CheckMembershipRequest {
 message CheckMembershipResponse {
   // false for a non-member of an existing chat; storage errors are not false.
   bool is_member = 1;
+}
+
+enum ReceiptKind {
+  RECEIPT_KIND_UNSPECIFIED = 0;
+  RECEIPT_KIND_DELIVERED = 1;
+  RECEIPT_KIND_READ = 2;
+}
+
+message AdvanceReceiptRequest {
+  // Required canonical, non-zero UUID of the chat.
+  string chat_id = 1;
+  // Required canonical, non-zero UUID from the access JWT verified by Chat.
+  string actor_id = 2;
+  // Only DELIVERED and READ are accepted.
+  ReceiptKind kind = 3;
+  // Must be present. Zero is a valid cursor, distinct from an omitted field.
+  optional int64 seq = 4;
+}
+
+message AdvanceReceiptResponse {
+  // The actor's committed public cursors after the operation, initially zero.
+  // Neither cursor is initialized or derived from the legacy MVP columns.
+  // DELIVERED takes max(old delivered, seq) and leaves both read cursors alone.
+  // READ takes max(current, seq) for public delivered, public read and private
+  // last_read_seq (unread_count) in one transaction. If retaining both MVP
+  // columns, also set private last_delivered_seq to
+  // max(previous private delivered, new private read) in that transaction.
+  // 0 <= public read <= public delivered <= chat.last_seq at commit.
+  int64 last_delivered_seq = 1;
+  int64 last_read_seq = 2;
+  // True if this transaction increased public last_delivered_seq, compared
+  // with its value before the update. False for a repeat without advancement.
+  bool delivered_advanced = 3;
 }
