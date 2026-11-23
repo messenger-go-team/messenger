@@ -225,6 +225,15 @@ export function resetHistoryData(): void {
 }
 
 /** Возвращает публичное представление чата без выдачи mutable внутреннего объекта. */
+/** Ищет сообщение по id среди всех чатов (для Later save validation). */
+export function findHistoryMessage(messageId: string): HistoryMessage | undefined {
+  for (const chatMessages of messages.values()) {
+    const found = chatMessages.find((message) => message.id === messageId)
+    if (found) return cloneMessage(found)
+  }
+  return undefined
+}
+
 export function findHistoryChat(chatId: string): HistoryChat | undefined {
   const chat = chats.get(chatId)
   return chat ? toHistoryChat(chat) : undefined

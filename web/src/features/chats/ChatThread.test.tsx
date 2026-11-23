@@ -111,7 +111,7 @@ describe('ChatThread', () => {
     expect(screen.getByText('Да, договорились.')).toBeInTheDocument()
   })
 
-  it('exposes message menu with Later stub entry point', async () => {
+  it('exposes Later menu with four options and saves without due', async () => {
     const auth = await authValue()
     const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
     mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 6)
@@ -121,8 +121,12 @@ describe('ChatThread', () => {
     const menus = screen.getAllByRole('button', { name: 'Действия с сообщением' })
     expect(menus.length).toBeGreaterThan(0)
     await userEvent.click(menus[0]!)
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Вернуться позже' }))
-    expect(await screen.findByRole('status')).toHaveTextContent(/Вернуться позже/i)
+    expect(screen.getByRole('menuitem', { name: 'Просто сохранить' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Через 1 час' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /Вечером/ })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Выбрать время' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Просто сохранить' }))
+    expect(await screen.findByRole('status')).toHaveTextContent(/Сохранено без срока/i)
   })
 
   it('shows loading then error with retry', async () => {
@@ -1008,7 +1012,10 @@ describe('ChatThread', () => {
     })
     expect(await screen.findByText('below-incoming')).toBeInTheDocument()
     await placeRows({ 'below-incoming': 'below', 'anchor-mine': 'inside' })
-    expect(await screen.findByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
+    await waitFor(async () => {
+      await placeRows({ 'below-incoming': 'below', 'anchor-mine': 'inside' })
+      expect(screen.getByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
+    })
 
     await act(async () => {
       pushIncoming(connection, 3, 'visible-incoming')
@@ -1100,12 +1107,14 @@ describe('ChatThread', () => {
       releaseBefore()
     })
     expect(await screen.findByText('old-incoming-page')).toBeInTheDocument()
-    await placeRows({
-      'old-incoming-page': 'above',
-      'fresh-during-before': 'below',
-      'mine-6': 'inside',
+    await waitFor(async () => {
+      await placeRows({
+        'old-incoming-page': 'above',
+        'fresh-during-before': 'below',
+        'mine-6': 'inside',
+      })
+      expect(screen.getByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
     })
-    expect(screen.getByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
   })
 
   it('4 · chip click / manual bottom hide; same id after re-scroll keeps chip hidden', async () => {

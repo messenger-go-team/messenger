@@ -15,7 +15,6 @@ import {
   CircleAlert,
   LoaderCircle,
   MessageCircle,
-  MoreVertical,
   RotateCcw,
   SendHorizontal,
 } from 'lucide-react'
@@ -27,6 +26,7 @@ import { connectionStatusLabel } from '@/features/chats/connectionStatus'
 import { formatChatListTime } from '@/features/chats/formatChatListTime'
 import { resolveMarkReadSeq } from '@/features/chats/markReadSeq'
 import { mergeThreadMessages, type ThreadMessage } from '@/features/chats/mergeThreadMessages'
+import { MessageLaterMenu } from '@/features/later/MessageLaterMenu'
 import { useWs } from '@/features/ws/useWs'
 import { cn } from '@/lib/utils'
 
@@ -74,7 +74,6 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
    * before_seq помечает id без chip; seq только для порядка ленты.
    */
   const knownMessageIdsRef = useRef(new Set<string>())
-  const [laterStubNotice, setLaterStubNotice] = useState<string | null>(null)
 
   const loadInitial = useCallback(async () => {
     if (!accessToken) return
@@ -184,10 +183,13 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
         if (knownMessageIdsRef.current.has(item.id)) continue
         const row = messageElByIdRef.current.get(item.id)
         if (!row) continue
+        const rowRect = row.getBoundingClientRect()
+        // jsdom/нулевой layout: не фиксируем id, пока нет реальной геометрии (иначе chip теряется).
+        if (rowRect.width === 0 && rowRect.height === 0) continue
         knownMessageIdsRef.current.add(item.id)
         // Верх строки на нижней границе окна или ниже → chip. Частично видимое / выше — нет.
         // Уже показанный chip не гасим видимым входящим.
-        if (row.getBoundingClientRect().top >= listBottom) showChip = true
+        if (rowRect.top >= listBottom) showChip = true
       }
       if (showChip) setShowNewMessagesChip(true)
     }
@@ -461,13 +463,12 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
                   'animate-in fade-in slide-in-from-bottom-1 duration-200',
               )}
             >
-              {!message.mine ? (
-                <MessageMenu
-                  onLater={() =>
-                    setLaterStubNotice(
-                      '«Вернуться позже» появится после Later API (#87 / #89). Точка входа уже здесь.',
-                    )
-                  }
+              {!message.mine && message.id && accessToken ? (
+                <MessageLaterMenu
+                  accessToken={accessToken}
+                  chatId={chatId}
+                  messageId={message.id}
+                  align="start"
                 />
               ) : null}
               <div
@@ -507,28 +508,18 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
                   ) : null}
                 </div>
               </div>
-              {message.mine ? (
-                <MessageMenu
-                  onLater={() =>
-                    setLaterStubNotice(
-                      '«Вернуться позже» появится после Later API (#87 / #89). Точка входа уже здесь.',
-                    )
-                  }
+              {message.mine && message.id && accessToken ? (
+                <MessageLaterMenu
+                  accessToken={accessToken}
+                  chatId={chatId}
+                  messageId={message.id}
+                  align="end"
                 />
               ) : null}
             </li>
           ))}
         </ul>
       </div>
-
-      {laterStubNotice ? (
-        <p
-          className="border-t border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground"
-          role="status"
-        >
-          {laterStubNotice}
-        </p>
-      ) : null}
 
       <form
         onSubmit={send}
@@ -566,44 +557,6 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
         </p>
       ) : null}
     </section>
-  )
-}
-
-function MessageMenu({ onLater }: { onLater: () => void }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="relative opacity-0 transition-opacity group-hover/bubble:opacity-100 focus-within:opacity-100">
-      <button
-        type="button"
-        className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
-        aria-label="Действия с сообщением"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <MoreVertical className="size-4" />
-      </button>
-      {open ? (
-        <ul
-          role="menu"
-          className="absolute bottom-8 left-1/2 z-20 min-w-44 -translate-x-1/2 rounded-lg border border-border bg-card py-1 shadow-md"
-        >
-          <li role="none">
-            <button
-              type="button"
-              role="menuitem"
-              className="w-full px-3 py-2 text-left text-sm hover:bg-accent"
-              onClick={() => {
-                setOpen(false)
-                onLater()
-              }}
-            >
-              Вернуться позже
-            </button>
-          </li>
-        </ul>
-      ) : null}
-    </div>
   )
 }
 

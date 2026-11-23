@@ -1,39 +1,93 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
+import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { ArrowLeft, Bell, MessageCircle, User, Users } from 'lucide-react'
-import { listLater, type LaterEntry } from '@/api/later'
-import { Button } from '@/components/ui/button'
+import {
+  completeLater,
+  listLater,
+  type LaterEntry,
+  type LaterStatus,
+} from '@/api/later'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/useAuth'
 import { formatChatListTime } from '@/features/chats/formatChatListTime'
+import { cn } from '@/lib/utils'
 
 type Status = 'loading' | 'ready' | 'error'
 
-/** Список «Важно» / Later (Figma Important empty / ready). MSW до #87. */
+const GROUP_ORDER: LaterStatus[] = ['due', 'scheduled', 'unscheduled']
+
+const GROUP_TITLE: Record<LaterStatus, string> = {
+  due: 'Сейчас',
+  scheduled: 'Запланировано',
+  unscheduled: 'Без срока',
+}
+
+/** Список «Важно» / Later: три группы, Готово, loading/empty/error. */
 export function LaterPage() {
-  const { accessToken } = useAuth()
+  const { accessToken, isAuthenticated } = useAuth()
   const [status, setStatus] = useState<Status>('loading')
   const [error, setError] = useState<string | null>(null)
   const [entries, setEntries] = useState<LaterEntry[]>([])
   const [reloadKey, setReloadKey] = useState(0)
+  const [completingId, setCompletingId] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!accessToken) return
+    if (!accessToken || !isAuthenticated) {
+      setEntries([])
+      setStatus('ready')
+      setError(null)
+      return
+    }
+    let cancelled = false
     const timer = window.setTimeout(() => {
       void (async () => {
         setStatus('loading')
         setError(null)
         try {
           const response = await listLater(accessToken)
+          if (cancelled) return
           setEntries(response.entries)
           setStatus('ready')
         } catch {
+          if (cancelled) return
           setStatus('error')
           setError('Не удалось загрузить напоминания. Повторите попытку.')
         }
       })()
     }, 0)
-    return () => window.clearTimeout(timer)
-  }, [accessToken, reloadKey])
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [accessToken, isAuthenticated, reloadKey])
+
+  const groups = useMemo(() => {
+    const map: Record<LaterStatus, LaterEntry[]> = {
+      due: [],
+      scheduled: [],
+      unscheduled: [],
+    }
+    for (const entry of entries) {
+      map[entry.status].push(entry)
+    }
+    return GROUP_ORDER.map((key) => ({ key, title: GROUP_TITLE[key], items: map[key] })).filter(
+      (group) => group.items.length > 0,
+    )
+  }, [entries])
+
+  async function onComplete(entryId: string) {
+    if (!accessToken) return
+    setCompletingId(entryId)
+    try {
+      await completeLater(accessToken, entryId)
+      setEntries((current) => current.filter((entry) => entry.id !== entryId))
+    } catch {
+      setError('Не удалось отметить готовым. Повторите попытку.')
+    } finally {
+      setCompletingId(null)
+    }
+  }
 
   return (
     <div className="flex h-svh min-h-0 overflow-hidden bg-background text-foreground">
@@ -73,7 +127,7 @@ export function LaterPage() {
         </Link>
       </nav>
 
-      <section className="flex min-w-0 flex-1 flex-col bg-card md:max-w-[420px] md:border-r md:border-border">
+      <section className="flex min-w-0 flex-1 flex-col bg-card md:max-w-[420px] md:border-r md:border-border lg:max-w-[480px]">
         <header className="flex items-center gap-3 px-4 pt-5 pb-3">
           <Link
             to="/"
@@ -94,11 +148,19 @@ export function LaterPage() {
 
           {status === 'error' ? (
             <div className="flex flex-col items-start gap-3 px-4 py-6" role="alert">
-              <p className="text-sm text-destructive">{error}</p>
+              <p className="text-sm text-destructive">
+                {error ?? 'Не удалось загрузить напоминания. Повторите попытку.'}
+              </p>
               <Button type="button" variant="outline" onClick={() => setReloadKey((v) => v + 1)}>
                 Повторить
               </Button>
             </div>
+          ) : null}
+
+          {status === 'ready' && error ? (
+            <p className="px-4 pt-3 text-sm text-destructive" role="alert">
+              {error}
+            </p>
           ) : null}
 
           {status === 'ready' && entries.length === 0 ? (
@@ -118,29 +180,79 @@ export function LaterPage() {
             </div>
           ) : null}
 
-          {status === 'ready' && entries.length > 0 ? (
-            <ul className="flex flex-col">
-              {entries.map((entry) => (
-                <li key={entry.id} className="border-b border-border px-4 py-3">
-                  <Link
-                    to={`/chats/${entry.message.chat_id}`}
-                    className="block space-y-1 hover:opacity-90"
+          {status === 'ready' && groups.length > 0 ? (
+            <div className="flex flex-col gap-4 pb-6">
+              {groups.map((group) => (
+                <section key={group.key} aria-labelledby={`later-group-${group.key}`}>
+                  <h2
+                    id={`later-group-${group.key}`}
+                    className="px-4 pb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                        {statusLabel(entry.status)}
-                      </span>
-                      {entry.due_at ? (
-                        <time className="text-xs text-muted-foreground" dateTime={entry.due_at}>
-                          {formatChatListTime(entry.due_at)}
-                        </time>
-                      ) : null}
-                    </div>
-                    <p className="line-clamp-2 text-sm text-foreground">{entry.message.body}</p>
-                  </Link>
-                </li>
+                    {group.title}
+                  </h2>
+                  <ul className="flex flex-col">
+                    {group.items.map((entry) => (
+                      <li
+                        key={entry.id}
+                        className="flex items-start gap-2 border-b border-border px-4 py-3"
+                      >
+                        <Link
+                          to={`/chats/${entry.message.chat_id}`}
+                          className="min-w-0 flex-1 space-y-1 hover:opacity-90"
+                        >
+                          {entry.due_at ? (
+                            <time
+                              className="text-xs text-muted-foreground"
+                              dateTime={entry.due_at}
+                            >
+                              {formatChatListTime(entry.due_at)}
+                            </time>
+                          ) : null}
+                          <p className="line-clamp-2 text-sm text-foreground">
+                            {entry.message.body}
+                          </p>
+                        </Link>
+                        <AlertDialog.Root>
+                          <AlertDialog.Trigger
+                            className={cn(
+                              buttonVariants({ variant: 'outline', size: 'sm' }),
+                              'shrink-0',
+                            )}
+                            disabled={completingId === entry.id}
+                          >
+                            Готово
+                          </AlertDialog.Trigger>
+                          <AlertDialog.Portal>
+                            <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
+                            <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-5 shadow-lg outline-none">
+                              <AlertDialog.Title className="text-lg font-semibold">
+                                Убрать из «Важно»?
+                              </AlertDialog.Title>
+                              <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
+                                Запись исчезнет из списка. Сообщение в чате останется.
+                              </AlertDialog.Description>
+                              <div className="mt-4 flex justify-end gap-2">
+                                <AlertDialog.Close
+                                  className={cn(buttonVariants({ variant: 'outline' }))}
+                                >
+                                  Отмена
+                                </AlertDialog.Close>
+                                <AlertDialog.Close
+                                  className={cn(buttonVariants())}
+                                  onClick={() => void onComplete(entry.id)}
+                                >
+                                  Готово
+                                </AlertDialog.Close>
+                              </div>
+                            </AlertDialog.Popup>
+                          </AlertDialog.Portal>
+                        </AlertDialog.Root>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
               ))}
-            </ul>
+            </div>
           ) : null}
         </div>
       </section>
@@ -152,10 +264,4 @@ export function LaterPage() {
       </main>
     </div>
   )
-}
-
-function statusLabel(status: LaterEntry['status']): string {
-  if (status === 'due') return 'Сейчас'
-  if (status === 'scheduled') return 'Запланировано'
-  return 'Без срока'
 }
