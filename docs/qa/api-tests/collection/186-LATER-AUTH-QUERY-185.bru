@@ -1,0 +1,25 @@
+meta {
+  name: LATER-AUTH-QUERY-185
+  type: http
+  seq: 186
+}
+
+get {
+  url: {{baseUrl}}/later?due_at=%zz
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-AUTH-QUERY-185", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-AUTH-QUERY-185", bru, req, res, test, expect);
+}

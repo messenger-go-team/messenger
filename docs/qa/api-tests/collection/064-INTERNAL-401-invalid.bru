@@ -1,0 +1,25 @@
+meta {
+  name: INTERNAL-401-invalid
+  type: http
+  seq: 64
+}
+
+get {
+  url: {{internalUrl}}/internal/users/{{bID}}
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("INTERNAL-401-invalid", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("INTERNAL-401-invalid", bru, req, res, test, expect);
+}

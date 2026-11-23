@@ -1,0 +1,25 @@
+meta {
+  name: AUTH-REFRESH
+  type: http
+  seq: 23
+}
+
+post {
+  url: {{baseUrl}}/auth/refresh
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("AUTH-REFRESH", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("AUTH-REFRESH", bru, req, res, test, expect);
+}

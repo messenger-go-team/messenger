@@ -1,0 +1,25 @@
+meta {
+  name: LATER-EMPTY
+  type: http
+  seq: 138
+}
+
+get {
+  url: {{baseUrl}}/later
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-EMPTY", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-EMPTY", bru, req, res, test, expect);
+}

@@ -22,13 +22,14 @@ const (
 	HistoryService_SaveMessage_FullMethodName     = "/messenger.history.v1.HistoryService/SaveMessage"
 	HistoryService_GetChatMembers_FullMethodName  = "/messenger.history.v1.HistoryService/GetChatMembers"
 	HistoryService_CheckMembership_FullMethodName = "/messenger.history.v1.HistoryService/CheckMembership"
+	HistoryService_AdvanceReceipt_FullMethodName  = "/messenger.history.v1.HistoryService/AdvanceReceipt"
 )
 
 // HistoryServiceClient is the client API for HistoryService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// HistoryService is internal to chat -> history. See README.md for status codes.
+// HistoryService is internal to chat -> history. See README.md for the MVP RPCs.
 type HistoryServiceClient interface {
 	// SaveMessage checks membership and commits before returning OK.
 	// Same key and body return the original result with duplicate=true;
@@ -38,6 +39,17 @@ type HistoryServiceClient interface {
 	GetChatMembers(ctx context.Context, in *GetChatMembersRequest, opts ...grpc.CallOption) (*GetChatMembersResponse, error)
 	// CheckMembership is a snapshot, not authorization for a subsequent write.
 	CheckMembership(ctx context.Context, in *CheckMembershipRequest, opts ...grpc.CallOption) (*CheckMembershipResponse, error)
+	// AdvanceReceipt is available for personal chats in stage 2.
+	// Validate actor membership, chat type and seq in the same transaction as the
+	// update. Return OK only after commit, including for a repeat or older seq.
+	// INVALID_ARGUMENT: malformed request (UUID, kind or missing seq).
+	// NOT_FOUND: missing chat. PERMISSION_DENIED: actor is not a member.
+	// Check membership before reporting chat type or bounds based on last_seq.
+	// FAILED_PRECONDITION: chat is not personal. OUT_OF_RANGE: seq outside
+	// 0..min(chat.last_seq, 9007199254740991). A seq need not identify a row.
+	// UNAVAILABLE: storage unavailable or commit result unknown. Deadline and
+	// cancellation may leave the caller uncertain whether the update committed.
+	AdvanceReceipt(ctx context.Context, in *AdvanceReceiptRequest, opts ...grpc.CallOption) (*AdvanceReceiptResponse, error)
 }
 
 type historyServiceClient struct {
@@ -78,11 +90,21 @@ func (c *historyServiceClient) CheckMembership(ctx context.Context, in *CheckMem
 	return out, nil
 }
 
+func (c *historyServiceClient) AdvanceReceipt(ctx context.Context, in *AdvanceReceiptRequest, opts ...grpc.CallOption) (*AdvanceReceiptResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdvanceReceiptResponse)
+	err := c.cc.Invoke(ctx, HistoryService_AdvanceReceipt_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // HistoryServiceServer is the server API for HistoryService service.
 // All implementations must embed UnimplementedHistoryServiceServer
 // for forward compatibility.
 //
-// HistoryService is internal to chat -> history. See README.md for status codes.
+// HistoryService is internal to chat -> history. See README.md for the MVP RPCs.
 type HistoryServiceServer interface {
 	// SaveMessage checks membership and commits before returning OK.
 	// Same key and body return the original result with duplicate=true;
@@ -92,6 +114,17 @@ type HistoryServiceServer interface {
 	GetChatMembers(context.Context, *GetChatMembersRequest) (*GetChatMembersResponse, error)
 	// CheckMembership is a snapshot, not authorization for a subsequent write.
 	CheckMembership(context.Context, *CheckMembershipRequest) (*CheckMembershipResponse, error)
+	// AdvanceReceipt is available for personal chats in stage 2.
+	// Validate actor membership, chat type and seq in the same transaction as the
+	// update. Return OK only after commit, including for a repeat or older seq.
+	// INVALID_ARGUMENT: malformed request (UUID, kind or missing seq).
+	// NOT_FOUND: missing chat. PERMISSION_DENIED: actor is not a member.
+	// Check membership before reporting chat type or bounds based on last_seq.
+	// FAILED_PRECONDITION: chat is not personal. OUT_OF_RANGE: seq outside
+	// 0..min(chat.last_seq, 9007199254740991). A seq need not identify a row.
+	// UNAVAILABLE: storage unavailable or commit result unknown. Deadline and
+	// cancellation may leave the caller uncertain whether the update committed.
+	AdvanceReceipt(context.Context, *AdvanceReceiptRequest) (*AdvanceReceiptResponse, error)
 	mustEmbedUnimplementedHistoryServiceServer()
 }
 
@@ -110,6 +143,9 @@ func (UnimplementedHistoryServiceServer) GetChatMembers(context.Context, *GetCha
 }
 func (UnimplementedHistoryServiceServer) CheckMembership(context.Context, *CheckMembershipRequest) (*CheckMembershipResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CheckMembership not implemented")
+}
+func (UnimplementedHistoryServiceServer) AdvanceReceipt(context.Context, *AdvanceReceiptRequest) (*AdvanceReceiptResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdvanceReceipt not implemented")
 }
 func (UnimplementedHistoryServiceServer) mustEmbedUnimplementedHistoryServiceServer() {}
 func (UnimplementedHistoryServiceServer) testEmbeddedByValue()                        {}
@@ -186,6 +222,24 @@ func _HistoryService_CheckMembership_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HistoryService_AdvanceReceipt_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdvanceReceiptRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HistoryServiceServer).AdvanceReceipt(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HistoryService_AdvanceReceipt_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HistoryServiceServer).AdvanceReceipt(ctx, req.(*AdvanceReceiptRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // HistoryService_ServiceDesc is the grpc.ServiceDesc for HistoryService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -204,6 +258,10 @@ var HistoryService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CheckMembership",
 			Handler:    _HistoryService_CheckMembership_Handler,
+		},
+		{
+			MethodName: "AdvanceReceipt",
+			Handler:    _HistoryService_AdvanceReceipt_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

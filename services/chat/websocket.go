@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -25,22 +26,32 @@ type wsEndpoint struct {
 	timing   wsTiming
 	stopping chan struct{}
 
+	fanoutCtx    context.Context
+	cancelFanout context.CancelFunc
+
 	hub            *connectionHub
 	broker         Broker
 	history        historyv1.HistoryServiceClient
 	historyTimeout time.Duration
+	logger         *slog.Logger
 
 	mu     sync.Mutex
 	active sync.WaitGroup
 }
 
-func newWSEndpoint(cfg config, ready *atomic.Bool, timing wsTiming, history historyv1.HistoryServiceClient) *wsEndpoint {
+func newWSEndpoint(cfg config, ready *atomic.Bool, timing wsTiming,
+	history historyv1.HistoryServiceClient, logger *slog.Logger,
+) *wsEndpoint {
 	hub := newConnectionHub()
+	fanoutCtx, cancelFanout := context.WithCancel(context.Background())
 	return &wsEndpoint{
+		logger:         logger,
 		ready:          ready,
 		verifier:       cfg.JWTVerifier,
 		timing:         timing,
 		stopping:       make(chan struct{}),
+		fanoutCtx:      fanoutCtx,
+		cancelFanout:   cancelFanout,
 		hub:            hub,
 		broker:         memoryBroker{hub: hub},
 		history:        history,
@@ -163,6 +174,7 @@ func (ws *wsEndpoint) stopAccepting() {
 	defer ws.mu.Unlock()
 	ws.ready.Store(false)
 	close(ws.stopping)
+	ws.cancelFanout()
 }
 
 func (ws *wsEndpoint) wait(ctx context.Context) error {

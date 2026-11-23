@@ -1,0 +1,25 @@
+meta {
+  name: CONTACT-LIST-A
+  type: http
+  seq: 46
+}
+
+get {
+  url: {{baseUrl}}/contacts
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTACT-LIST-A", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTACT-LIST-A", bru, req, res, test, expect);
+}

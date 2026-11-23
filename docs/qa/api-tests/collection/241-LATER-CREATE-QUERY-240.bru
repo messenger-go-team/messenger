@@ -1,0 +1,33 @@
+meta {
+  name: LATER-CREATE-QUERY-240
+  type: http
+  seq: 241
+}
+
+post {
+  url: {{baseUrl}}/later?%zz=1
+  body: json
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"chat_id":"{{chatAB}}","message_id":"{{firstID}}","due_at":"2099-01-01T00:00:00Z"}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-CREATE-QUERY-240", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-CREATE-QUERY-240", bru, req, res, test, expect);
+}

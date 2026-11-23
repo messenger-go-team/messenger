@@ -1,0 +1,25 @@
+meta {
+  name: HISTORY-AFTER-0
+  type: http
+  seq: 82
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/messages?after_seq=0&limit=100
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("HISTORY-AFTER-0", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("HISTORY-AFTER-0", bru, req, res, test, expect);
+}

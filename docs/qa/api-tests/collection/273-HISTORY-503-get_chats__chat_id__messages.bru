@@ -1,0 +1,25 @@
+meta {
+  name: HISTORY-503-get/chats/{chat_id}/messages
+  type: http
+  seq: 273
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/messages
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("HISTORY-503-get/chats/{chat_id}/messages", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("HISTORY-503-get/chats/{chat_id}/messages", bru, req, res, test, expect);
+}

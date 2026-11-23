@@ -10,6 +10,7 @@ import {
   type RegisterRequest,
   type User,
 } from '@/api/auth'
+import { ApiError } from '@/api/client'
 import {
   AuthFlowCancelledError,
   isLogoutSettled,
@@ -17,12 +18,26 @@ import {
 } from '@/features/auth/authErrors'
 import { AuthContext, type AuthContextValue } from '@/features/auth/auth-context'
 import { readLogoutPending, writeLogoutPending } from '@/features/auth/logoutPending'
+import {
+  getSharedRefreshCoordinator,
+  isFinalRefreshFailure,
+  refreshBackoffMs,
+  RefreshCancelledError,
+  RefreshTimeoutError,
+} from '@/features/auth/refreshCoordinator'
 
 /** Обновляем access-токен за минуту до истечения `expires_in`. */
 const REFRESH_SKEW_MS = 60_000
 
 interface AuthProviderProps {
   children: ReactNode
+}
+
+function isTemporaryRefreshFailure(error: unknown): boolean {
+  if (error instanceof RefreshTimeoutError) return true
+  if (error instanceof ApiError && error.status >= 500) return true
+  if (error instanceof TypeError) return true
+  return false
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
@@ -32,7 +47,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [logoutError, setLogoutError] = useState<string | null>(null)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const epochRef = useRef(0)
-  const refreshInFlightRef = useRef<Promise<AccessTokenResponse> | null>(null)
   const queueTailRef = useRef(Promise.resolve())
   /** Эпоха входа, чья refresh-cookie уже записана, но ещё может быть отменена. */
   const cookieOwnerRef = useRef<number | null>(null)
@@ -42,6 +56,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     (token: string, expiresInSeconds: number, epoch: number) => Promise<void>
   >(async () => undefined)
   const rotateSessionRef = useRef<(epoch: number) => Promise<void>>(async () => undefined)
+  const coordinatorRef = useRef(getSharedRefreshCoordinator((signal) => refreshRequest({ signal })))
 
   const enqueue = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
     const run = queueTailRef.current.then(task, task)
@@ -52,18 +67,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return run
   }, [])
 
-  const refreshShared = useCallback(() => {
-    if (!refreshInFlightRef.current) {
-      const pending = refreshRequest().finally(() => {
-        if (refreshInFlightRef.current === pending) {
-          refreshInFlightRef.current = null
-        }
-      })
-      refreshInFlightRef.current = pending
-    }
-
-    return refreshInFlightRef.current
-  }, [])
+  const refreshShared = useCallback(() => coordinatorRef.current.requestRefresh(), [])
 
   const clearRefreshTimer = useCallback(() => {
     if (refreshTimerRef.current !== null) {
@@ -78,10 +82,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setUser(null)
   }, [clearRefreshTimer])
 
-  /**
-   * Отзыв refresh-cookie: отметка до запроса, ошибка повтора сразу после сбоя.
-   * 204 и 401 снимают отметку и сообщение; временный сбой оставляет оба.
-   */
+  /** Инвалидация с другой вкладки / final failure: гасим bootstrap и in-flight acceptSession. */
+  const invalidateLocalAuth = useCallback(
+    (nextEpochHint?: number) => {
+      if (typeof nextEpochHint === 'number' && nextEpochHint > epochRef.current) {
+        epochRef.current = nextEpochHint
+      } else {
+        epochRef.current += 1
+      }
+      cookieOwnerRef.current = null
+      publishedEpochRef.current = null
+      clearSession()
+    },
+    [clearSession],
+  )
+
   const settleLogout = useCallback(async (): Promise<boolean> => {
     writeLogoutPending(true)
 
@@ -98,7 +113,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [])
 
   const revokeIfCurrentCookieIsStale = useCallback(async () => {
-    // Выход уже отмечен и сам очистит cookie. Повторный logout снял бы более новый вход.
     if (readLogoutPending()) return
     await settleLogout()
   }, [settleLogout])
@@ -108,12 +122,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     writeLogoutPending(false)
   }, [])
 
-  /**
-   * Вход записал cookie, но его профиль так и не стал текущей сессией.
-   * Отметка ставится синхронно, в момент отмены, и logout встаёт в очередь
-   * сразу — старый GET /me её не задерживает. Перед самим logout владелец
-   * проверяется ещё раз: успешный более новый вход уже мог записать свою cookie.
-   */
   const abandonOwnedCookie = useCallback(
     (epoch: number): Promise<void> => {
       if (cookieOwnerRef.current !== epoch) return Promise.resolve()
@@ -131,7 +139,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const acceptSession = useCallback(
     async (token: string, expiresInSeconds: number, epoch: number) => {
-      // Профиль не блокирует очередь: выход может отозвать cookie, не дожидаясь GET /me.
+      if (epochRef.current !== epoch) return
+
       let profile: User
       try {
         profile = await getMe(token)
@@ -160,67 +169,101 @@ export function AuthProvider({ children }: AuthProviderProps) {
   )
 
   const rotateSession = useCallback(
-    async (epoch: number) => {
+    async (epoch: number, attempt = 0) => {
       try {
-        const next = await enqueue(async () => {
-          const rotated = await refreshShared()
+        await enqueue(async () => {
+          await refreshShared()
           if (epochRef.current !== epoch) {
             await revokeIfCurrentCookieIsStale()
-            return null
           }
-          return rotated
         })
-        if (!next || epochRef.current !== epoch) return
-        await acceptSessionRef.current(next.access_token, next.expires_in, epoch)
-      } catch {
-        if (epochRef.current === epoch) clearSession()
+      } catch (error) {
+        if (error instanceof RefreshCancelledError) return
+        if (isFinalRefreshFailure(error)) {
+          if (epochRef.current === epoch) clearSession()
+          return
+        }
+        if (epochRef.current !== epoch) return
+        clearRefreshTimer()
+        refreshTimerRef.current = setTimeout(() => {
+          void rotateSession(epoch, attempt + 1)
+        }, refreshBackoffMs(attempt))
       }
     },
-    [clearSession, enqueue, refreshShared, revokeIfCurrentCookieIsStale],
+    [clearRefreshTimer, clearSession, enqueue, refreshShared, revokeIfCurrentCookieIsStale],
   )
 
   useEffect(() => {
     acceptSessionRef.current = acceptSession
-    rotateSessionRef.current = rotateSession
+    rotateSessionRef.current = async (epoch: number) => {
+      await rotateSession(epoch, 0)
+    }
   }, [acceptSession, rotateSession])
+
+  useEffect(() => {
+    const coordinator = coordinatorRef.current
+    const unsubscribeSuccess = coordinator.subscribeSuccess((session) => {
+      if (publishedEpochRef.current === null) return
+      const epoch = epochRef.current
+      void acceptSessionRef.current(session.access_token, session.expires_in, epoch)
+    })
+    const unsubscribeInvalidated = coordinator.subscribeInvalidated((sessionEpoch) => {
+      // Только UI/epoch: не ставим logoutPending — иначе reload отозвал бы новую cookie соседа.
+      invalidateLocalAuth(sessionEpoch)
+    })
+    const unsubscribeFinal = coordinator.subscribeFinalFailure((_status, sessionEpoch) => {
+      invalidateLocalAuth(sessionEpoch)
+    })
+    return () => {
+      unsubscribeSuccess()
+      unsubscribeInvalidated()
+      unsubscribeFinal()
+    }
+  }, [invalidateLocalAuth])
 
   useEffect(() => {
     let cancelled = false
     const epoch = epochRef.current
-    // Не стартуем refresh, пока незавершённый выход не отзовёт cookie.
-    const pendingRefresh = readLogoutPending() ? null : refreshShared()
+    // Фиксируем на старте эффекта: поздний logout() сам делает settleLogout.
+    const pendingLogoutAtMount = readLogoutPending()
+    // Стартуем refresh сразу (не внутри enqueue), чтобы abort/reject не были unhandled.
+    const initialRefresh = pendingLogoutAtMount ? null : refreshShared()
 
     const boot = enqueue(async () => {
-      if (!pendingRefresh) {
+      if (!initialRefresh) {
         await settleLogout()
         return null
       }
 
-      let session: AccessTokenResponse | null
-      try {
-        session = await pendingRefresh
-      } catch {
-        session = null
-      }
-
-      if (readLogoutPending() || cancelled || epochRef.current !== epoch) {
-        if (!cancelled && epochRef.current !== epoch && session && !readLogoutPending()) {
-          await revokeIfCurrentCookieIsStale()
+      let attempt = 0
+      let pending: Promise<AccessTokenResponse> | null = initialRefresh
+      for (;;) {
+        if (cancelled || epochRef.current !== epoch) return null
+        try {
+          return await (pending ?? refreshShared())
+        } catch (error) {
+          pending = null
+          if (cancelled || epochRef.current !== epoch) return null
+          if (error instanceof RefreshCancelledError || isFinalRefreshFailure(error)) {
+            return null
+          }
+          if (!isTemporaryRefreshFailure(error)) return null
+          await new Promise<void>((resolve) => {
+            window.setTimeout(resolve, refreshBackoffMs(attempt))
+          })
+          attempt += 1
         }
-        return null
       }
-
-      if (!session) {
-        clearSession()
-        return null
-      }
-
-      return session
     })
 
     void boot
-      .then(async (session) => {
-        if (!session || cancelled || epochRef.current !== epoch) return
+      .then(async (session: AccessTokenResponse | null) => {
+        if (!session || cancelled || epochRef.current !== epoch) {
+          if (!cancelled && epochRef.current === epoch && !readLogoutPending()) {
+            clearSession()
+          }
+          return
+        }
         try {
           await acceptSessionRef.current(session.access_token, session.expires_in, epoch)
         } catch {
@@ -235,43 +278,47 @@ export function AuthProvider({ children }: AuthProviderProps) {
       cancelled = true
       clearRefreshTimer()
     }
-  }, [
-    clearRefreshTimer,
-    clearSession,
-    enqueue,
-    refreshShared,
-    revokeIfCurrentCookieIsStale,
-    settleLogout,
-  ])
+  }, [clearRefreshTimer, clearSession, enqueue, refreshShared, settleLogout])
 
   const login = useCallback(
     async (credentials: LoginRequest) => {
       const previousOwner = cookieOwnerRef.current
       const epoch = ++epochRef.current
       clearRefreshTimer()
-      // Отмена предыдущего входа не ждёт его GET /me: cookie отзывается сразу.
-      if (previousOwner !== null) void abandonOwnedCookie(previousOwner)
-      const session = await enqueue(async () => {
-        if (epochRef.current !== epoch) throw new AuthFlowCancelledError()
+      const shouldAbandon = previousOwner !== null && publishedEpochRef.current !== previousOwner
+      // Синхронная отметка до await — reload не должен поднять отменённый вход.
+      if (shouldAbandon) {
+        writeLogoutPending(true)
+        clearSession()
+      }
 
-        const next = await loginRequest(credentials)
-        if (epochRef.current !== epoch) {
-          await revokeIfCurrentCookieIsStale()
-          throw new AuthFlowCancelledError()
-        }
-        claimCookie(epoch)
-        return next
+      const session = await enqueue(async () => {
+        return coordinatorRef.current.withSessionChange('account_switch', async () => {
+          if (shouldAbandon) {
+            if (cookieOwnerRef.current === previousOwner) cookieOwnerRef.current = null
+            await settleLogout()
+          }
+          if (epochRef.current !== epoch) throw new AuthFlowCancelledError()
+          const next = await loginRequest(credentials)
+          if (epochRef.current !== epoch) {
+            await revokeIfCurrentCookieIsStale()
+            throw new AuthFlowCancelledError()
+          }
+          claimCookie(epoch)
+          return next
+        })
       })
       await acceptSession(session.access_token, session.expires_in, epoch)
       if (epochRef.current !== epoch) throw new AuthFlowCancelledError()
     },
     [
-      abandonOwnedCookie,
       acceptSession,
       claimCookie,
       clearRefreshTimer,
+      clearSession,
       enqueue,
       revokeIfCurrentCookieIsStale,
+      settleLogout,
     ],
   )
 
@@ -280,31 +327,41 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const previousOwner = cookieOwnerRef.current
       const epoch = ++epochRef.current
       clearRefreshTimer()
-      if (previousOwner !== null) void abandonOwnedCookie(previousOwner)
+      const shouldAbandon = previousOwner !== null && publishedEpochRef.current !== previousOwner
+      if (shouldAbandon) {
+        writeLogoutPending(true)
+        clearSession()
+      }
+
       const session = await enqueue(async () => {
-        if (epochRef.current !== epoch) throw new AuthFlowCancelledError()
-
-        await registerRequest(data)
-        if (epochRef.current !== epoch) throw new AuthFlowCancelledError()
-
-        const next = await loginRequest(data)
-        if (epochRef.current !== epoch) {
-          await revokeIfCurrentCookieIsStale()
-          throw new AuthFlowCancelledError()
-        }
-        claimCookie(epoch)
-        return next
+        return coordinatorRef.current.withSessionChange('account_switch', async () => {
+          if (shouldAbandon) {
+            if (cookieOwnerRef.current === previousOwner) cookieOwnerRef.current = null
+            await settleLogout()
+          }
+          if (epochRef.current !== epoch) throw new AuthFlowCancelledError()
+          await registerRequest(data)
+          if (epochRef.current !== epoch) throw new AuthFlowCancelledError()
+          const next = await loginRequest(data)
+          if (epochRef.current !== epoch) {
+            await revokeIfCurrentCookieIsStale()
+            throw new AuthFlowCancelledError()
+          }
+          claimCookie(epoch)
+          return next
+        })
       })
       await acceptSession(session.access_token, session.expires_in, epoch)
       if (epochRef.current !== epoch) throw new AuthFlowCancelledError()
     },
     [
-      abandonOwnedCookie,
       acceptSession,
       claimCookie,
       clearRefreshTimer,
+      clearSession,
       enqueue,
       revokeIfCurrentCookieIsStale,
+      settleLogout,
     ],
   )
 
@@ -317,7 +374,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setAccessToken(null)
     setUser(null)
     await enqueue(async () => {
-      await settleLogout()
+      await coordinatorRef.current.withSessionChange('logout', async () => {
+        await settleLogout()
+      })
     })
   }, [clearRefreshTimer, enqueue, settleLogout])
 

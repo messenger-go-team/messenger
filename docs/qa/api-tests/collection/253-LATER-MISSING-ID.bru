@@ -1,0 +1,33 @@
+meta {
+  name: LATER-MISSING-ID
+  type: http
+  seq: 253
+}
+
+patch {
+  url: {{baseUrl}}/later/{{missingID}}
+  body: json
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"due_at":null}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-MISSING-ID", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-MISSING-ID", bru, req, res, test, expect);
+}

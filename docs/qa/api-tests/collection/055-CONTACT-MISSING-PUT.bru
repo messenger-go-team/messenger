@@ -1,0 +1,25 @@
+meta {
+  name: CONTACT-MISSING-PUT
+  type: http
+  seq: 55
+}
+
+put {
+  url: {{baseUrl}}/contacts/{{missingID}}
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTACT-MISSING-PUT", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTACT-MISSING-PUT", bru, req, res, test, expect);
+}

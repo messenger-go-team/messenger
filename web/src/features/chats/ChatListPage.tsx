@@ -16,6 +16,7 @@ import { createPersonalChat, listChats, type ChatListItem } from '@/api/history'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/features/auth/useAuth'
+import { ChatThread } from '@/features/chats/ChatThread'
 import { formatChatListTime } from '@/features/chats/formatChatListTime'
 import { peerUsername } from '@/features/chats/peerUsername'
 import {
@@ -249,7 +250,7 @@ export function ChatListPage() {
           </NavIcon>
         </div>
         <div className="flex flex-col items-center gap-2">
-          <NavIcon label="Профиль" to="/change-password">
+          <NavIcon label="Профиль" to="/profile">
             <User className="size-5" />
           </NavIcon>
           <Button
@@ -265,7 +266,12 @@ export function ChatListPage() {
         </div>
       </nav>
 
-      <aside className="flex min-w-0 flex-1 max-w-[344px] flex-col border-r border-border bg-card">
+      <aside
+        className={cn(
+          'min-w-0 flex-1 max-w-[344px] flex-col border-r border-border bg-card',
+          chatId ? 'hidden md:flex' : 'flex',
+        )}
+      >
         <header className="flex items-center justify-between gap-3 px-4 pt-5 pb-3">
           <h1 className="text-xl font-semibold tracking-tight">Чаты</h1>
           <Button
@@ -331,16 +337,19 @@ export function ChatListPage() {
         </div>
       </aside>
 
-      <main className="hidden min-w-0 flex-1 flex-col items-center justify-center bg-muted/20 md:flex">
+      <main
+        className={cn(
+          'min-w-0 flex-1 bg-background',
+          chatId ? 'flex' : 'hidden items-center justify-center md:flex',
+        )}
+      >
         {chatId ? (
-          <div className="max-w-sm px-6 text-center">
-            <p className="text-base font-medium text-foreground">
-              Чат с {selectedPeer ?? 'пользователем'}
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Окно переписки подключается в задаче #44
-            </p>
-          </div>
+          <ChatThread
+            key={chatId}
+            chatId={chatId}
+            peerUsername={selectedPeer}
+            onReadCommitted={reloadChats}
+          />
         ) : (
           <ChatNotSelectedPanel onFindPerson={() => focusSearch()} />
         )}

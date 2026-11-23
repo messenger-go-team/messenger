@@ -9,6 +9,7 @@ import { AuthProvider } from '@/features/auth/AuthProvider'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { RegisterPage } from '@/features/auth/RegisterPage'
 import { LOGOUT_PENDING_KEY } from '@/features/auth/logoutPending'
+import { resetSharedRefreshCoordinatorForTests } from '@/features/auth/refreshCoordinator'
 
 const { refresh, login, logout, getMe, register } = vi.hoisted(() => ({
   refresh: vi.fn(),
@@ -53,6 +54,7 @@ describe('Auth pages bootstrap and revoke retry', () => {
   afterEach(() => {
     vi.resetAllMocks()
     sessionStorage.clear()
+    resetSharedRefreshCoordinatorForTests()
   })
 
   it('keeps login behind a session check until bootstrap profile finishes', async () => {

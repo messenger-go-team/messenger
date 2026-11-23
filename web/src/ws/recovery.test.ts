@@ -806,7 +806,7 @@ describe('message retry backoff during History synchronization', () => {
     client.stop()
   })
 
-  it('cancels a scheduled message retry when an ack arrives during backoff', async () => {
+  it('ignores an ack from the retired socket and retries after recovering history', async () => {
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
     const history: HistoryAdapter = {
       listChats: vi.fn().mockResolvedValue([]),
@@ -829,11 +829,12 @@ describe('message retry backoff during History synchronization', () => {
     const firstAttempt = server.received[0]
     const stored = server.storedMessages[0]
     const connection = Array.from(server.connections)[0]
-    if (!firstAttempt || !stored || !connection) throw new Error('Expected a sent attempt')
+    const onmessage = connection?.onmessage
+    if (!firstAttempt || !stored || !onmessage) throw new Error('Expected a sent attempt')
 
     await vi.advanceTimersByTimeAsync(100)
-    connection.serverMessage(
-      JSON.stringify({
+    onmessage({
+      data: JSON.stringify({
         type: 'message.ack',
         id: firstAttempt.id,
         ts: '2026-11-08T12:00:00Z',
@@ -845,12 +846,13 @@ describe('message retry backoff during History synchronization', () => {
           created_at: stored.createdAt,
         },
       }),
-    )
-    await client.synchronizeHistory()
-    await vi.advanceTimersByTimeAsync(1_000)
+    })
+    expect(client.getSnapshot().pending[0]?.status).toBe('pending')
+    await vi.advanceTimersByTimeAsync(1_001)
 
-    expect(server.received).toHaveLength(1)
-    expect(client.getSnapshot().pending[0]).toMatchObject({ attempts: 1, status: 'sent' })
+    expect(server.received).toHaveLength(2)
+    expect(server.received[1]?.payload).toEqual(firstAttempt.payload)
+    expect(client.getSnapshot().pending[0]).toMatchObject({ attempts: 2, status: 'sent' })
 
     client.stop()
   })

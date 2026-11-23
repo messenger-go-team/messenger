@@ -13,6 +13,7 @@ import (
 	historyv1 "github.com/messenger-go-team/messenger/api/gen/history/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func run(ctx context.Context, cfg config, logger *slog.Logger) error {
@@ -27,8 +28,8 @@ func run(ctx context.Context, cfg config, logger *slog.Logger) error {
 		return fmt.Errorf("listen HTTP: %w", err)
 	}
 	var ready atomic.Bool
-	ws := newWSEndpoint(cfg, &ready, defaultWSTiming(), historyv1.NewHistoryServiceClient(history))
-	handler := newServiceHandler(&ready, logger, ws)
+	ws := newWSEndpoint(cfg, &ready, defaultWSTiming(), historyv1.NewHistoryServiceClient(history), logger)
+	handler := newServiceHandler(&ready, logger, ws, healthpb.NewHealthClient(history))
 	server := newHTTPServer(cfg, handler, logger)
 	return serve(ctx, server, listener, ws, cfg.ShutdownTimeout, logger)
 }
