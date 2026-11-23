@@ -96,7 +96,7 @@ class RoutingTest(unittest.TestCase):
             docker("rm", "-f", name)
 
     @staticmethod
-    def request(edge, method, uri, token=""):
+    def request(edge, method, uri, token="", *, extra_headers=None):
         port, tls = edge
         if tls:
             context = ssl.create_default_context(
@@ -107,7 +107,7 @@ class RoutingTest(unittest.TestCase):
         else:
             connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
         try:
-            headers = {"Host": "staging.example.com"}
+            headers = {"Host": "staging.example.com", **(extra_headers or {})}
             if token:
                 headers["Authorization"] = "Bearer " + token
             connection.request(method, uri, headers=headers)
@@ -172,6 +172,46 @@ class RoutingTest(unittest.TestCase):
             )
             self.assertEqual(status, 308)
             self.assertEqual(headers["Location"], "https://staging.example.com/later/id?x=a%2Fb&n=2")
+
+    def test_staging_rate_limits(self):
+        edge = self.edges[("staging.conf.example", 443)]
+        cases = (
+            ("POST", "/auth/login", {}, 6),
+            ("POST", "/auth/register", {}, 3),
+            ("GET", "/ws", {"Connection": "Upgrade", "Upgrade": "WebSocket"}, 8),
+        )
+        for method, uri, headers, shared_ip_requests in cases:
+            with self.subTest(method=method, uri=uri):
+                for _ in range(shared_ip_requests):
+                    status, _, _ = self.request(edge, method, uri, extra_headers=headers)
+                    self.assertEqual(status, 200)
+
+                # Changing client-supplied IP headers must still exhaust the same zone.
+                for attempt in range(1, 49):
+                    claimed_ip = f"192.0.2.{attempt}"
+                    status, _, _ = self.request(
+                        edge, method, f"{uri}?attempt={attempt}",
+                        extra_headers={
+                            **headers,
+                            "X-Forwarded-For": claimed_ip,
+                            "X-Real-IP": claimed_ip,
+                        },
+                    )
+                    if status == 429:
+                        break
+                    self.assertEqual(status, 200)
+                else:
+                    self.fail(f"{method} {uri} did not reach 429")
+
+        for method, uri in (
+            ("POST", "/auth/refresh"),
+            ("GET", "/me"),
+            ("GET", "/chats/id/messages"),
+            ("PATCH", "/later/id"),
+            ("GET", "/ws"),
+        ):
+            with self.subTest(method=method, uri=uri):
+                self.assertEqual(self.request(edge, method, uri)[0], 200)
 
 
 if __name__ == "__main__":
