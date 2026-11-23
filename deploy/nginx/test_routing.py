@@ -124,6 +124,8 @@ class RoutingTest(unittest.TestCase):
             ("DELETE", "/contacts/x%252F..%252Fid", "auth"),
             ("POST", "/chats/personal", "history"), ("GET", "/chats", "history"),
             ("GET", "/chats/id/messages?after_seq=2&limit=10", "history"),
+            ("GET", "/chats/id/receipts", "history"),
+            ("GET", "/chats/id/receipts?unexpected=%ZZ", "history"),
             ("GET", "/chats/id/messages/target/context?limit=3", "history"),
             ("GET", "/chats/id/messages/target/context?before_seq=1&limit=%ZZ", "history"),
             ("GET", "/chats/id/messages/x%2f..%2ftarget/context?limit=1", "history"),
@@ -153,7 +155,7 @@ class RoutingTest(unittest.TestCase):
             for uri in (
                 "/internal", "/internal/users/id", "/internal%2Fusers%2Fid",
                 "/later/%2e%2e/internal/users/id", "/auth/%2e%2e/internal/users/id",
-                "/chats/id/messages/target/context/extra", "/chats/id/context",
+                "/chats/id/messages/target/context/extra", "/chats/id/context", "/chats/id/receipts/extra",
                 "/readyz", "/healthz", "/metrics", "/api/history", "/later-other",
             ):
                 with self.subTest(edge=edge, uri=uri):

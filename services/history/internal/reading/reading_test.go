@@ -72,3 +72,7 @@ func TestValidationAndLookupBoundary(t *testing.T) {
 		t.Fatal("read cursor must not depend on Auth", err)
 	}
 }
+
+func (*fakeRepo) Receipts(context.Context, string, string) ([]MemberReceipt, error) {
+	panic("unexpected Receipts call")
+}

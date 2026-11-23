@@ -6,10 +6,14 @@
 сохранение сообщений через SaveMessage.
 [#31](https://github.com/messenger-go-team/messenger/issues/31): список чатов,
 курсорная история и приватная отметка прочтения по REST.
+[#130](https://github.com/messenger-go-team/messenger/issues/130): публичные
+курсоры личного чата через внутренний `AdvanceReceipt` и
+`GET /chats/{chat_id}/receipts`.
 Контракты: [History OpenAPI](../../api/openapi/history.yaml),
 [history.proto и правила ошибок](../../api/proto/README.md).
 Базовая схема принадлежит миграции #12; #86 добавляет личные записи миграцией
-`000002_later_entries`, не переписывая уже применённую версию 1.
+`000002_later_entries`. Миграция `000003_public_receipts` сохраняет оба
+приватных курсора и добавляет публичные со значением 0.
 
 ## Запуск
 
@@ -100,7 +104,8 @@ RPC доступны только доверенному Chat во внутре�
 HTTP сохраняет request_id, panic recovery и /metrics из шаблона.
 /healthz проверяет процесс. /readyz проверяет схему четырёх таблиц и SELECT/INSERT,
 UPDATE(last_seq) для chats и UPDATE(last_read_seq, last_delivered_seq)
-для chat_members; без миграции/прав даёт 503.
+для chat_members. Для публичных курсоров нужны миграция v3 и UPDATE двух
+публичных столбцов. Без требуемой схемы или прав readiness даёт 503.
 Готовность восстанавливается после исправления БД без перезапуска.
 Auth вызывается при создании чата; его временный отказ отражается в ответе
 операции 503 и не блокирует чтение членства по gRPC.

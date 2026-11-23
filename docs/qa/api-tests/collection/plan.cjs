@@ -884,4 +884,36 @@ h("UNREAD-AFTER-PRIVATE-WRITES", "/chats", "get", "/chats", 200, {
   auth: "b",
   check: ({ b, e, f }) => e(unread(b, f.chatAB)).equal(1),
 });
+const receipts = "/chats/{chat_id}/receipts";
+const receiptsAB = "/chats/{{chatAB}}/receipts";
+const checkInitialReceipts = ({ b, e, f, res }) => {
+  e(res.headers["cache-control"]).equal("no-store");
+  e(b.chat_id).equal(f.chatAB);
+  e(b.members).deep.equal(
+    [f.aID, f.bID].sort().map((user_id) => ({
+      user_id,
+      last_delivered_seq: 0,
+      last_read_seq: 0,
+    })),
+  );
+};
+h("RECEIPTS-INITIAL-AFTER-REST-READ", receipts, "get", receiptsAB, 200, {
+  check: checkInitialReceipts,
+});
+h("RECEIPTS-401", receipts, "get", receiptsAB + "?unexpected=1", 401, {
+  auth: "none",
+});
+h("RECEIPTS-403", receipts, "get", receiptsAB, 403, { auth: "c" });
+h("RECEIPTS-404", receipts, "get", "/chats/{{missingID}}/receipts", 404);
+h("RECEIPTS-422-QUERY", receipts, "get", receiptsAB + "?unexpected=1", 422);
+h("RECEIPTS-422-UUID", receipts, "get", "/chats/bad-uuid/receipts", 422);
+h("RECEIPTS-503", receipts, "get", receiptsAB, 503, {
+  control: "storage-down",
+  check: ({ b, e }) => e(b.code).equal("service_unavailable"),
+});
+h("RECEIPTS-RECOVERED", receipts, "get", receiptsAB, 200, {
+  auth: "b",
+  control: "storage-up",
+  check: checkInitialReceipts,
+});
 module.exports = { cases };

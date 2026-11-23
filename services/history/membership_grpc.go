@@ -20,6 +20,7 @@ type historyGRPC struct {
 	historyv1.UnimplementedHistoryServiceServer
 	repo     chats.Repository
 	messages messageSaver
+	receipts receiptAdvancer
 }
 
 func (s *historyGRPC) GetChatMembers(ctx context.Context, r *historyv1.GetChatMembersRequest) (*historyv1.GetChatMembersResponse, error) {

@@ -282,7 +282,7 @@ func TestLaterRescheduleAndCompleteBothOrders(t *testing.T) {
 	}
 }
 
-func TestLaterReadinessRequiresMigrationV2(t *testing.T) {
+func TestHistoryReadinessRequiresMigrations(t *testing.T) {
 	db := historyDatabase(t)
 	base := &postgres.Repository{DB: db}
 	saved := &postgres.LaterRepository{DB: db}
@@ -300,7 +300,11 @@ func TestLaterReadinessRequiresMigrationV2(t *testing.T) {
 	if _, err = db.ExecContext(t.Context(), string(migration)); err != nil {
 		t.Fatal(err)
 	}
+	if err = check(t.Context()); err == nil {
+		t.Fatal("API ready against v2 schema")
+	}
+	applyHistoryMigration(t, db, "000003_public_receipts")
 	if err = check(t.Context()); err != nil {
-		t.Fatal("API not ready after v2", err)
+		t.Fatal("API not ready after v3", err)
 	}
 }

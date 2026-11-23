@@ -123,6 +123,95 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
+  /chats/{chat_id}/receipts:
+    get:
+      tags: [Chats]
+      operationId: getChatReceipts
+      summary: Получить публичные курсоры доставки и прочтения личного чата
+      description: >-
+        Контракт этапа 2. Возвращает публичные курсоры обоих текущих
+        участников из одного согласованного снимка History. Клиент запрашивает
+        снимок при первом открытии личного чата, после reconnect открытого
+        чата, при возврате вкладки на передний план и в рамках периодической
+        сверки открытого чата в активной вкладке (WS §8 и §10).
+        Пользователь определяется по access JWT.
+        Операция проверяет текущее членство и не меняет курсоры или unread_count.
+        Публичные значения начинаются с нуля. Приватные значения MVP из
+        существующих столбцов last_read_seq и last_delivered_seq не служат
+        источником для снимка или начальных значений. Клиент объединяет снимок и
+        события WebSocket по (chat_id, user_id), применяя максимум отдельно
+        для каждого курсора. Событие read также подтверждает delivered до
+        того же seq. Ошибка снимка не сбрасывает известные значения.
+        Query-параметры и тело запроса не предусмотрены. Access JWT проверяется
+        до проверки пути и query. Любая непустая строка query, включая
+        неизвестные параметры или неверное кодирование, возвращает 422.
+        Для существующего чата членство проверяется до проверки его типа.
+        Ответ со снимком отправляется с Cache-Control: no-store.
+      security:
+        - accessToken: []
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          description: Ненулевой UUID личного чата.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Публичные курсоры обоих текущих участников.
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatReceipts'
+              examples:
+                initial:
+                  summary: Публичные курсоры ещё не продвигались
+                  value:
+                    chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
+                    members:
+                      - user_id: 23968cc7-c30c-47b0-a741-6b81249aa5e7
+                        last_delivered_seq: 0
+                        last_read_seq: 0
+                      - user_id: 8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0
+                        last_delivered_seq: 0
+                        last_read_seq: 0
+                advanced:
+                  summary: Доставка опережает показ для одного из участников
+                  value:
+                    chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
+                    members:
+                      - user_id: 23968cc7-c30c-47b0-a741-6b81249aa5e7
+                        last_delivered_seq: 42
+                        last_read_seq: 38
+                      - user_id: 8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0
+                        last_delivered_seq: 40
+                        last_read_seq: 40
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Некорректный chat_id, непустой query или чат участника не является личным.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                code: validation_error
+                message: Некорректный запрос.
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+
   /chats/{chat_id}/messages:
     get:
       tags: [Messages]
@@ -633,97 +722,6 @@ components:
       schema:
         type: string
         format: uuid
-
-  pathItems:
-    ChatReceiptsPath:
-      summary: GET /chats/{chat_id}/receipts
-      description: Переносится в paths при реализации #130 вместе с тестами Bruno.
-      get:
-        tags: [Chats]
-        operationId: getChatReceipts
-        summary: Получить публичные курсоры доставки и прочтения личного чата
-        description: >-
-          Контракт этапа 2. Возвращает публичные курсоры обоих текущих
-          участников из одного согласованного снимка History. Клиент запрашивает
-          снимок при первом открытии личного чата, после reconnect открытого
-          чата, при возврате вкладки на передний план и в рамках периодической
-          сверки открытого чата в активной вкладке (WS §8 и §10).
-          Пользователь определяется по access JWT.
-          Операция проверяет текущее членство и не меняет курсоры или unread_count.
-          Публичные значения начинаются с нуля. Приватные значения MVP из
-          существующих столбцов last_read_seq и last_delivered_seq не служат
-          источником для снимка или начальных значений. Клиент объединяет снимок и
-          события WebSocket по (chat_id, user_id), применяя максимум отдельно
-          для каждого курсора. Событие read также подтверждает delivered до
-          того же seq. Ошибка снимка не сбрасывает известные значения.
-          Query-параметры и тело запроса не предусмотрены. Access JWT проверяется
-          до проверки пути и query. Любая непустая строка query, включая
-          неизвестные параметры или неверное кодирование, возвращает 422.
-          Для существующего чата членство проверяется до проверки его типа.
-          Ответ со снимком отправляется с Cache-Control: no-store.
-        security:
-          - accessToken: []
-        parameters:
-          - name: chat_id
-            in: path
-            required: true
-            description: Ненулевой UUID личного чата.
-            schema:
-              type: string
-              format: uuid
-        responses:
-          '200':
-            description: Публичные курсоры обоих текущих участников.
-            headers:
-              Cache-Control:
-                required: true
-                schema:
-                  type: string
-                  const: no-store
-            content:
-              application/json:
-                schema:
-                  $ref: '#/components/schemas/ChatReceipts'
-                examples:
-                  initial:
-                    summary: Публичные курсоры ещё не продвигались
-                    value:
-                      chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
-                      members:
-                        - user_id: 23968cc7-c30c-47b0-a741-6b81249aa5e7
-                          last_delivered_seq: 0
-                          last_read_seq: 0
-                        - user_id: 8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0
-                          last_delivered_seq: 0
-                          last_read_seq: 0
-                  advanced:
-                    summary: Доставка опережает показ для одного из участников
-                    value:
-                      chat_id: 07fa7d9e-ec8a-40d6-b53d-4469297c96dc
-                      members:
-                        - user_id: 23968cc7-c30c-47b0-a741-6b81249aa5e7
-                          last_delivered_seq: 42
-                          last_read_seq: 38
-                        - user_id: 8f4f2c3a-9ad8-4c6a-8f90-3d24b54a21a0
-                          last_delivered_seq: 40
-                          last_read_seq: 40
-          '401':
-            $ref: '#/components/responses/Unauthorized'
-          '403':
-            $ref: '#/components/responses/Forbidden'
-          '404':
-            $ref: '#/components/responses/NotFound'
-          '422':
-            description: Некорректный chat_id, непустой query или чат участника не является личным.
-            content:
-              application/json:
-                schema:
-                  $ref: '#/components/schemas/ApiError'
-                example:
-                  code: validation_error
-                  message: Некорректный запрос.
-          '503':
-            $ref: '#/components/responses/ServiceUnavailable'
 
   schemas:
     CreatePersonalChatRequest:

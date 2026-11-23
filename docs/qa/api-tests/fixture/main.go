@@ -98,7 +98,7 @@ func grants() {
 	exec(a, `GRANT USAGE ON SCHEMA auth TO api_auth_runtime; GRANT SELECT,INSERT ON ALL TABLES IN SCHEMA auth TO api_auth_runtime; GRANT UPDATE ON auth.refresh_tokens TO api_auth_runtime; GRANT DELETE ON auth.contacts TO api_auth_runtime`)
 	h := db("history")
 	defer func() { _ = h.Close() }()
-	exec(h, `GRANT USAGE ON SCHEMA history TO api_history_runtime; GRANT SELECT,INSERT ON history.chats,history.chat_members,history.personal_chat_pairs,history.messages,history.later_entries TO api_history_runtime; GRANT UPDATE(last_seq) ON history.chats TO api_history_runtime; GRANT UPDATE(last_read_seq,last_delivered_seq) ON history.chat_members TO api_history_runtime; GRANT UPDATE(id) ON history.messages TO api_history_runtime; GRANT UPDATE(due_at,state,updated_at) ON history.later_entries TO api_history_runtime`)
+	exec(h, `GRANT USAGE ON SCHEMA history TO api_history_runtime; GRANT SELECT,INSERT ON history.chats,history.chat_members,history.personal_chat_pairs,history.messages,history.later_entries TO api_history_runtime; GRANT UPDATE(last_seq) ON history.chats TO api_history_runtime; GRANT UPDATE(last_read_seq,last_delivered_seq,public_last_read_seq,public_last_delivered_seq) ON history.chat_members TO api_history_runtime; GRANT UPDATE(id) ON history.messages TO api_history_runtime; GRANT UPDATE(due_at,state,updated_at) ON history.later_entries TO api_history_runtime`)
 	certs()
 }
 func bootstrap() {

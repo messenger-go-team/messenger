@@ -85,6 +85,13 @@ def main():
 
         original = (snippets / "public-locations.conf").read_text()
         a = release(A, original)
+        baseline = work / "baseline"
+        shutil.copytree(a, baseline)
+        for migration in (baseline / "services/history/migrations").glob("000003_*.sql"):
+            migration.unlink()
+        start = original.index("location ~ ^/chats/[^/]+/receipts$ {")
+        end = original.index("\n}", start) + 2
+        (snippets / "public-locations.conf").write_text(original[:start] + original[end:])
         b = release(B, original + "\n# release B\n")
         c = release(C, original + "\ninvalid_staging_test_directive on;\n")
         start = original.index("location = /ws {")
@@ -125,7 +132,7 @@ def main():
             run("docker", "run", "--rm", "--network", network,
                 "-e", "POSTGRES_DB=messenger_stage", "-e", "POSTGRES_HOST=postgres", "-e", "POSTGRES_PORT=5432",
                 "-e", "POSTGRES_USER=postgres", "-e", "POSTGRES_PASSWORD=lab-owner", "-e", "POSTGRES_SSLMODE=disable",
-                "-v", f"{a}:/release:ro", "-w", "/release", "--entrypoint", "/release/migrate",
+                "-v", f"{baseline}:/release:ro", "-w", "/release", "--entrypoint", "/release/migrate",
                 "postgres:18-alpine", "-service=all", "-direction=up")
             sql("""
                 CREATE ROLE messenger36_history LOGIN PASSWORD 'lab-runtime';
@@ -135,7 +142,7 @@ def main():
                 GRANT UPDATE (last_read_seq,last_delivered_seq) ON history.chat_members TO messenger36_history;
                 GRANT UPDATE (id) ON history.messages TO messenger36_history;
                 GRANT UPDATE (due_at,state,updated_at) ON history.later_entries TO messenger36_history;
-                INSERT INTO history.chats (type) VALUES ('personal');
+                INSERT INTO history.chats (type,last_seq) VALUES ('personal',8);
             """)
             run(*compose, "up", "-d", "--no-deps", *SERVICES)
             run(*compose, "up", "-d", "--no-deps", "ingress")
@@ -171,6 +178,7 @@ http {{
                 try:
                     with urllib.request.urlopen(req, context=context, timeout=5) as resp:
                         assert resp.status == 201
+                        probe_user = json.load(resp)['id']
                     break
                 except (urllib.error.URLError, ConnectionError):
                     if retry == 24:
@@ -192,9 +200,35 @@ http {{
                 return result.stdout
 
             db_container = out(*compose, "ps", "-q", "postgres")
+            chat_id = sql("SELECT id FROM history.chats")
+            sql(f"""
+                INSERT INTO history.chat_members(chat_id,user_id,role,last_read_seq,last_delivered_seq)
+                VALUES ('{chat_id}','{probe_user}','member',3,5),
+                       ('{chat_id}','00000000-0000-4000-8000-000000000002','member',2,4);
+            """)
+            assert sql("SELECT version,dirty FROM public.history_schema_migrations;") == "2|f"
             a_log = deploy(A, a, 0)
             a_activation = (state / "current").read_text().strip()
             assert a_log.splitlines()[-1] == f"STAGING_RESULT deployed {A} {a_activation}"
+            assert (state / a_activation).parent.joinpath("previous/receipts.status").read_text() == "404\n"
+            assert "applying migrations before switching services (1:false,2:false)" in a_log
+            assert "saved DB dump" in a_log
+            assert "HTTPS /chats/00000000-0000-4000-8000-000000000001/receipts -> 401" in a_log
+            assert sql("SELECT version,dirty FROM public.history_schema_migrations;") == "3|f"
+            assert sql(f"SELECT last_read_seq,last_delivered_seq FROM history.chat_members WHERE user_id='{probe_user}'") == "3|5"
+            login = urllib.request.Request(origin + "/auth/login", json.dumps(credentials).encode(),
+                                           {"Content-Type": "application/json"})
+            with urllib.request.urlopen(login, context=context, timeout=5) as resp:
+                token = json.load(resp)["access_token"]
+            receipts = urllib.request.Request(origin + f"/chats/{chat_id}/receipts",
+                                              headers={"Authorization": f"Bearer {token}"})
+            with urllib.request.urlopen(receipts, context=context, timeout=5) as resp:
+                assert resp.status == 200
+                assert resp.headers["Cache-Control"] == "no-store"
+                assert json.load(resp) == {"chat_id": chat_id, "members": [
+                    {"user_id": user, "last_read_seq": 0, "last_delivered_seq": 0}
+                    for user in sorted((probe_user, "00000000-0000-4000-8000-000000000002"))
+                ]}
             b_log = deploy(B, b, 0)
             b_pointer = (state / "current").read_text()
             b_activation = b_pointer.strip()
@@ -217,8 +251,8 @@ http {{
             assert (snippets / "public-locations.conf").read_text() == original
             assert out(*compose, "ps", "-q", "postgres") == db_container
             assert sql("SELECT count(*) FROM history.chats;") == "1"
-            assert sql("SELECT version,dirty FROM public.history_schema_migrations;") == "2|f"
-            print("PASS: A → B → duplicate B → failed C and broken WSS → B → manual rollback A")
+            assert sql("SELECT version,dirty FROM public.history_schema_migrations;") == "3|f"
+            print("PASS: v2→v3, authenticated HTTPS receipts, A → B → duplicate B → failed C and broken WSS → B → manual rollback A")
         finally:
             subprocess.run(["docker", "rm", "-f", outer], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             subprocess.run([*compose, "down", "-v"], check=False, stdout=subprocess.DEVNULL)
