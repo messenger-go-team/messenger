@@ -40,4 +40,25 @@ describe('MessageLaterMenu', () => {
     expect(screen.getByLabelText('Дата')).toBeInTheDocument()
     expect(screen.getByLabelText('Время')).toBeInTheDocument()
   })
+
+  it('keeps the trigger visible for touch and portals the menu', async () => {
+    const session = await login({ username: 'alice_1', password: 'correct-horse-battery' })
+    const { container } = render(
+      <div style={{ overflow: 'hidden', height: 40 }}>
+        <MessageLaterMenu
+          accessToken={session.access_token}
+          chatId={INITIAL_CHAT_ID}
+          messageId="20000000-0000-4000-8000-000000000004"
+        />
+      </div>,
+    )
+    const trigger = screen.getByRole('button', { name: 'Действия с сообщением' })
+    expect(trigger.parentElement?.className).toContain('opacity-100')
+    await userEvent.click(trigger)
+    const menu = await screen.findByRole('menu', { name: 'Вернуться позже' })
+    expect(menu).toBeInTheDocument()
+    expect(container.contains(menu)).toBe(false)
+    expect(document.body.contains(menu)).toBe(true)
+    expect(menu.parentElement).toHaveAttribute('data-placement')
+  })
 })

@@ -116,6 +116,30 @@ describe('LaterPage', () => {
     expect(await screen.findByText('Пока пусто')).toBeInTheDocument()
   })
 
+  it('reschedules entry due_at from the list', async () => {
+    seedLaterMocks([
+      {
+        id: '98fcaed4-d453-4cba-b561-4100fe7aa314',
+        message: MESSAGE,
+        due_at: null,
+        created_at: '2026-11-14T15:00:00Z',
+        updated_at: '2026-11-14T15:00:00Z',
+      },
+    ])
+    const auth = await authValue()
+    renderLater(auth)
+    expect(await screen.findByRole('heading', { name: 'Без срока' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Перенести' }))
+    const panel = screen.getByLabelText('Перенести срок')
+    await userEvent.clear(within(panel).getByLabelText('Дата'))
+    await userEvent.type(within(panel).getByLabelText('Дата'), '2099-01-02')
+    await userEvent.clear(within(panel).getByLabelText('Время'))
+    await userEvent.type(within(panel).getByLabelText('Время'), '10:30')
+    await userEvent.click(within(panel).getByRole('button', { name: 'Сохранить срок' }))
+    expect(await screen.findByRole('heading', { name: 'Запланировано' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Без срока' })).not.toBeInTheDocument()
+  })
+
   it('shows error and retry', async () => {
     server.use(
       http.get('/later', () =>
