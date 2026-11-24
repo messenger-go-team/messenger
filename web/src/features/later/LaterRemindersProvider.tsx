@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react'
 import { refresh as refreshRequest } from '@/api/auth'
 import { useAuth } from '@/features/auth/useAuth'
 import { getSharedRefreshCoordinator } from '@/features/auth/refreshCoordinator'
@@ -28,23 +28,12 @@ export function LaterRemindersProvider({
   const { accessToken, isAuthenticated, user } = useAuth()
   const ownerId = isAuthenticated ? (user?.id ?? null) : null
 
-  const tokenRef = useRef(accessToken)
-  const recoverRef = useRef(recoverAuth)
-  useEffect(() => {
-    tokenRef.current = accessToken
-    recoverRef.current = recoverAuth
-  })
+  const store = useMemo(() => new LaterRemindersStore(ownerId), [ownerId])
 
-  const store = useMemo(
-    () =>
-      new LaterRemindersStore({
-        getAccessToken: () => tokenRef.current,
-        recoverAuth: () => recoverRef.current(),
-      }),
-    // ownerId задаёт идентичность store; токен и recoverAuth читаются через ref.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ownerId],
-  )
+  // Объявлен раньше start/tokenChanged: эффекты одного коммита идут по порядку.
+  useEffect(() => {
+    store.setCredentials({ accessToken, recoverAuth })
+  })
 
   useEffect(() => {
     if (!ownerId) return

@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -70,13 +71,16 @@ function auth(user: User | null, token = 'token-1'): AuthContextValue {
 let api: ReturnType<typeof useLaterReminders> | null = null
 
 function Probe() {
-  api = useLaterReminders()
+  const value = useLaterReminders()
+  useEffect(() => {
+    api = value
+  })
   const location = useLocation()
   return (
     <div>
-      <p data-testid="status">{api.status}</p>
-      <p data-testid="error">{api.error ?? ''}</p>
-      <p data-testid="ids">{api.entries.map((item) => item.id).join(',')}</p>
+      <p data-testid="status">{value.status}</p>
+      <p data-testid="error">{value.error ?? ''}</p>
+      <p data-testid="ids">{value.entries.map((item) => item.id).join(',')}</p>
       <p data-testid="location">
         {location.pathname}|{JSON.stringify(location.state)}
       </p>

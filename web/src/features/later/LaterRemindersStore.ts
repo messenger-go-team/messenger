@@ -25,8 +25,9 @@ export interface LaterRemindersSnapshot {
   activeReminder: LaterEntry | null
 }
 
-export interface LaterRemindersStoreOptions {
-  getAccessToken: () => string | null
+/** Актуальные учётные данные сессии; провайдер обновляет их без пересоздания store. */
+export interface LaterRemindersCredentials {
+  accessToken: string | null
   /** Обычное восстановление сессии на 401 (refresh через общий coordinator). */
   recoverAuth: () => Promise<unknown>
 }
@@ -45,7 +46,10 @@ const INITIAL_SNAPSHOT: LaterRemindersSnapshot = {
  * запросы single-flight. Экземпляр живёт для одного пользователя: смена аккаунта = новый store.
  */
 export class LaterRemindersStore {
-  private readonly options: LaterRemindersStoreOptions
+  private credentials: LaterRemindersCredentials = {
+    accessToken: null,
+    recoverAuth: () => Promise.resolve(),
+  }
   private readonly listeners = new Set<() => void>()
   private snapshot: LaterRemindersSnapshot = INITIAL_SNAPSHOT
 
@@ -65,8 +69,15 @@ export class LaterRemindersStore {
   private readonly reminders = new Map<string, string>()
   private readonly dismissed = new Set<string>()
 
-  constructor(options: LaterRemindersStoreOptions) {
-    this.options = options
+  /** `ownerId` фиксирует владельца: store живёт ровно для одного пользователя. */
+  readonly ownerId: string | null
+
+  constructor(ownerId: string | null) {
+    this.ownerId = ownerId
+  }
+
+  setCredentials(credentials: LaterRemindersCredentials): void {
+    this.credentials = credentials
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -103,7 +114,7 @@ export class LaterRemindersStore {
   refresh = (): Promise<void> => {
     if (!this.running) return Promise.resolve()
     if (this.inFlight) return this.inFlight
-    const token = this.options.getAccessToken()
+    const token = this.credentials.accessToken
     if (!token) return Promise.resolve()
 
     this.clearTimer()
@@ -128,7 +139,7 @@ export class LaterRemindersStore {
   /** Access token ротировался: повторить GET уже с новым токеном (после текущего запроса). */
   tokenChanged(): void {
     if (!this.running) return
-    const token = this.options.getAccessToken()
+    const token = this.credentials.accessToken
     if (!token || token === this.lastRequestToken) return
     if (this.inFlight) {
       this.rerunRequested = true
@@ -213,7 +224,7 @@ export class LaterRemindersStore {
   /** 401 — не временный сбой: без backoff просим обычное восстановление сессии. */
   private async recoverFromUnauthorized(generation: number): Promise<void> {
     try {
-      await this.options.recoverAuth()
+      await this.credentials.recoverAuth()
     } catch {
       // Финальный отказ AuthProvider сам снимет сессию; временный — подберёт опрос ниже.
     }
