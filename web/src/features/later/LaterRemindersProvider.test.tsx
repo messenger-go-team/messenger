@@ -412,6 +412,66 @@ describe('LaterRemindersProvider reminders', () => {
     expect(listLaterMock).toHaveBeenCalledTimes(4)
   })
 
+  it('resets backoff on a stale 200 so the next 503 waits 5 s, not 10', async () => {
+    listLaterMock.mockResolvedValueOnce(list([dueEntry('a')]))
+    listLaterMock.mockRejectedValueOnce(new ApiError(503, 'service_unavailable', 'down'))
+    let resolveStale: (value: LaterList) => void = () => undefined
+    listLaterMock.mockReturnValueOnce(new Promise<LaterList>((done) => (resolveStale = done)))
+    listLaterMock.mockRejectedValue(new ApiError(503, 'service_unavailable', 'down'))
+    render(tree(auth(ALICE)))
+    await flush()
+    expect(listLaterMock).toHaveBeenCalledTimes(1)
+
+    await advance(30_000)
+    expect(listLaterMock).toHaveBeenCalledTimes(2)
+
+    await advance(5_000)
+    expect(listLaterMock).toHaveBeenCalledTimes(3)
+
+    act(() => api?.removeEntry('a'))
+    await act(async () => resolveStale(list([dueEntry('a')])))
+    await flush()
+
+    // Свежий GET после устаревшего 200 сразу получает 503.
+    expect(listLaterMock).toHaveBeenCalledTimes(4)
+    await advance(4_999)
+    expect(listLaterMock).toHaveBeenCalledTimes(4)
+    await advance(1)
+    expect(listLaterMock).toHaveBeenCalledTimes(5)
+  })
+
+  it('keeps a local edit after a stale 200 and immediately starts a fresh GET', async () => {
+    listLaterMock.mockResolvedValueOnce(list([]))
+    listLaterMock.mockRejectedValueOnce(new ApiError(503, 'service_unavailable', 'down'))
+    let resolveStale: (value: LaterList) => void = () => undefined
+    listLaterMock.mockReturnValueOnce(new Promise<LaterList>((done) => (resolveStale = done)))
+    listLaterMock.mockResolvedValue(list([dueEntry('a')]))
+    render(tree(auth(ALICE)))
+    await flush()
+    expect(listLaterMock).toHaveBeenCalledTimes(1)
+
+    await advance(30_000)
+    expect(listLaterMock).toHaveBeenCalledTimes(2)
+
+    // GET во время backoff (как при возврате во вкладку): pollAt ещё в будущем.
+    act(() => {
+      void api?.refresh()
+    })
+    await flush()
+    expect(listLaterMock).toHaveBeenCalledTimes(3)
+
+    act(() => api?.replaceEntry(dueEntry('a'), SERVER_TIME))
+    expect(screen.getByTestId('ids')).toHaveTextContent('a')
+    expect(screen.queryByRole('region', { name: 'Напоминание' })).not.toBeInTheDocument()
+
+    await act(async () => resolveStale(list([])))
+    await flush()
+
+    expect(screen.getByTestId('ids')).toHaveTextContent('a')
+    expect(listLaterMock).toHaveBeenCalledTimes(4)
+    expect(screen.getByRole('region', { name: 'Напоминание' })).toBeInTheDocument()
+  })
+
   it('keeps a local completion when an older GET resolves afterwards', async () => {
     listLaterMock.mockResolvedValueOnce(list([dueEntry('a')]))
     let resolveStale: (value: LaterList) => void = () => undefined

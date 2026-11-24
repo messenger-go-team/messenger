@@ -211,6 +211,8 @@ export class LaterRemindersStore {
     try {
       const response = await listLater(token, { signal })
       if (generation !== this.generation || signal.aborted) return
+      // Любой успешный HTTP сбрасывает backoff до проверки свежести снимка.
+      this.failures = 0
       // Ответ начат до «Готово» / переноса / сохранения — не откатываем локальный список.
       if (epochAtStart !== this.mutationEpoch) return
       this.applySuccess(response.entries, response.server_time)
