@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/messenger-go-team/messenger/internal/metrics"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type requestLoggerKey struct{}
@@ -61,9 +62,10 @@ func newServiceHandler(ready *atomic.Bool, logger *slog.Logger, application http
 	return newServiceHandlerWithReadiness(ready, logger, application, nil)
 }
 
-func newServiceHandlerWithReadiness(ready *atomic.Bool, logger *slog.Logger, application http.Handler, checkReady func(context.Context) error) http.Handler {
+func newServiceHandlerWithReadiness(ready *atomic.Bool, logger *slog.Logger, application http.Handler, checkReady func(context.Context) error, collectors ...prometheus.Collector) http.Handler {
+	requests := metrics.NewRequests("auth", "http")
 	mux := http.NewServeMux()
-	mux.Handle("GET /metrics", metrics.NewHandler())
+	mux.Handle("GET /metrics", metrics.NewHandler(append(requests.Collectors(), collectors...)...))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeHealth(w, r, http.StatusOK, "{\"status\":\"ok\"}\n")
 	})
@@ -85,7 +87,7 @@ func newServiceHandlerWithReadiness(ready *atomic.Bool, logger *slog.Logger, app
 		router.Handle(path, mux)
 	}
 	router.Handle("/", application)
-	return requestLogging(logger, recoverPanic(router))
+	return requestLogging(logger, recoverPanic(router, requests.ObserveHTTP))
 }
 
 func writeHealth(w http.ResponseWriter, r *http.Request, status int, body string) {

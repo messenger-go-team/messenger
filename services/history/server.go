@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	historyv1 "github.com/messenger-go-team/messenger/api/gen/history/v1"
+	"github.com/messenger-go-team/messenger/internal/metrics"
 	"github.com/messenger-go-team/messenger/services/history/internal/authclient"
 	"github.com/messenger-go-team/messenger/services/history/internal/chats"
 	"github.com/messenger-go-team/messenger/services/history/internal/later"
@@ -54,8 +55,22 @@ func run(ctx context.Context, c config, logger *slog.Logger) error {
 	defer func() { _ = grpcListener.Close() }()
 	var ready atomic.Bool
 	checkReady := historyReadiness(repo, savedRepo)
-	web := &http.Server{Handler: newServiceHandlerWithReadiness(&ready, logger, chatRoutes(service, c.JWTVerifier, &reading.Service{Repo: repo, Users: service.Users}, &later.Service{Repo: savedRepo}), checkReady), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError)}
-	rpc := grpc.NewServer(grpc.UnaryInterceptor(rpcLogging(logger)), grpc.MaxRecvMsgSize(1<<20))
+	rpcMetrics := metrics.NewRequests("history", "grpc")
+	collectors := append(rpcMetrics.Collectors(), metrics.NewDBPoolCollector("history", db))
+	routes := chatRoutes(service, c.JWTVerifier, &reading.Service{Repo: repo, Users: service.Users}, &later.Service{Repo: savedRepo})
+	web := &http.Server{
+		Handler:           newServiceHandlerWithReadiness(&ready, logger, routes, checkReady, collectors...),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
+	}
+	rpc := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(rpcMetrics.UnaryServerInterceptor(historyv1.HistoryService_ServiceDesc), rpcLogging(logger)),
+		grpc.MaxRecvMsgSize(1<<20),
+	)
 	historyv1.RegisterHistoryServiceServer(rpc, &historyGRPC{repo: repo, messages: messages.New(repo), receipts: repo})
 	healthpb.RegisterHealthServer(rpc, &historyHealth{ready: &ready, check: checkReady})
 	return serveHistory(ctx, web, rpc, httpListener, grpcListener, &ready, c.ShutdownTimeout, logger)
