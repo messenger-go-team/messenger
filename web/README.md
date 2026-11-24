@@ -178,6 +178,22 @@ credentials, если origin отличается. Все запросы отп�
 необходимости измените значения; после изменения перезапустите Vite.
 Не помещайте секреты в `VITE_*`: они доступны в клиентской сборке.
 
+### Staging (`/app/`)
+
+На staging SPA отдаётся под `https://staging.tidingm.ru/app/`. Экраны —
+`/app/login`, `/app/contacts`, `/app/later`; REST и WSS остаются на корне
+домена (`/contacts`, `/later`, `/ws`). Production-сборка:
+
+```bash
+npm run build:staging
+```
+
+Использует `.env.production`: `VITE_APP_BASE=/app/`, `VITE_API_MOCK=false`,
+пустые `VITE_API_BASE_URL` / `VITE_WS_ORIGIN` (same-origin). Артефакт — `web/dist`
+(в `index.html` пути вида `/app/assets/...`). Локальный MSW держите с
+`VITE_API_MOCK=true` и без `VITE_APP_BASE` (base `/`), иначе worker под `/app/`
+не перехватит API на корне.
+
 Публичные пользователи исключительно для локального MSW: `alice_1` и `bob_2`,
 пароль обоих — `correct-horse-battery`. Между ними подготовлен личный чат с
 детерминированной историей сообщений. Можно регистрировать других пользователей.
