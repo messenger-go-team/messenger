@@ -1,4 +1,5 @@
 import { http, HttpResponse } from 'msw'
+import { compareLaterEntries } from '../../src/features/later/laterOrder'
 import { findHistoryMessage, isChatMember } from '../data/history'
 import { authenticateAccessToken } from '../lib/authentication'
 import { normalizeUuid } from '../lib/validation'
@@ -80,17 +81,7 @@ function toPublic(entry: StoredLater, serverTime: string) {
 }
 
 function sortEntries(entries: ReturnType<typeof toPublic>[]) {
-  const rank = { due: 0, scheduled: 1, unscheduled: 2 } as const
-  return [...entries].sort((a, b) => {
-    if (rank[a.status] !== rank[b.status]) return rank[a.status] - rank[b.status]
-    if (a.status !== 'unscheduled') {
-      const dueCmp = (a.due_at ?? '').localeCompare(b.due_at ?? '')
-      if (dueCmp !== 0) return dueCmp
-    }
-    const createdCmp = a.created_at.localeCompare(b.created_at)
-    if (createdCmp !== 0) return createdCmp
-    return a.id.localeCompare(b.id)
-  })
+  return [...entries].sort(compareLaterEntries)
 }
 
 function newId() {

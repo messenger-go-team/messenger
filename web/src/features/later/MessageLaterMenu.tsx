@@ -78,14 +78,27 @@ export function MessageLaterMenu({
   const [picker, setPicker] = useState(defaultPickerValues)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const pickerRef = useRef<HTMLDivElement>(null)
+  const restoreTriggerFocus = useRef(false)
   const instanceId = useRef(Symbol('later-menu'))
   const dateId = useId()
   const timeId = useId()
 
+  function focusTrigger() {
+    const trigger = triggerRef.current
+    if (!trigger || trigger.disabled) {
+      restoreTriggerFocus.current = true
+      return
+    }
+    restoreTriggerFocus.current = false
+    trigger.focus()
+  }
+
   function closePanel(returnFocus: boolean) {
     setPanel('closed')
     releaseLaterMenu(instanceId.current)
-    if (returnFocus) triggerRef.current?.focus()
+    if (returnFocus) focusTrigger()
+    else restoreTriggerFocus.current = false
   }
 
   function openPanel(next: Panel) {
@@ -119,9 +132,21 @@ export function MessageLaterMenu({
   }, [panel, placement])
 
   useLayoutEffect(() => {
-    if (panel !== 'menu') return
-    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
-  }, [panel])
+    if (panel === 'menu') {
+      menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
+    }
+    if (panel === 'picker') {
+      document.getElementById(dateId)?.focus()
+    }
+  }, [panel, dateId])
+
+  useLayoutEffect(() => {
+    if (!restoreTriggerFocus.current) return
+    const trigger = triggerRef.current
+    if (!trigger || trigger.disabled) return
+    restoreTriggerFocus.current = false
+    trigger.focus()
+  }, [busy, disabled, panel])
 
   useEffect(() => {
     const id = instanceId.current
@@ -255,7 +280,15 @@ export function MessageLaterMenu({
             ) : null}
 
             {panel === 'picker' ? (
-              <div className="w-64 space-y-3 rounded-lg border border-border bg-card p-3 shadow-md">
+              <div
+                ref={pickerRef}
+                className="w-64 space-y-3 rounded-lg border border-border bg-card p-3 shadow-md"
+                onKeyDown={(event) => {
+                  if (event.key !== 'Escape') return
+                  event.preventDefault()
+                  closePanel(true)
+                }}
+              >
                 <p className="text-sm font-medium">Напомнить</p>
                 <div className="space-y-1">
                   <label htmlFor={dateId} className="text-xs text-muted-foreground">

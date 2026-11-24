@@ -140,6 +140,52 @@ describe('LaterPage', () => {
     expect(screen.queryByRole('heading', { name: 'Без срока' })).not.toBeInTheDocument()
   })
 
+  it('orders equal RFC3339 instants by created_at and id, not by fraction digits', async () => {
+    seedLaterMocks([
+      {
+        id: 'b0000000-0000-4000-8000-000000000004',
+        message: { ...MESSAGE, id: '20000000-0000-4000-8000-000000000014', body: 'Больший id' },
+        due_at: '2099-03-01T10:00:00.100Z',
+        created_at: '2026-06-01T00:00:00.2Z',
+        updated_at: '2026-06-01T00:00:00.2Z',
+      },
+      {
+        id: 'a0000000-0000-4000-8000-000000000003',
+        message: { ...MESSAGE, id: '20000000-0000-4000-8000-000000000013', body: 'Меньший id' },
+        due_at: '2099-03-01T10:00:00.1Z',
+        created_at: '2026-06-01T00:00:00.20Z',
+        updated_at: '2026-06-01T00:00:00.20Z',
+      },
+      {
+        id: 'c0000000-0000-4000-8000-000000000002',
+        message: { ...MESSAGE, id: '20000000-0000-4000-8000-000000000012', body: 'Раньше создана' },
+        due_at: '2099-03-01T10:00:00.100Z',
+        created_at: '2026-06-01T00:00:00.1Z',
+        updated_at: '2026-06-01T00:00:00.1Z',
+      },
+      {
+        id: 'd0000000-0000-4000-8000-000000000001',
+        message: { ...MESSAGE, id: '20000000-0000-4000-8000-000000000011', body: 'Целая секунда' },
+        due_at: '2099-03-01T10:00:00Z',
+        created_at: '2026-06-01T00:00:00Z',
+        updated_at: '2026-06-01T00:00:00Z',
+      },
+    ])
+    const auth = await authValue()
+    renderLater(auth)
+    const whole = await screen.findByText('Целая секунда')
+    const earlier = screen.getByText('Раньше создана')
+    const smallerId = screen.getByText('Меньший id')
+    const largerId = screen.getByText('Больший id')
+    expect(whole.compareDocumentPosition(earlier) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(
+      earlier.compareDocumentPosition(smallerId) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      smallerId.compareDocumentPosition(largerId) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
   it('reorders scheduled entries by due_at after reschedule', async () => {
     seedLaterMocks([
       {

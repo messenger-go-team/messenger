@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input'
 import { useAuth } from '@/features/auth/useAuth'
 import { formatChatListTime } from '@/features/chats/formatChatListTime'
 import { toDueAtPayload } from '@/features/later/dueAt'
+import { compareLaterEntries } from '@/features/later/laterOrder'
 import { cn } from '@/lib/utils'
 
 type Status = 'loading' | 'ready' | 'error'
@@ -24,18 +25,6 @@ const GROUP_TITLE: Record<LaterStatus, string> = {
   due: 'Сейчас',
   scheduled: 'Запланировано',
   unscheduled: 'Без срока',
-}
-
-function compareLaterEntries(left: LaterEntry, right: LaterEntry): number {
-  const rank: Record<LaterStatus, number> = { due: 0, scheduled: 1, unscheduled: 2 }
-  if (rank[left.status] !== rank[right.status]) return rank[left.status] - rank[right.status]
-  if (left.status !== 'unscheduled') {
-    const due = (left.due_at ?? '').localeCompare(right.due_at ?? '')
-    if (due !== 0) return due
-  }
-  const created = left.created_at.localeCompare(right.created_at)
-  if (created !== 0) return created
-  return left.id.localeCompare(right.id)
 }
 
 function pad(value: number) {

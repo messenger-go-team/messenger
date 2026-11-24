@@ -94,6 +94,46 @@ describe('MessageLaterMenu', () => {
     expect(screen.queryByRole('menu', { name: 'Вернуться позже' })).not.toBeInTheDocument()
   })
 
+  it('focuses the date field and returns to the same trigger on Escape', async () => {
+    const session = await login({ username: 'alice_1', password: 'correct-horse-battery' })
+    const user = userEvent.setup()
+    render(
+      <MessageLaterMenu
+        accessToken={session.access_token}
+        chatId={INITIAL_CHAT_ID}
+        messageId="20000000-0000-4000-8000-000000000007"
+      />,
+    )
+    const trigger = screen.getByRole('button', { name: 'Действия с сообщением' })
+    trigger.focus()
+    await user.keyboard('{Enter}')
+    await user.click(screen.getByRole('menuitem', { name: 'Выбрать время' }))
+    expect(screen.getByLabelText('Дата')).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(trigger).toHaveFocus()
+    expect(screen.queryByRole('menu', { name: 'Вернуться позже' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Напомнить')).not.toBeInTheDocument()
+  })
+
+  it('returns focus to the trigger after it is enabled again', async () => {
+    const session = await login({ username: 'alice_1', password: 'correct-horse-battery' })
+    const user = userEvent.setup()
+    render(
+      <MessageLaterMenu
+        accessToken={session.access_token}
+        chatId={INITIAL_CHAT_ID}
+        messageId="20000000-0000-4000-8000-000000000002"
+      />,
+    )
+    const trigger = screen.getByRole('button', { name: 'Действия с сообщением' })
+    trigger.focus()
+    await user.keyboard('{Enter}')
+    await user.click(screen.getByRole('menuitem', { name: 'Просто сохранить' }))
+    expect(await screen.findByRole('status')).toHaveTextContent(/Сохранено без срока/i)
+    expect(trigger).toBeEnabled()
+    expect(trigger).toHaveFocus()
+  })
+
   it('shows a save error inside the open menu', async () => {
     server.use(
       http.post('/later', () =>
