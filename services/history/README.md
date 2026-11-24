@@ -220,15 +220,18 @@ DueTime проверяет typed time.Time на UTC-диапазон 0001..9999 
 источников необходим UPDATE хотя бы одного столбца chats/chat_members/messages;
 минимальное дополнение к правам #29: UPDATE(id) для messages. На later_entries
 достаточно SELECT/INSERT и UPDATE(due_at,state,updated_at); DELETE не нужен.
-Сборка сервиса #87 объединяет эту проверку с базовой readiness. Теперь для
-готовности History обязательны миграция v2 и права на Later/source locks.
+Сборка сервиса #87 объединяет эту проверку с базовой readiness. Для Later
+требуются миграция v2 и права на Later/source locks.
 
-Мигратор применяет версию 2 обычным `make migrate-up MIGRATE_SERVICE=history`.
-`make migrate-down MIGRATE_SERVICE=history MIGRATE_STEPS=1` откатывает только
-Later и уничтожает его записи, сохраняя сообщения/участников версии 1. Для полного
-отката History после v2 нужны две ступени; auth по-прежнему имеет одну. Up/down
-проверены через настоящий мигратор на БД с существующими сообщениями; при ошибке
-DDL объекты приложения откатываются, журнал остаётся dirty для явной диагностики.
+`make migrate-up MIGRATE_SERVICE=history` применяет все доступные миграции.
+Перед откатом схемы сверьте её текущую версию через
+`make migrate-version MIGRATE_SERVICE=history` и сохраните резервную копию.
+На схеме **v2** команда `make migrate-down MIGRATE_SERVICE=history MIGRATE_STEPS=1`
+переводит БД на v1 и удаляет записи Later. На схеме **v3** та же команда
+переводит БД на v2 и удаляет оба публичных курсора со всеми значениями.
+Таблица Later и оба приватных курсора при переходе с v3 на v2 сохраняются.
+Для возврата предыдущей сборки на staging используйте
+[откат приложения](../../deploy/staging-release.md#откат) с сохранением схемы и данных.
 
 Интеграционные тесты используют только новые БД по HISTORY_TEST_DATABASE_URL;
 MIGRATE_TEST_DATABASE_URL включает тесты мигратора в отдельной БД. Проверяются
