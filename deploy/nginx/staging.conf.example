@@ -2,6 +2,7 @@ events {}
 
 http {
     include /etc/nginx/messenger/snippets/backends.conf;
+    include /etc/nginx/messenger/snippets/staging-rate-limit-zones.conf;
 
     server {
         listen 80;
@@ -19,6 +20,7 @@ http {
         ssl_certificate /etc/letsencrypt/live/staging.example.com/fullchain.pem;
         ssl_certificate_key /etc/letsencrypt/live/staging.example.com/privkey.pem;
 
+        include /etc/nginx/messenger/snippets/staging-rate-limit-server.conf;
         include /etc/nginx/messenger/snippets/public-locations.conf;
     }
 }

@@ -66,6 +66,75 @@
 сообщений. Логи с JWT, cookies и паролями оставляйте в закрытой среде.
 [Контракт Auth](../api/openapi/auth.yaml) · [Контракт History](../api/openapi/history.yaml) · [Контракт WebSocket](../api/ws/events.md)
 
+## Лимиты на внешнем Nginx
+
+На публичном TLS-сервере `staging.tidingm.ru` действуют три независимые
+зоны по клиентскому IP. Для избытка Nginx отвечает HTTP `429`. `burst`
+допускает краткий всплеск, `nodelay` пропускает его сразу.
+
+| Запрос | Средняя частота на IP | Burst |
+| --- | --- | --- |
+| `POST /auth/login` | 30 в минуту | 12 |
+| `POST /auth/register` | 12 в минуту | 6 |
+| `GET /ws` с `Upgrade: websocket` | 120 в минуту | 24 |
+
+Для запросов к остальным маршрутам ключи зон пустые. Уже открытый WSS
+работает как туннель, поэтому WebSocket-кадры через эти зоны не проходят.
+Refresh, History и Later сохраняют свои маршруты. Один внешний IP может
+соответствовать целой команде за NAT, поэтому при ручной проверке сначала
+проверьте штатный вход и несколько подключений из одной сети. Превышение
+лимитов воспроизводит изолированный `make test-nginx`.
+[Проверки Nginx](../deploy/nginx/README.md)
+
+### Установка и проверка
+
+Администратор внешнего Nginx копирует [зоны](../deploy/nginx/snippets/staging-rate-limit-zones.conf)
+и [правила](../deploy/nginx/snippets/staging-rate-limit-server.conf)
+во внешний каталог конфигурации. Для текущего bind mount каталог виден
+контейнеру как `/etc/nginx/messenger-edge`. Сохраните копию действующего
+`nginx.conf` до изменения. В `http {}` добавьте определение зон.
+
+```nginx
+include /etc/nginx/messenger-edge/staging-rate-limit-zones.inc;
+```
+
+В публичном `server {}` с TLS для `staging.tidingm.ru` добавьте правила
+с результатом `429`. Если в каком-то `location {}` появится свой
+`limit_req`, он должен явно включить нужные зоны, поскольку такие
+директивы переопределяют наследование из `server {}`.
+
+```nginx
+include /etc/nginx/messenger-edge/staging-rate-limit-server.inc;
+```
+
+Сохраните содержимое файлов из репозитория под указанными именами
+`*.inc`. Ключ `$binary_remote_addr` соответствует адресу, который
+видит внешний Nginx. На прямом входе это адрес TCP-клиента. При появлении
+промежуточного прокси отдельно настройте Real IP с адресами доверенных
+прокси и проверьте результат. Входящие `X-Forwarded-For` и `X-Real-IP`
+сами по себе не должны менять ключ лимита.
+[Документация limit_req](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html)
+· [Документация Real IP](https://nginx.org/en/docs/http/ngx_http_realip_module.html)
+
+На VPS проверьте конфигурацию контейнера, который слушает публичный 443.
+Перед reload сверяйте, что выбран системный сокет и контейнер с внешним
+TLS. Если `nginx.conf` смонтирован отдельным файлом, обновляйте и
+восстанавливайте его содержимое с сохранением inode.
+
+```bash
+docker --host unix:///var/run/docker.sock exec messenger36-ingress nginx -t
+docker --host unix:///var/run/docker.sock exec messenger36-ingress nginx -s reload
+```
+
+После reload проверьте обычный login и refresh, два подключения одного
+аккаунта и повторный WSS Upgrade с того же IP. Прочитайте историю и
+перенесите срок тестовой записи Later. Зафиксируйте SHA активной сборки и
+результаты в [#148](https://github.com/messenger-go-team/messenger/issues/148).
+При откате восстановите сохранённый внешний конфиг, выполните `nginx -t`
+и reload, затем повторите публичный smoke. CD приложения обновляет
+внутренний rootless-стек. Внешнюю конфигурацию и её резервную копию ведёт
+администратор VPS. [Устройство CD](../deploy/staging-actions.md)
+
 ## Сброс тестового чата
 
 Закройте тестовые соединения и согласуйте сброс этого набора. Оператор
