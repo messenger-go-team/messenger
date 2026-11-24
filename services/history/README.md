@@ -101,7 +101,8 @@ RPC доступны только доверенному Chat во внутре�
 
 ## Состояние, логи и завершение
 
-HTTP сохраняет request_id, panic recovery и /metrics из шаблона.
+HTTP сохраняет request_id и panic recovery. Внутренний `/metrics` отдаёт
+Go/process, HTTP, gRPC и показатели пула БД.
 /healthz проверяет процесс. /readyz проверяет схему четырёх таблиц и SELECT/INSERT,
 UPDATE(last_seq) для chats и UPDATE(last_read_seq, last_delivered_seq)
 для chat_members. Для публичных курсоров нужны миграция v3 и UPDATE двух
@@ -115,6 +116,55 @@ HTTP и gRPC обслуживаются одним процессом. SIGTERM �
 общего срока соединения закрываются принудительно, процесс завершается с
 ошибкой. При штатной остановке код 0. Логи не включают payload, query,
 credentials или SQL-ошибки; gRPC возвращает x-request-id в metadata.
+
+## Метрики History
+
+`history_http_requests_total` и `history_http_request_duration_seconds`
+используют метод и шаблон маршрута в `operation`. Результаты `2xx`,
+`3xx`, `4xx`, `5xx`, `aborted` и `other` образуют ограниченный набор.
+Отказ JWT и валидации учитывается для соответствующей операции.
+`aborted` фиксируется при `http.ErrAbortHandler` или при панике после начала
+ответа либо перехвата соединения. Остальные классы отражают статус ответа
+на стороне обработчика. Обрывы со стороны клиента и ошибки записи тела
+отдельно не измеряются.
+
+В метрики операций не входят служебные health, readiness и scrape, а также
+ответы роутера без шаблона операции, например 404, 405 и редиректы нормализации
+пути. Если прикладной обработчик возвращает 404, метрика учитывает его
+по шаблону маршрута.
+
+Все четыре операции Later различимы:
+
+| `operation` | Назначение |
+| --- | --- |
+| `GET /later` | Чтение списка |
+| `POST /later` | Создание или обновление записи |
+| `PATCH /later/{later_id}` | Перенос срока |
+| `POST /later/{later_id}/done` | Завершение записи |
+
+К примеру, `increase(history_http_requests_total{operation="GET /later",result="5xx"}[5m])`
+показывает рост серверных ошибок списка за пять минут. Метки содержат шаблоны,
+поэтому значение `later_id`, JWT, query и данные записи в scrape не попадают.
+
+`history_grpc_requests_total` и `history_grpc_request_duration_seconds`
+учитывают методы зарегистрированного `HistoryService`. `operation` содержит
+полное имя вроде `/messenger.history.v1.HistoryService/SaveMessage`, `result`
+содержит канонический gRPC-код, например `OK` или `Unavailable`.
+Обработка запроса измеряется до завершения серверных обработчиков.
+gRPC health работает отдельно, HTTP и gRPC счётчики доступны в одном
+реестре History. Серии запросов появляются после первого вызова операции.
+
+`history_db_pool_connections` показывает число открытых (`state="open"`),
+занятых (`state="in_use"`) и свободных (`state="idle"`) соединений.
+`history_db_pool_max_open_connections` показывает предел пула. `history_db_pool_waits_total` и
+`history_db_pool_wait_duration_seconds_total` показывают очередь за
+соединением. Scrape читает `database/sql.DBStats` и не занимает соединение.
+
+Проверка с внутренней сети сервиса:
+
+```bash
+curl -fsS http://127.0.0.1:8080/metrics | grep -E '^history_(http|grpc|db_pool)_'
+```
 
 ## Проверки
 
