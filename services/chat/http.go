@@ -61,7 +61,7 @@ func newServiceHandler(ready *atomic.Bool, logger *slog.Logger, ws *wsEndpoint, 
 		Name: "chat_active_websocket_connections",
 		Help: "Number of WebSocket connections registered in the Chat hub.",
 	}, func() float64 { return float64(ws.hub.size()) })
-	mux.Handle("GET /metrics", metrics.NewHandler(connections))
+	mux.Handle("GET /metrics", metrics.NewHandler(connections, ws.sendRejections))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeHealth(w, r, http.StatusOK, "{\"status\":\"ok\"}\n")
 	})

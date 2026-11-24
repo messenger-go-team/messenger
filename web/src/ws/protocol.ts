@@ -68,7 +68,11 @@ function isErrorPayload(value: Record<string, unknown>): boolean {
     typeof value.message === 'string' &&
     typeof value.retryable === 'boolean' &&
     (typeof value.request_type === 'string' || value.request_type === null) &&
-    (isUuid(value.client_msg_id) || value.client_msg_id === null)
+    (isUuid(value.client_msg_id) || value.client_msg_id === null) &&
+    (value.retry_after_ms === undefined ||
+      (typeof value.retry_after_ms === 'number' &&
+        Number.isSafeInteger(value.retry_after_ms) &&
+        value.retry_after_ms > 0))
   )
 }
 

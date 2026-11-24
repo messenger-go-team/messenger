@@ -68,6 +68,27 @@ describe('WebSocket protocol', () => {
     expect(result.kind).toBe('known')
   })
 
+  it.each([
+    [20_000, 'known'],
+    [0, 'invalid'],
+    [-1, 'invalid'],
+    [0.5, 'invalid'],
+    ['20000', 'invalid'],
+    [Number.MAX_SAFE_INTEGER + 1, 'invalid'],
+  ])('validates the optional retry hint %s', (retryAfterMs, kind) => {
+    const result = parseServerMessage(
+      envelope('error', {
+        code: 'rate_limited',
+        message: 'retry later',
+        retryable: true,
+        request_type: 'message.send',
+        client_msg_id: CLIENT_ID,
+        retry_after_ms: retryAfterMs,
+      }),
+    )
+    expect(result.kind).toBe(kind)
+  })
+
   it('keeps an unknown server event non-fatal', () => {
     expect(parseServerMessage(envelope('future.event', { value: 1 })).kind).toBe('unknown')
   })
