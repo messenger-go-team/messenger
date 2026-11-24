@@ -35,6 +35,7 @@ go.work.sum
 # Frontend
 node_modules/
 web/dist/
+/web-dist-app.tar.gz
 web/coverage/
 
 # Локальные окружения (шаблоны .env.example / .env.production остаются в репозитории)

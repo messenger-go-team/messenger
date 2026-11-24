@@ -182,17 +182,28 @@ credentials, если origin отличается. Все запросы отп�
 
 На staging SPA отдаётся под `https://staging.tidingm.ru/app/`. Экраны —
 `/app/login`, `/app/contacts`, `/app/later`; REST и WSS остаются на корне
-домена (`/contacts`, `/later`, `/ws`). Production-сборка:
+домена (`/contacts`, `/later`, `/ws`). Сборка и preview используют один конфиг
+Vite (`base` из `resolveAppBase`):
 
 ```bash
-npm run build:staging
+npm run build
+npm run preview
 ```
 
-Использует `.env.production`: `VITE_APP_BASE=/app/`, `VITE_API_MOCK=false`,
-пустые `VITE_API_BASE_URL` / `VITE_WS_ORIGIN` (same-origin). Артефакт — `web/dist`
-(в `index.html` пути вида `/app/assets/...`). Локальный MSW держите с
-`VITE_API_MOCK=true` и без `VITE_APP_BASE` (base `/`), иначе worker под `/app/`
-не перехватит API на корне.
+`npm run build:staging` — то же, что `npm run build` (`vite build`, режим
+production). `preview` не задаёт `--base` отдельно: путь берётся из того же
+конфига, что и сборка. Явный `VITE_APP_BASE=/trial/` должен быть и у `build`,
+и у `preview`, иначе ассеты из dist не совпадут с префиксом сервера.
+
+`.env.production` задаёт `VITE_APP_BASE=/app/`, `VITE_API_MOCK=false` и пустые
+`VITE_API_BASE_URL` и `VITE_WS_ORIGIN`. Пустой `VITE_WS_ORIGIN` перекрывает
+значение из `.env.local`, чтобы в dist не попал локальный `ws://`. Артефакт
+для выкладки — `web/dist` из CI по SHA, не архив в Git. В `index.html` пути
+вида `/app/assets/...`.
+
+Локальный MSW держите с `VITE_API_MOCK=true` и без некорневого `VITE_APP_BASE`.
+Иначе конфиг Vite останавливается с ошибкой: worker запрашивается как
+`/mockServiceWorker.js`, а файл лежит под base и не перехватывает `/contacts`.
 
 Публичные пользователи исключительно для локального MSW: `alice_1` и `bob_2`,
 пароль обоих — `correct-horse-battery`. Между ними подготовлен личный чат с
