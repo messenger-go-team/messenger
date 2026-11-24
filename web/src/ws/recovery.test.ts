@@ -692,6 +692,8 @@ describe('message retry backoff during History synchronization', () => {
 
     await vi.advanceTimersByTimeAsync(1)
     expect(server.received).toHaveLength(2)
+    expect(server.received[1]?.id).not.toBe(server.received[0]?.id)
+    expect(server.received[1]?.payload).toEqual(server.received[0]?.payload)
     expect(client.getSnapshot().pending[0]?.attempts).toBe(2)
 
     client.stop()

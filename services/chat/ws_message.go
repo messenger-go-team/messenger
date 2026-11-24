@@ -14,7 +14,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const wsMaxMessageSeq int64 = 9007199254740991
+const (
+	wsMaxMessageSeq int64 = 9007199254740991
+	wsRateLimited         = "rate_limited"
+)
 
 type wsEnvelope struct {
 	Type    string    `json:"type"`
@@ -49,6 +52,11 @@ func (ws *wsEndpoint) handleWSCommand(ctx context.Context, socket *socketSession
 	cmd, problem := parseWSCommand(data)
 	if problem != "" {
 		ws.replyWSError(socket, cmd, problem)
+		return
+	}
+	if !ws.sendLimiter.allow(socket.userID) {
+		ws.sendRejections.Inc()
+		ws.replyWSError(socket, cmd, wsRateLimited)
 		return
 	}
 	if ws.history == nil {
@@ -125,7 +133,7 @@ func saveWSErrorCode(code codes.Code) string {
 	case codes.AlreadyExists:
 		return "idempotency_conflict"
 	case codes.ResourceExhausted:
-		return "rate_limited"
+		return wsRateLimited
 	case codes.Canceled, codes.DeadlineExceeded, codes.Unavailable:
 		return "temporarily_unavailable"
 	default:
@@ -152,7 +160,7 @@ func (ws *wsEndpoint) replyWSError(socket *socketSession, cmd wsCommand, code st
 		payload.Message = "Нет доступа к чату."
 	case "idempotency_conflict":
 		payload.Message = "Этот идентификатор уже использован с другим текстом."
-	case "rate_limited":
+	case wsRateLimited:
 		payload.Message = "Сервис перегружен. Повторите позже."
 		payload.Retryable = true
 	case "temporarily_unavailable":
