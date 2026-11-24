@@ -225,6 +225,15 @@ export function resetHistoryData(): void {
 }
 
 /** Возвращает публичное представление чата без выдачи mutable внутреннего объекта. */
+/** Ищет сообщение по id среди всех чатов (для Later save validation). */
+export function findHistoryMessage(messageId: string): HistoryMessage | undefined {
+  for (const chatMessages of messages.values()) {
+    const found = chatMessages.find((message) => message.id === messageId)
+    if (found) return cloneMessage(found)
+  }
+  return undefined
+}
+
 export function findHistoryChat(chatId: string): HistoryChat | undefined {
   const chat = chats.get(chatId)
   return chat ? toHistoryChat(chat) : undefined
@@ -376,6 +385,11 @@ export function markHistoryChatRead(chatId: string, userId: string, seq: number)
   if (member && seq > member.lastReadSeq) {
     member.lastReadSeq = seq
   }
+}
+
+/** Последний seq чата в REST-моке; 0, если чата нет. */
+export function historyLastSeq(chatId: string): number {
+  return chats.get(chatId)?.lastSeq ?? 0
 }
 
 /** Возвращает внутренний read cursor участника; используется для проверки state в тестах. */

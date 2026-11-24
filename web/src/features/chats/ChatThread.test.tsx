@@ -111,6 +111,24 @@ describe('ChatThread', () => {
     expect(screen.getByText('Да, договорились.')).toBeInTheDocument()
   })
 
+  it('exposes Later menu with four options and saves without due', async () => {
+    const auth = await authValue()
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 6)
+    renderThread(auth, mockWs)
+
+    await screen.findByText('Да, договорились.')
+    const menus = screen.getAllByRole('button', { name: 'Действия с сообщением' })
+    expect(menus.length).toBeGreaterThan(0)
+    await userEvent.click(menus[0]!)
+    expect(screen.getByRole('menuitem', { name: 'Просто сохранить' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Через 1 час' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /Вечером/ })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Выбрать время' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Просто сохранить' }))
+    expect(await screen.findByRole('status')).toHaveTextContent(/Сохранено без срока/i)
+  })
+
   it('shows loading then error with retry', async () => {
     let release!: () => void
     const gate = new Promise<void>((resolve) => {
@@ -166,6 +184,29 @@ describe('ChatThread', () => {
     })
     expect(mockWs.received).toHaveLength(1)
     expect(mockWs.received[0]?.payload.body).toBe('новое из теста')
+  })
+
+  it('saves an acked message into Later mocks', async () => {
+    const auth = await authValue()
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 6)
+    renderThread(auth, mockWs)
+
+    await screen.findByText('Да, договорились.')
+    await waitFor(() => expect(mockWs.connections.size).toBeGreaterThan(0))
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('Сообщение'), 'сохранить после ack')
+    await user.click(screen.getByRole('button', { name: 'Отправить' }))
+    const sentBubble = (await screen.findByText('сохранить после ack')).closest('li')
+    expect(sentBubble).toBeTruthy()
+    await waitFor(() => {
+      expect(within(sentBubble as HTMLElement).getByText('отправлено')).toBeInTheDocument()
+    })
+    await user.click(
+      within(sentBubble as HTMLElement).getByRole('button', { name: 'Действия с сообщением' }),
+    )
+    await user.click(screen.getByRole('menuitem', { name: 'Просто сохранить' }))
+    expect(await screen.findByRole('status')).toHaveTextContent(/Сохранено без срока/i)
   })
 
   it('shows failed status and retries with the same client_msg_id', async () => {
@@ -994,7 +1035,10 @@ describe('ChatThread', () => {
     })
     expect(await screen.findByText('below-incoming')).toBeInTheDocument()
     await placeRows({ 'below-incoming': 'below', 'anchor-mine': 'inside' })
-    expect(await screen.findByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
+    await waitFor(async () => {
+      await placeRows({ 'below-incoming': 'below', 'anchor-mine': 'inside' })
+      expect(screen.getByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
+    })
 
     await act(async () => {
       pushIncoming(connection, 3, 'visible-incoming')
@@ -1086,12 +1130,14 @@ describe('ChatThread', () => {
       releaseBefore()
     })
     expect(await screen.findByText('old-incoming-page')).toBeInTheDocument()
-    await placeRows({
-      'old-incoming-page': 'above',
-      'fresh-during-before': 'below',
-      'mine-6': 'inside',
+    await waitFor(async () => {
+      await placeRows({
+        'old-incoming-page': 'above',
+        'fresh-during-before': 'below',
+        'mine-6': 'inside',
+      })
+      expect(screen.getByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
     })
-    expect(screen.getByRole('button', { name: 'Новые сообщения' })).toBeInTheDocument()
   })
 
   it('4 · chip click / manual bottom hide; same id after re-scroll keeps chip hidden', async () => {

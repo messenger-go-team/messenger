@@ -26,6 +26,7 @@ import { connectionStatusLabel } from '@/features/chats/connectionStatus'
 import { formatChatListTime } from '@/features/chats/formatChatListTime'
 import { resolveMarkReadSeq } from '@/features/chats/markReadSeq'
 import { mergeThreadMessages, type ThreadMessage } from '@/features/chats/mergeThreadMessages'
+import { MessageLaterMenu } from '@/features/later/MessageLaterMenu'
 import { useWs } from '@/features/ws/useWs'
 import { cn } from '@/lib/utils'
 
@@ -182,10 +183,13 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
         if (knownMessageIdsRef.current.has(item.id)) continue
         const row = messageElByIdRef.current.get(item.id)
         if (!row) continue
+        const rowRect = row.getBoundingClientRect()
+        // jsdom/нулевой layout: не фиксируем id, пока нет реальной геометрии (иначе chip теряется).
+        if (rowRect.width === 0 && rowRect.height === 0) continue
         knownMessageIdsRef.current.add(item.id)
         // Верх строки на нижней границе окна или ниже → chip. Частично видимое / выше — нет.
         // Уже показанный chip не гасим видимым входящим.
-        if (row.getBoundingClientRect().top >= listBottom) showChip = true
+        if (rowRect.top >= listBottom) showChip = true
       }
       if (showChip) setShowNewMessagesChip(true)
     }
@@ -452,13 +456,21 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
               data-seq={message.seq}
               data-message-id={message.id}
               className={cn(
-                'group/bubble flex',
+                'group/bubble flex items-end gap-1',
                 message.mine ? 'justify-end' : 'justify-start',
                 message.mine &&
                   message.status === 'sending' &&
                   'animate-in fade-in slide-in-from-bottom-1 duration-200',
               )}
             >
+              {!message.mine && message.id && accessToken ? (
+                <MessageLaterMenu
+                  accessToken={accessToken}
+                  chatId={chatId}
+                  messageId={message.id}
+                  align="start"
+                />
+              ) : null}
               <div
                 className={cn(
                   'max-w-[min(100%,28rem)] rounded-2xl px-3 py-2 text-sm shadow-sm transition-shadow',
@@ -496,6 +508,14 @@ export function ChatThread({ chatId, peerUsername, onReadCommitted }: ChatThread
                   ) : null}
                 </div>
               </div>
+              {message.mine && message.id && accessToken ? (
+                <MessageLaterMenu
+                  accessToken={accessToken}
+                  chatId={chatId}
+                  messageId={message.id}
+                  align="end"
+                />
+              ) : null}
             </li>
           ))}
         </ul>
