@@ -23,7 +23,7 @@ async function enableMocking() {
 async function bootstrap() {
   await enableMocking()
 
-  const basename = appBasename()
+  const basename = appBasename(import.meta.env.BASE_URL)
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
