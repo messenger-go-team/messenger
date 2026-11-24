@@ -29,6 +29,10 @@ type authentication interface {
 type authAPI struct{ service authentication }
 
 func newAuthHandler(ready *atomic.Bool, logger *slog.Logger, service authentication, checkReady func(context.Context) error, extraRoutes ...http.Handler) http.Handler {
+	return newServiceHandlerWithReadiness(ready, logger, authRoutes(service, extraRoutes...), checkReady)
+}
+
+func authRoutes(service authentication, extraRoutes ...http.Handler) http.Handler {
 	api := authAPI{service: service}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /auth/register", api.register)
@@ -38,13 +42,15 @@ func newAuthHandler(ready *atomic.Bool, logger *slog.Logger, service authenticat
 	for _, extra := range extraRoutes {
 		mux.Handle("/", extra)
 	}
-	application := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
-		mux.ServeHTTP(w, r.WithContext(ctx))
+		request := r.WithContext(ctx)
+		// Expose the innermost ServeMux pattern to HTTP instrumentation.
+		defer func() { r.Pattern = request.Pattern }()
+		mux.ServeHTTP(w, request)
 	})
-	return newServiceHandlerWithReadiness(ready, logger, application, checkReady)
 }
 
 func (api authAPI) register(w http.ResponseWriter, r *http.Request) {

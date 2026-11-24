@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/messenger-go-team/messenger/internal/metrics"
 	"github.com/messenger-go-team/messenger/pkg/jwtauth"
 	"github.com/messenger-go-team/messenger/services/auth/internal/auth"
 	"github.com/messenger-go-team/messenger/services/auth/internal/postgres"
@@ -53,7 +54,8 @@ func run(ctx context.Context, cfg config, logger *slog.Logger) error {
 	routes := http.NewServeMux()
 	routes.Handle("/internal/", newInternalHandler(directoryService, cfg.InternalToken))
 	routes.Handle("/", directory)
-	handler := newAuthHandler(&ready, logger, application, repository.CheckReady, routes)
+	handler := newServiceHandlerWithReadiness(&ready, logger, authRoutes(application, routes),
+		repository.CheckReady, metrics.NewDBPoolCollector("auth", db))
 	server := newHTTPServer(cfg, handler, logger)
 	return serve(ctx, server, listener, &ready, cfg.ShutdownTimeout, logger)
 }
