@@ -657,6 +657,45 @@ describe('message retry backoff during History synchronization', () => {
     vi.useRealTimers()
   })
 
+  it('backs off the queued sends after message.send is rate limited', async () => {
+    const server = new MockWebSocketServer({
+      senderId: USER_ID,
+      ackDelayMs: 50,
+      newDelayMs: 50,
+    })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    server.disconnectAll(1013)
+    const first = client.sendMessage(CHAT_ID, 'first in queue', CLIENT_ID)
+    const second = client.sendMessage(CHAT_ID, 'second in queue')
+    rateLimitNextMessage(server)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(server.received.map((event) => event.payload.client_msg_id)).toEqual([first.clientMsgId])
+    await vi.advanceTimersByTimeAsync(999)
+    expect(server.received).toHaveLength(1)
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(server.received).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(50)
+    expect(server.received.map((event) => event.payload.client_msg_id)).toEqual([
+      first.clientMsgId,
+      first.clientMsgId,
+      second.clientMsgId,
+    ])
+    expect(server.received[1]?.payload).toEqual(server.received[0]?.payload)
+    expect(server.received[1]?.id).not.toBe(server.received[0]?.id)
+    client.stop()
+  })
+
   it('preserves a rate-limited retry deadline across periodic History sync', async () => {
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
     const listChats = vi.fn().mockResolvedValue([])
@@ -778,7 +817,11 @@ describe('message retry backoff during History synchronization', () => {
       listChats: vi.fn().mockResolvedValue([]),
       getMessages: vi.fn(),
     }
-    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const server = new MockWebSocketServer({
+      senderId: USER_ID,
+      ackDelayMs: 50,
+      newDelayMs: 50,
+    })
     const client = new MessengerWebSocketClient({
       wsOrigin: 'ws://localhost',
       accessToken: 'access',
@@ -796,6 +839,7 @@ describe('message retry backoff during History synchronization', () => {
     await vi.advanceTimersByTimeAsync(1_000)
     expect(server.received).toHaveLength(2)
     server.disconnectAll(1013)
+    const queued = client.sendMessage(CHAT_ID, 'queued across reconnect')
 
     await vi.advanceTimersByTimeAsync(1_000)
     expect(client.getSnapshot()).toMatchObject({ transport: 'connected', history: 'ready' })
@@ -804,7 +848,10 @@ describe('message retry backoff during History synchronization', () => {
     expect(server.received).toHaveLength(2)
     await vi.advanceTimersByTimeAsync(1)
     expect(server.received).toHaveLength(3)
+    await vi.advanceTimersByTimeAsync(50)
+    expect(server.received).toHaveLength(4)
     expect(server.received[2]?.payload.client_msg_id).toBe(CLIENT_ID)
+    expect(server.received[3]?.payload.client_msg_id).toBe(queued.clientMsgId)
     client.stop()
   })
 

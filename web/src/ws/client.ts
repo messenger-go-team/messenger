@@ -146,6 +146,7 @@ export class MessengerWebSocketClient {
   private readonly listeners = new Set<(snapshot: WebSocketClientSnapshot) => void>()
   private readonly pending = new Map<string, MutablePending>()
   private inFlight?: SendAttempt
+  private rateLimitTimer?: ReturnType<typeof setTimeout>
   private flushingPending = false
   private readonly messagesById = new Map<string, StoredMessage>()
   private readonly messageIdBySequence = new Map<string, string>()
@@ -536,7 +537,7 @@ export class MessengerWebSocketClient {
     this.clearMessageTimers(pending)
     pending.errorCode = event.payload.code
     if (event.payload.retryable && pending.automaticRetry) {
-      this.scheduleMessageRetry(pending)
+      this.scheduleMessageRetry(pending, event.payload.code === 'rate_limited')
     } else {
       pending.status = 'failed'
       pending.automaticRetry = false
@@ -572,6 +573,7 @@ export class MessengerWebSocketClient {
           socket.readyState !== OPEN ||
           this.transport !== 'connected' ||
           this.recoveringHistory ||
+          this.rateLimitTimer !== undefined ||
           this.inFlight
         ) {
           return
@@ -627,7 +629,7 @@ export class MessengerWebSocketClient {
     this.emit()
   }
 
-  private scheduleMessageRetry(pending: MutablePending): void {
+  private scheduleMessageRetry(pending: MutablePending, rateLimited = false): void {
     if (
       this.stopped ||
       pending.status !== 'pending' ||
@@ -637,9 +639,16 @@ export class MessengerWebSocketClient {
       return
     }
     this.clearMessageTimers(pending)
+    // The server limit applies to every message.send from this user.
+    if (rateLimited) {
+      this.rateLimitTimer = setTimeout(() => {
+        this.rateLimitTimer = undefined
+        this.flushPending()
+      }, pending.retryBackoff.nextDelay())
+    }
     if (pending.attempts >= this.maxAutomaticAttempts) {
       this.markRetryLimitReached(pending)
-    } else {
+    } else if (!rateLimited) {
       const delay = pending.retryBackoff.nextDelay()
       pending.retryTimer = setTimeout(() => {
         pending.retryTimer = undefined
@@ -817,6 +826,10 @@ export class MessengerWebSocketClient {
   }
 
   private clearPendingTimers(preserveRetries = false): void {
+    if (!preserveRetries && this.rateLimitTimer !== undefined) {
+      clearTimeout(this.rateLimitTimer)
+      this.rateLimitTimer = undefined
+    }
     for (const pending of this.pending.values()) this.clearMessageTimers(pending, preserveRetries)
   }
 
