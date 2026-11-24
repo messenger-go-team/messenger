@@ -382,6 +382,34 @@ describe('LaterRemindersProvider reminders', () => {
     expect(screen.getByRole('region', { name: 'Напоминание' })).toBeInTheDocument()
   })
 
+  it('keeps backoff when a mutation arrives during a GET that returns 503', async () => {
+    listLaterMock.mockResolvedValueOnce(list([dueEntry('a')]))
+    let rejectStale: (error: unknown) => void = () => undefined
+    listLaterMock.mockReturnValueOnce(new Promise<LaterList>((_resolve, reject) => (rejectStale = reject)))
+    listLaterMock.mockRejectedValue(new ApiError(503, 'service_unavailable', 'down'))
+    render(tree(auth(ALICE)))
+    await flush()
+    expect(listLaterMock).toHaveBeenCalledTimes(1)
+
+    await advance(30_000)
+    expect(listLaterMock).toHaveBeenCalledTimes(2)
+
+    act(() => api?.removeEntry('a'))
+    await act(async () => rejectStale(new ApiError(503, 'service_unavailable', 'down')))
+    await flush()
+
+    expect(listLaterMock).toHaveBeenCalledTimes(2)
+    await advance(4_999)
+    expect(listLaterMock).toHaveBeenCalledTimes(2)
+    await advance(1)
+    expect(listLaterMock).toHaveBeenCalledTimes(3)
+
+    await advance(9_999)
+    expect(listLaterMock).toHaveBeenCalledTimes(3)
+    await advance(1)
+    expect(listLaterMock).toHaveBeenCalledTimes(4)
+  })
+
   it('keeps a local completion when an older GET resolves afterwards', async () => {
     listLaterMock.mockResolvedValueOnce(list([dueEntry('a')]))
     let resolveStale: (value: LaterList) => void = () => undefined

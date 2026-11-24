@@ -131,9 +131,12 @@ export class LaterRemindersStore {
     const run = this.load(token, generation, controller.signal, this.mutationEpoch).finally(() => {
       if (this.generation !== generation) return
       this.inFlight = null
-      if (this.rerunRequested) {
-        this.rerunRequested = false
-        if (this.isVisible()) void this.refresh()
+      const rerun = this.rerunRequested
+      this.rerunRequested = false
+      // Немедленный повтор — только после успешного (в т.ч. устаревшего) ответа.
+      // После 5xx/сети уже выставлен backoff: иначе «Готово» во время GET обходит паузу.
+      if (rerun && this.failures === 0 && this.isVisible()) {
+        void this.refresh()
         return
       }
       this.arm()
