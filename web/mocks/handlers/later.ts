@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw'
-import { compareLaterEntries } from '../../src/features/later/laterOrder'
+import { compareLaterEntries, compareRfc3339 } from '../../src/features/later/laterOrder'
 import { findHistoryMessage, isChatMember } from '../data/history'
 import { authenticateAccessToken } from '../lib/authentication'
 import { normalizeUuid } from '../lib/validation'
@@ -23,7 +23,7 @@ interface StoredLater {
   done: boolean
 }
 
-const RFC3339_Z = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/
+const RFC3339_Z = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/
 
 let laterEntries: StoredLater[] = []
 
@@ -61,12 +61,29 @@ function validationError(message: string) {
 
 function isDueAtValue(value: unknown): value is string | null {
   if (value === null) return true
-  return typeof value === 'string' && RFC3339_Z.test(value) && Number.isFinite(Date.parse(value))
+  if (
+    typeof value !== 'string' ||
+    !RFC3339_Z.test(value) ||
+    value.startsWith('0000-') ||
+    !value.endsWith('Z')
+  ) {
+    return false
+  }
+  const wholeSecond = value.slice(0, 19)
+  const date = new Date(wholeSecond + 'Z')
+  return Number.isFinite(date.getTime()) && date.toISOString().startsWith(wholeSecond + '.')
+}
+
+function isJsonRequest(request: Request): boolean {
+  return (
+    request.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() ===
+    'application/json'
+  )
 }
 
 function statusFor(dueAt: string | null, serverTime: string): LaterStatus {
   if (dueAt === null) return 'unscheduled'
-  return Date.parse(dueAt) <= Date.parse(serverTime) ? 'due' : 'scheduled'
+  return compareRfc3339(dueAt, serverTime) <= 0 ? 'due' : 'scheduled'
 }
 
 function toPublic(entry: StoredLater, serverTime: string) {
@@ -93,6 +110,7 @@ export const laterHandlers = [
   http.get('/later', async ({ request }) => {
     const userId = await authenticateAccessToken(request)
     if (!userId) return unauthorized()
+    if (new URL(request.url).search) return validationError('Unexpected query string')
 
     const serverTime = new Date().toISOString()
     const entries = laterEntries
@@ -109,6 +127,9 @@ export const laterHandlers = [
   http.post('/later', async ({ request }) => {
     const userId = await authenticateAccessToken(request)
     if (!userId) return unauthorized()
+    if (new URL(request.url).search) return validationError('Unexpected query string')
+
+    if (!isJsonRequest(request)) return validationError('Expected a JSON request body')
 
     let body: unknown
     try {
@@ -121,6 +142,7 @@ export const laterHandlers = [
       typeof body !== 'object' ||
       body === null ||
       Array.isArray(body) ||
+      Object.keys(body).length !== 3 ||
       !('chat_id' in body) ||
       !('message_id' in body) ||
       !('due_at' in body)
@@ -173,9 +195,12 @@ export const laterHandlers = [
   http.patch('/later/:laterId', async ({ request, params }) => {
     const userId = await authenticateAccessToken(request)
     if (!userId) return unauthorized()
+    if (new URL(request.url).search) return validationError('Unexpected query string')
 
     const laterId = normalizeUuid(params.laterId)
     if (!laterId) return validationError('Invalid later id')
+
+    if (!isJsonRequest(request)) return validationError('Expected a JSON request body')
 
     let body: unknown
     try {
@@ -188,6 +213,7 @@ export const laterHandlers = [
       typeof body !== 'object' ||
       body === null ||
       Array.isArray(body) ||
+      Object.keys(body).length !== 1 ||
       !('due_at' in body) ||
       !isDueAtValue(body.due_at)
     ) {
@@ -210,6 +236,8 @@ export const laterHandlers = [
   http.post('/later/:laterId/done', async ({ request, params }) => {
     const userId = await authenticateAccessToken(request)
     if (!userId) return unauthorized()
+    if (new URL(request.url).search) return validationError('Unexpected query string')
+    if ((await request.text()) !== '') return validationError('Unexpected request body')
 
     const laterId = normalizeUuid(params.laterId)
     if (!laterId) return validationError('Invalid later id')

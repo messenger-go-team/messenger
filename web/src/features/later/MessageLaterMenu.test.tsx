@@ -92,6 +92,12 @@ describe('MessageLaterMenu', () => {
     await user.keyboard('{Escape}')
     expect(second).toHaveFocus()
     expect(screen.queryByRole('menu', { name: 'Вернуться позже' })).not.toBeInTheDocument()
+
+    first?.focus()
+    await user.keyboard('{Enter}')
+    await user.tab()
+    expect(second).toHaveFocus()
+    expect(screen.queryByRole('menu', { name: 'Вернуться позже' })).not.toBeInTheDocument()
   })
 
   it('focuses the date field and returns to the same trigger on Escape', async () => {
@@ -115,7 +121,7 @@ describe('MessageLaterMenu', () => {
     expect(screen.queryByText('Напомнить')).not.toBeInTheDocument()
   })
 
-  it('returns focus to the trigger after it is enabled again', async () => {
+  it('returns focus to the trigger after saving', async () => {
     const session = await login({ username: 'alice_1', password: 'correct-horse-battery' })
     const user = userEvent.setup()
     render(
@@ -154,5 +160,99 @@ describe('MessageLaterMenu', () => {
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(/Не удалось сохранить/i)
     expect(menu.contains(alert)).toBe(true)
+  })
+
+  it.each(['menu', 'picker'])(
+    'keeps keyboard focus and allows retry after a 503 in the %s',
+    async (panel) => {
+      let attempts = 0
+      server.use(
+        http.post('/later', () => {
+          attempts += 1
+          if (attempts === 1) {
+            return HttpResponse.json({ code: 'unavailable', message: 'down' }, { status: 503 })
+          }
+        }),
+      )
+      const session = await login({ username: 'alice_1', password: 'correct-horse-battery' })
+      const user = userEvent.setup()
+      render(
+        <MessageLaterMenu
+          accessToken={session.access_token}
+          chatId={INITIAL_CHAT_ID}
+          messageId="20000000-0000-4000-8000-000000000002"
+        />,
+      )
+      const trigger = screen.getByRole('button', { name: 'Действия с сообщением' })
+      trigger.focus()
+      await user.keyboard('{Enter}')
+
+      let submit = screen.getByRole('menuitem', { name: 'Просто сохранить' })
+      if (panel === 'picker') {
+        await user.keyboard('{ArrowUp}{Enter}')
+        await user.tab()
+        await user.tab()
+        await user.tab()
+        submit = screen.getByRole('button', { name: 'Выбрать' })
+      }
+      expect(submit).toHaveFocus()
+      await user.keyboard('{Enter}')
+      expect(await screen.findByRole('alert')).toHaveTextContent(/Не удалось сохранить/i)
+      expect(submit).toHaveFocus()
+      await user.keyboard('{Enter}')
+      expect(await screen.findByRole('status')).toBeVisible()
+      expect(attempts).toBe(2)
+      expect(trigger).toHaveFocus()
+    },
+  )
+
+  it('keeps focus in the new panel when the previous save completes', async () => {
+    let release!: () => void
+    const saveDelay = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let attempts = 0
+    server.use(
+      http.post('/later', async () => {
+        attempts += 1
+        await saveDelay
+      }),
+    )
+    const session = await login({ username: 'alice_1', password: 'correct-horse-battery' })
+    const user = userEvent.setup()
+    render(
+      <>
+        <MessageLaterMenu
+          accessToken={session.access_token}
+          chatId={INITIAL_CHAT_ID}
+          messageId="20000000-0000-4000-8000-000000000002"
+        />
+        <MessageLaterMenu
+          accessToken={session.access_token}
+          chatId={INITIAL_CHAT_ID}
+          messageId="20000000-0000-4000-8000-000000000003"
+        />
+      </>,
+    )
+    const [first, second] = screen.getAllByRole('button', { name: 'Действия с сообщением' })
+    await user.click(first!)
+    await user.keyboard('{Enter}{Enter}')
+    expect(screen.getByRole('menuitem', { name: 'Просто сохранить' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+    try {
+      await user.click(second!)
+      const secondItem = screen.getByRole('menuitem', { name: 'Просто сохранить' })
+      expect(secondItem).toHaveFocus()
+      release()
+      expect(await screen.findByRole('status')).toHaveTextContent('Сохранено без срока')
+      expect(attempts).toBe(1)
+      expect(secondItem).toHaveFocus()
+      await user.keyboard('{Escape}')
+      expect(second).toHaveFocus()
+    } finally {
+      release()
+    }
   })
 })

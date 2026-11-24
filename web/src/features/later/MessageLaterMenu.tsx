@@ -78,31 +78,23 @@ export function MessageLaterMenu({
   const [picker, setPicker] = useState(defaultPickerValues)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
-  const pickerRef = useRef<HTMLDivElement>(null)
-  const restoreTriggerFocus = useRef(false)
+  const floatingRef = useRef<HTMLDivElement>(null)
+  const panelId = useRef<symbol | null>(null)
+  const saving = useRef(false)
   const instanceId = useRef(Symbol('later-menu'))
   const dateId = useId()
   const timeId = useId()
 
-  function focusTrigger() {
-    const trigger = triggerRef.current
-    if (!trigger || trigger.disabled) {
-      restoreTriggerFocus.current = true
-      return
-    }
-    restoreTriggerFocus.current = false
-    trigger.focus()
-  }
-
   function closePanel(returnFocus: boolean) {
+    panelId.current = null
     setPanel('closed')
     releaseLaterMenu(instanceId.current)
-    if (returnFocus) focusTrigger()
-    else restoreTriggerFocus.current = false
+    if (returnFocus) triggerRef.current?.focus()
   }
 
   function openPanel(next: Panel) {
     claimLaterMenu(instanceId.current, closePanel)
+    panelId.current = Symbol()
     const rect = triggerRef.current?.getBoundingClientRect()
     if (rect) {
       const spaceBelow = window.innerHeight - rect.bottom
@@ -140,17 +132,12 @@ export function MessageLaterMenu({
     }
   }, [panel, dateId])
 
-  useLayoutEffect(() => {
-    if (!restoreTriggerFocus.current) return
-    const trigger = triggerRef.current
-    if (!trigger || trigger.disabled) return
-    restoreTriggerFocus.current = false
-    trigger.focus()
-  }, [busy, disabled, panel])
-
   useEffect(() => {
     const id = instanceId.current
-    return () => releaseLaterMenu(id)
+    return () => {
+      panelId.current = null
+      releaseLaterMenu(id)
+    }
   }, [])
 
   function onMenuKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -164,7 +151,8 @@ export function MessageLaterMenu({
       return
     }
     if (event.key === 'Tab') {
-      closePanel(false)
+      // Let native Tab continue in the chat's focus order from the trigger.
+      closePanel(true)
       return
     }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -179,6 +167,9 @@ export function MessageLaterMenu({
   }
 
   async function persist(dueAt: string | null, successText: string) {
+    const submittedPanel = panelId.current
+    if (!submittedPanel || saving.current) return
+    saving.current = true
     setBusy(true)
     setError(null)
     try {
@@ -187,17 +178,24 @@ export function MessageLaterMenu({
         message_id: messageId,
         due_at: toDueAtPayload(dueAt),
       })
-      closePanel(true)
+      // This response can arrive after dismissal or after another panel opens.
+      if (panelId.current === submittedPanel) {
+        closePanel(floatingRef.current?.contains(document.activeElement) ?? false)
+      }
       setNotice(successText)
       window.setTimeout(() => setNotice(null), 2500)
     } catch {
-      setError('Не удалось сохранить. Повторите попытку.')
+      if (panelId.current === submittedPanel) {
+        setError('Не удалось сохранить. Повторите попытку.')
+      }
     } finally {
+      saving.current = false
       setBusy(false)
     }
   }
 
   function submitPicker() {
+    if (saving.current) return
     const local = new Date(`${picker.date}T${picker.time}:00`)
     if (Number.isNaN(local.getTime())) {
       setError('Проверьте дату и время.')
@@ -210,8 +208,10 @@ export function MessageLaterMenu({
     panel !== 'closed' && coords
       ? createPortal(
           <div
+            ref={floatingRef}
             className="fixed z-50"
             style={{ top: coords.top, left: coords.left }}
+            aria-busy={busy}
             data-placement={placement}
           >
             {panel === 'menu' ? (
@@ -229,7 +229,7 @@ export function MessageLaterMenu({
                   type="button"
                   role="menuitem"
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                  disabled={busy}
+                  aria-disabled={busy}
                   onClick={() => void persist(null, 'Сохранено без срока')}
                 >
                   <Bookmark className="size-4 shrink-0" aria-hidden />
@@ -239,7 +239,7 @@ export function MessageLaterMenu({
                   type="button"
                   role="menuitem"
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                  disabled={busy}
+                  aria-disabled={busy}
                   onClick={() => void persist(dueAtInOneHour(), 'Напомним через час')}
                 >
                   <Clock className="size-4 shrink-0" aria-hidden />
@@ -249,7 +249,7 @@ export function MessageLaterMenu({
                   type="button"
                   role="menuitem"
                   className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                  disabled={busy}
+                  aria-disabled={busy}
                   onClick={() => void persist(dueAtEvening(), 'Напомним вечером')}
                 >
                   <span className="inline-flex items-center gap-2">
@@ -262,8 +262,9 @@ export function MessageLaterMenu({
                   type="button"
                   role="menuitem"
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                  disabled={busy}
+                  aria-disabled={busy}
                   onClick={() => {
+                    if (saving.current) return
                     setPicker(defaultPickerValues())
                     openPanel('picker')
                   }}
@@ -281,7 +282,6 @@ export function MessageLaterMenu({
 
             {panel === 'picker' ? (
               <div
-                ref={pickerRef}
                 className="w-64 space-y-3 rounded-lg border border-border bg-card p-3 shadow-md"
                 onKeyDown={(event) => {
                   if (event.key !== 'Escape') return
@@ -321,12 +321,19 @@ export function MessageLaterMenu({
                     type="button"
                     variant="outline"
                     className="flex-1"
-                    disabled={busy}
-                    onClick={() => openPanel('menu')}
+                    aria-disabled={busy}
+                    onClick={() => {
+                      if (!saving.current) openPanel('menu')
+                    }}
                   >
                     Назад
                   </Button>
-                  <Button type="button" className="flex-1" disabled={busy} onClick={submitPicker}>
+                  <Button
+                    type="button"
+                    className="flex-1"
+                    aria-disabled={busy}
+                    onClick={submitPicker}
+                  >
                     Выбрать
                   </Button>
                 </div>
@@ -362,7 +369,7 @@ export function MessageLaterMenu({
         aria-label="Действия с сообщением"
         aria-haspopup="menu"
         aria-expanded={panel !== 'closed'}
-        disabled={disabled || busy}
+        disabled={disabled}
         onKeyDown={(event) => {
           if (panel === 'closed' && event.key === 'ArrowDown') {
             event.preventDefault()

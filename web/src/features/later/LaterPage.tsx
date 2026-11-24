@@ -42,7 +42,14 @@ function valuesFromDueAt(dueAt: string | null, now = new Date()) {
 
 /** Список «Важно» / Later: три группы, перенос срока, Готово, loading/empty/error. */
 export function LaterPage() {
-  const { accessToken, isAuthenticated } = useAuth()
+  const { accessToken, isAuthenticated, user } = useAuth()
+  const ownerId = isAuthenticated ? user?.id : undefined
+
+  // A new owner must never render the previous owner's entries, even for one frame.
+  return <LaterList key={ownerId} accessToken={ownerId ? accessToken : null} />
+}
+
+function LaterList({ accessToken }: { accessToken: string | null }) {
   const [status, setStatus] = useState<Status>('loading')
   const [error, setError] = useState<string | null>(null)
   const [entries, setEntries] = useState<LaterEntry[]>([])
@@ -58,7 +65,7 @@ export function LaterPage() {
   const [rescheduleBusy, setRescheduleBusy] = useState(false)
   const dateId = useId()
   const timeId = useId()
-  const sessionActive = Boolean(accessToken && isAuthenticated)
+  const sessionActive = Boolean(accessToken)
 
   useEffect(() => {
     if (!sessionActive || !accessToken) return

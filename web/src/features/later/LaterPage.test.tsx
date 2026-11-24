@@ -39,16 +39,20 @@ async function authValue(): Promise<AuthContextValue> {
   }
 }
 
-function renderLater(auth: AuthContextValue) {
-  return render(
+function laterView(auth: AuthContextValue) {
+  return (
     <AuthContext.Provider value={auth}>
       <MemoryRouter initialEntries={['/later']}>
         <Routes>
           <Route path="/later" element={<LaterPage />} />
         </Routes>
       </MemoryRouter>
-    </AuthContext.Provider>,
+    </AuthContext.Provider>
   )
+}
+
+function renderLater(auth: AuthContextValue) {
+  return render(laterView(auth))
 }
 
 describe('LaterPage', () => {
@@ -185,6 +189,41 @@ describe('LaterPage', () => {
       smallerId.compareDocumentPosition(largerId) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
   })
+
+  it.each(['scheduled', 'unscheduled'] as const)(
+    'orders %s entries that differ only below a millisecond',
+    async (status) => {
+      const scheduled = status === 'scheduled'
+      const earlier = {
+        id: 'f0000000-0000-4000-8000-000000000005',
+        message: { ...MESSAGE, body: 'Раньше' },
+        due_at: scheduled ? '2099-03-01T10:00:00.000100Z' : null,
+        created_at: scheduled ? '2026-06-01T00:00:01Z' : '2026-06-01T00:00:00.000100Z',
+        updated_at: '2026-06-01T00:00:01Z',
+        status,
+      }
+      const later = {
+        ...earlier,
+        id: 'a0000000-0000-4000-8000-000000000004',
+        message: { ...MESSAGE, body: 'Позже' },
+        due_at: scheduled ? '2099-03-01T10:00:00.000900Z' : null,
+        created_at: scheduled ? '2026-06-01T00:00:00Z' : '2026-06-01T00:00:00.000900Z',
+      }
+      server.use(
+        http.get('/later', () =>
+          HttpResponse.json({
+            server_time: '2026-06-01T00:00:02Z',
+            entries: [earlier, later],
+          }),
+        ),
+      )
+      renderLater(await authValue())
+      expect((await screen.findAllByRole('listitem')).map((item) => item.textContent)).toEqual([
+        expect.stringContaining('Раньше'),
+        expect.stringContaining('Позже'),
+      ])
+    },
+  )
 
   it('collapses one Important group and leaves the others open', async () => {
     seedLaterMocks([
@@ -330,5 +369,32 @@ describe('LaterPage', () => {
       </AuthContext.Provider>,
     )
     expect(await screen.findByText('Пока пусто')).toBeInTheDocument()
+  })
+
+  it('clears the old account immediately while the new list is loading', async () => {
+    seedLaterMocks([
+      {
+        id: '98fcaed4-d453-4cba-b561-4100fe7aa314',
+        message: MESSAGE,
+        due_at: null,
+        created_at: '2026-11-14T15:00:00Z',
+        updated_at: '2026-11-14T15:00:00Z',
+      },
+    ])
+    const auth = await authValue()
+    const { rerender } = renderLater(auth)
+    expect(await screen.findByText(MESSAGE.body)).toBeVisible()
+
+    const bob = await login({ username: 'bob_2', password: 'correct-horse-battery' })
+    rerender(
+      laterView({
+        ...auth,
+        accessToken: bob.access_token,
+        user: { ...ALICE, id: '00000000-0000-4000-8000-000000000002', username: 'bob_2' },
+      }),
+    )
+    expect(screen.queryByText(MESSAGE.body)).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Загрузка')
+    expect(await screen.findByText('Пока пусто')).toBeVisible()
   })
 })

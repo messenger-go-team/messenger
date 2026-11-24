@@ -4,6 +4,7 @@ import { dueAtEvening, dueAtInOneHour, toDueAtPayload } from '@/features/later/d
 describe('dueAtEvening', () => {
   afterEach(() => {
     vi.useRealTimers()
+    vi.unstubAllEnvs()
   })
 
   it('maps 18:59 local to today 19:00 UTC Z', () => {
@@ -30,30 +31,14 @@ describe('dueAtEvening', () => {
     expect(dueAtEvening()).toBe(new Date(2026, 11, 1, 19, 0, 0, 0).toISOString())
   })
 
-  it('builds evening from local calendar parts across a spring-forward night', () => {
-    // Device clock APIs: construct local Date for the night of a typical spring jump.
-    // 2026-03-08 in America/New_York springs 02:00→03:00; local Date(y,m,d,h) still lands on civil 19:00.
-    const beforeEvening = new Date(2026, 2, 8, 18, 30, 0, 0)
-    const afterEvening = dueAtEvening(beforeEvening)
-    const parsed = new Date(afterEvening)
-    expect(afterEvening.endsWith('Z')).toBe(true)
-    expect(parsed.getFullYear()).toBe(2026)
-    expect(parsed.getMonth()).toBe(2)
-    expect(parsed.getDate()).toBe(8)
-    expect(parsed.getHours()).toBe(19)
-    expect(parsed.getMinutes()).toBe(0)
-  })
-
-  it('builds next-day evening across a fall-back calendar day', () => {
-    const atThreshold = new Date(2026, 10, 1, 19, 0, 0, 0)
-    const afterEvening = dueAtEvening(atThreshold)
-    const parsed = new Date(afterEvening)
-    expect(afterEvening.endsWith('Z')).toBe(true)
-    expect(parsed.getFullYear()).toBe(2026)
-    expect(parsed.getMonth()).toBe(10)
-    expect(parsed.getDate()).toBe(2)
-    expect(parsed.getHours()).toBe(19)
-    expect(parsed.getMinutes()).toBe(0)
+  it.each([
+    ['2026-03-08T00:00:00Z', '2026-03-08T23:00:00.000Z'],
+    ['2026-10-31T23:00:00Z', '2026-11-02T00:00:00.000Z'],
+  ])('keeps local 19:00 across an overnight DST change from %s', (now, expected) => {
+    vi.stubEnv('TZ', 'America/New_York')
+    const local = new Date(now)
+    expect(local.getHours()).toBe(19)
+    expect(dueAtEvening(local)).toBe(expected)
   })
 })
 

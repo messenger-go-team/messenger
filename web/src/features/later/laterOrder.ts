@@ -9,16 +9,27 @@ export type LaterOrderEntry = {
 }
 
 const STATUS_RANK: Record<LaterStatus, number> = { due: 0, scheduled: 1, unscheduled: 2 }
+const RFC3339 = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/i
 
 /** Сравнение RFC 3339 по моменту времени, включая дробные секунды. */
 export function compareRfc3339(left: string, right: string): number {
-  const leftMs = Date.parse(left)
-  const rightMs = Date.parse(right)
-  if (Number.isFinite(leftMs) && Number.isFinite(rightMs)) {
-    if (leftMs === rightMs) return 0
-    return leftMs < rightMs ? -1 : 1
+  const a = RFC3339.exec(left)
+  const b = RFC3339.exec(right)
+  if (!a || !b) return left.localeCompare(right)
+
+  const leftSecond = Date.parse(a[1] + a[3])
+  const rightSecond = Date.parse(b[1] + b[3])
+  if (!Number.isFinite(leftSecond) || !Number.isFinite(rightSecond)) {
+    return left.localeCompare(right)
   }
-  return left.localeCompare(right)
+  if (leftSecond !== rightSecond) return leftSecond - rightSecond
+
+  // Date truncates sub-millisecond values. Within one second the normalized
+  // decimal digits can be compared directly, without rounding.
+  const leftFraction = (a[2] ?? '').replace(/0+$/, '')
+  const rightFraction = (b[2] ?? '').replace(/0+$/, '')
+  if (leftFraction === rightFraction) return 0
+  return leftFraction < rightFraction ? -1 : 1
 }
 
 /**
