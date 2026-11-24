@@ -45,19 +45,14 @@ type wsErrorPayload struct {
 	ClientMsgID *string `json:"client_msg_id"`
 }
 
-func (ws *wsEndpoint) handleWSCommand(ctx context.Context, socket *socketSession, frame wsInboundFrame) {
-	cmd, problem := parseWSCommand(frame.data)
+func (ws *wsEndpoint) handleWSCommand(ctx context.Context, socket *socketSession, inbound wsInboundCommand) {
+	cmd, problem := inbound.command, inbound.problem
 	if problem != "" {
 		ws.replyWSError(socket, cmd, problem)
 		return
 	}
 	if ws.history == nil {
 		ws.replyWSError(socket, cmd, "temporarily_unavailable")
-		return
-	}
-
-	if cmd.kind == wsTypingType {
-		ws.handleTyping(ctx, socket, cmd, frame.receivedAt)
 		return
 	}
 

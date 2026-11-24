@@ -23,14 +23,14 @@ type typingTracker struct {
 
 type typingGroup struct {
 	peerID   string
-	tabs     map[*socketSession]typingTab
+	tabs     map[*socketSession]time.Time
 	deadline time.Time
 	timer    *time.Timer
 }
 
-type typingTab struct {
-	expiresAt  time.Time
-	nextTrueAt time.Time
+type typingRequest struct {
+	cmd       wsCommand
+	expiresAt time.Time
 }
 
 type wsTypingPayload struct {
@@ -40,42 +40,112 @@ type wsTypingPayload struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-func (ws *wsEndpoint) handleTyping(ctx context.Context, socket *socketSession, cmd wsCommand, receivedAt time.Time) {
-	if cmd.isTyping &&
-		(!time.Now().Before(receivedAt.Add(typingTTL)) || ws.typingLimited(socket, cmd.chatID, receivedAt)) {
+func (ws *wsEndpoint) queueTyping(socket *socketSession, cmd wsCommand, receivedAt time.Time, wake chan<- struct{}) {
+	ws.typing.mu.Lock()
+	defer ws.typing.mu.Unlock()
+
+	if !cmd.isTyping {
+		if pending := socket.pendingTyping; pending != nil && pending.cmd.chatID == cmd.chatID {
+			socket.pendingTyping = nil
+		}
+		group := ws.typing.byUser[socket.userID][cmd.chatID]
+		if group != nil {
+			if _, active := group.tabs[socket]; active {
+				delete(group.tabs, socket)
+				ws.refreshTypingLocked(socket.userID, cmd.chatID, group, time.Now())
+			}
+		}
 		return
 	}
 
+	if receivedAt.Before(socket.nextTypingAt) {
+		return
+	}
+	// Reserve the whole socket's budget before any lookup, even on failure.
+	socket.nextTypingAt = receivedAt.Add(typingMinGap)
+	socket.pendingTyping = &typingRequest{cmd: cmd, expiresAt: receivedAt.Add(typingTTL)}
+	select {
+	case wake <- struct{}{}:
+	default:
+		// The worker reads the latest pending request when it wakes up.
+	}
+}
+
+func (ws *wsEndpoint) runWSTyping(ctx context.Context, socket *socketSession, wake <-chan struct{}) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ws.stopping:
+			return
+		case <-wake:
+			select {
+			case <-ws.stopping:
+				return
+			default:
+			}
+			ws.typing.mu.Lock()
+			request := socket.pendingTyping
+			ws.typing.mu.Unlock()
+			if request != nil {
+				ws.handleTyping(ctx, socket, request)
+			}
+		}
+	}
+}
+
+func (ws *wsEndpoint) handleTyping(ctx context.Context, socket *socketSession, request *typingRequest) {
+	var peerID, problem string
+	if ctx.Err() == nil && typingRequestAlive(socket, request, time.Now()) {
+		peerID, problem = ws.typingPeer(ctx, socket.userID, request.cmd.chatID)
+	}
+
+	ws.typing.mu.Lock()
+	defer ws.typing.mu.Unlock()
+	if socket.pendingTyping != request {
+		return
+	}
+	socket.pendingTyping = nil
+	now := time.Now()
+	if ctx.Err() != nil || !typingRequestAlive(socket, request, now) {
+		return
+	}
+	if problem != "" {
+		ws.replyWSError(socket, request.cmd, problem)
+		return
+	}
+	ws.applyTypingLocked(socket, request.cmd.chatID, peerID, request.expiresAt, now)
+}
+
+func typingRequestAlive(socket *socketSession, request *typingRequest, now time.Time) bool {
+	return now.Before(request.expiresAt) && now.Before(socket.expiresAt)
+}
+
+func (ws *wsEndpoint) typingPeer(ctx context.Context, userID, chatID string) (string, string) {
+	if ws.history == nil {
+		return "", "temporarily_unavailable"
+	}
 	rpcCtx, cancel := context.WithTimeout(ctx, ws.historyTimeout)
+	defer cancel()
 	members, err := ws.history.GetChatMembers(rpcCtx, &historyv1.GetChatMembersRequest{
-		ChatId:      cmd.chatID,
-		RequesterId: socket.userID,
+		ChatId:      chatID,
+		RequesterId: userID,
 	})
-	cancel()
-	if ctx.Err() != nil {
-		return
-	}
 	if err != nil {
-		ws.replyWSError(socket, cmd, typingMembershipError(status.Code(err)))
-		return
+		return "", typingMembershipError(status.Code(err))
 	}
-
 	ids := members.GetUserIds()
 	if len(ids) != 2 || ids[0] == ids[1] || !validWSUUID(ids[0]) || !validWSUUID(ids[1]) {
-		ws.replyWSError(socket, cmd, "forbidden")
-		return
+		return "", "forbidden"
 	}
-	var peerID string
-	switch socket.userID {
+	switch userID {
 	case ids[0]:
-		peerID = ids[1]
+		return ids[1], ""
 	case ids[1]:
-		peerID = ids[0]
+		return ids[0], ""
 	default:
-		ws.replyWSError(socket, cmd, "forbidden")
-		return
+		return "", "forbidden"
 	}
-	ws.applyTyping(socket, cmd, peerID, receivedAt)
 }
 
 func typingMembershipError(code codes.Code) string {
@@ -89,72 +159,32 @@ func typingMembershipError(code codes.Code) string {
 	}
 }
 
-func (ws *wsEndpoint) typingLimited(socket *socketSession, chatID string, receivedAt time.Time) bool {
-	ws.typing.mu.Lock()
-	defer ws.typing.mu.Unlock()
-
-	group := ws.typing.byUser[socket.userID][chatID]
-	return group != nil && receivedAt.Before(group.tabs[socket].nextTrueAt)
-}
-
-func (ws *wsEndpoint) applyTyping(socket *socketSession, cmd wsCommand, peerID string, receivedAt time.Time) {
-	ws.typing.mu.Lock()
-	defer ws.typing.mu.Unlock()
-
-	now := time.Now()
-	if !now.Before(socket.expiresAt) {
-		return
-	}
+func (ws *wsEndpoint) applyTypingLocked(socket *socketSession, chatID, peerID string, expiresAt, now time.Time) {
 	chats := ws.typing.byUser[socket.userID]
-	group := chats[cmd.chatID]
-	if cmd.isTyping {
-		expiresAt := receivedAt.Add(typingTTL)
-		if !now.Before(expiresAt) {
-			return
-		}
-		if group == nil {
-			if chats == nil {
-				chats = make(map[string]*typingGroup)
-				ws.typing.byUser[socket.userID] = chats
-			}
-			group = &typingGroup{tabs: make(map[*socketSession]typingTab)}
-			chats[cmd.chatID] = group
-		}
-		group.tabs[socket] = typingTab{
-			expiresAt:  expiresAt,
-			nextTrueAt: receivedAt.Add(typingMinGap),
-		}
-	} else {
-		if group == nil {
-			return
-		}
-		tab, exists := group.tabs[socket]
-		if !exists {
-			return
-		}
-		tab.expiresAt = time.Time{}
-		group.tabs[socket] = tab
+	if chats == nil {
+		chats = make(map[string]*typingGroup)
+		ws.typing.byUser[socket.userID] = chats
 	}
+	group := chats[chatID]
+	if group == nil {
+		group = &typingGroup{tabs: make(map[*socketSession]time.Time)}
+		chats[chatID] = group
+	}
+	group.tabs[socket] = expiresAt
 	group.peerID = peerID
-	ws.refreshTypingLocked(socket.userID, cmd.chatID, group, now)
+	ws.refreshTypingLocked(socket.userID, chatID, group, now)
 }
 
 // refreshTypingLocked reconciles the aggregate and schedules the next cleanup.
 func (ws *wsEndpoint) refreshTypingLocked(userID, chatID string, group *typingGroup, now time.Time) {
-	var deadline, wakeAt time.Time
-	for socket, tab := range group.tabs {
-		// A queued frame received during cooldown can still be within its TTL.
-		discardAt := tab.nextTrueAt.Add(typingTTL)
-		if now.Before(tab.expiresAt) {
-			if deadline.Before(tab.expiresAt) {
-				deadline = tab.expiresAt
-			}
-		} else if !now.Before(discardAt) {
+	var deadline time.Time
+	for socket, expiresAt := range group.tabs {
+		if !now.Before(expiresAt) {
 			delete(group.tabs, socket)
 			continue
 		}
-		if wakeAt.Before(discardAt) {
-			wakeAt = discardAt
+		if deadline.Before(expiresAt) {
+			deadline = expiresAt
 		}
 	}
 
@@ -174,10 +204,7 @@ func (ws *wsEndpoint) refreshTypingLocked(userID, chatID string, group *typingGr
 		return
 	}
 
-	if !deadline.IsZero() {
-		wakeAt = deadline
-	}
-	group.timer = time.AfterFunc(time.Until(wakeAt), func() {
+	group.timer = time.AfterFunc(time.Until(deadline), func() {
 		ws.typing.mu.Lock()
 		defer ws.typing.mu.Unlock()
 		if ws.typing.byUser[userID][chatID] == group {
@@ -217,6 +244,7 @@ func (ws *wsEndpoint) clearSocketTyping(socket *socketSession) {
 	ws.typing.mu.Lock()
 	defer ws.typing.mu.Unlock()
 
+	socket.pendingTyping = nil
 	now := time.Now()
 	for chatID, group := range ws.typing.byUser[socket.userID] {
 		if _, exists := group.tabs[socket]; !exists {
