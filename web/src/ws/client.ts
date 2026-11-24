@@ -30,6 +30,7 @@ import {
 const OPEN = 1
 const ACK_TIMEOUT_CLOSE_CODE = 4000
 const HISTORY_SYNC_INTERVAL_MS = 30_000
+const MAX_TIMEOUT_DELAY_MS = 2_147_483_647
 const NON_RETRYABLE_PROTOCOL_CLOSES = new Set([1000, 1002, 1003, 1007, 1009])
 
 function accessTokenExpiresAt(token: string): number | null {
@@ -146,6 +147,7 @@ export class MessengerWebSocketClient {
   private readonly listeners = new Set<(snapshot: WebSocketClientSnapshot) => void>()
   private readonly pending = new Map<string, MutablePending>()
   private inFlight?: SendAttempt
+  private rateLimitTimer?: ReturnType<typeof setTimeout>
   private flushingPending = false
   private readonly messagesById = new Map<string, StoredMessage>()
   private readonly messageIdBySequence = new Map<string, string>()
@@ -536,7 +538,11 @@ export class MessengerWebSocketClient {
     this.clearMessageTimers(pending)
     pending.errorCode = event.payload.code
     if (event.payload.retryable && pending.automaticRetry) {
-      this.scheduleMessageRetry(pending)
+      this.scheduleMessageRetry(
+        pending,
+        event.payload.code === 'rate_limited',
+        event.payload.retry_after_ms ?? 0,
+      )
     } else {
       pending.status = 'failed'
       pending.automaticRetry = false
@@ -572,6 +578,7 @@ export class MessengerWebSocketClient {
           socket.readyState !== OPEN ||
           this.transport !== 'connected' ||
           this.recoveringHistory ||
+          this.rateLimitTimer !== undefined ||
           this.inFlight
         ) {
           return
@@ -627,7 +634,11 @@ export class MessengerWebSocketClient {
     this.emit()
   }
 
-  private scheduleMessageRetry(pending: MutablePending): void {
+  private scheduleMessageRetry(
+    pending: MutablePending,
+    rateLimited = false,
+    retryAfterMs = 0,
+  ): void {
     if (
       this.stopped ||
       pending.status !== 'pending' ||
@@ -637,9 +648,13 @@ export class MessengerWebSocketClient {
       return
     }
     this.clearMessageTimers(pending)
+    // The server limit applies to every message.send from this user.
+    if (rateLimited) {
+      this.pauseSendQueue(Math.max(pending.retryBackoff.nextDelay(), retryAfterMs))
+    }
     if (pending.attempts >= this.maxAutomaticAttempts) {
       this.markRetryLimitReached(pending)
-    } else {
+    } else if (!rateLimited) {
       const delay = pending.retryBackoff.nextDelay()
       pending.retryTimer = setTimeout(() => {
         pending.retryTimer = undefined
@@ -647,6 +662,19 @@ export class MessengerWebSocketClient {
       }, delay)
     }
     this.flushPending()
+  }
+
+  private pauseSendQueue(delayMs: number): void {
+    // Browsers store timeout delays as signed 32-bit integers.
+    const timeout = Math.min(delayMs, MAX_TIMEOUT_DELAY_MS)
+    this.rateLimitTimer = setTimeout(() => {
+      if (delayMs > timeout) {
+        this.pauseSendQueue(delayMs - timeout)
+        return
+      }
+      this.rateLimitTimer = undefined
+      this.flushPending()
+    }, timeout)
   }
 
   private markRetryLimitReached(pending: MutablePending): void {
@@ -817,6 +845,10 @@ export class MessengerWebSocketClient {
   }
 
   private clearPendingTimers(preserveRetries = false): void {
+    if (!preserveRetries && this.rateLimitTimer !== undefined) {
+      clearTimeout(this.rateLimitTimer)
+      this.rateLimitTimer = undefined
+    }
     for (const pending of this.pending.values()) this.clearMessageTimers(pending, preserveRetries)
   }
 

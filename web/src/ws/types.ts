@@ -50,6 +50,7 @@ export interface ErrorPayload {
   retryable: boolean
   request_type: string | null
   client_msg_id: string | null
+  retry_after_ms?: number
 }
 
 export type ErrorEvent = Envelope<'error', ErrorPayload>

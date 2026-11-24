@@ -56,6 +56,15 @@ bash "$RELEASE_DIR/deploy/staging-release.sh" deploy "$SHA" "$RELEASE_DIR"
 как override. Для ручного управления указывайте его после базового Compose.
 Снимки в `.release-state/` и соответствующие теги Docker нужны для отката.
 
+## Настройки лимита отправки Chat
+
+На уже подготовленном стенде добавьте `WS_SEND_INTERVAL` и `WS_SEND_BURST`
+в `services.chat.environment` файла `~/messenger36-stage/compose.yaml` по
+[шаблону rootless Compose](staging-rootless/compose.yaml). Значения по
+умолчанию составляют `200ms` и `10`. При переопределении задайте значения
+в `~/messenger36-stage/.env`. Проверьте итоговый Compose и примените настройки
+при выкладке следующего нового SHA. Повтор активного SHA не пересоздаёт Chat.
+
 ## Откат
 
 Перед ручным откатом отключите CD, отмените ожидающие запуски и дождитесь
