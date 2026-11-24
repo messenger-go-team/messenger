@@ -26,6 +26,8 @@ export default defineConfig(({ mode }) => {
 
   return {
     base,
+    // public/ сейчас только mockServiceWorker.js — на staging его не раздаём.
+    publicDir: mode === 'production' ? false : 'public',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
@@ -39,3 +41,4 @@ export default defineConfig(({ mode }) => {
     },
   }
 })
+
