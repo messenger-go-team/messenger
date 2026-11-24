@@ -186,6 +186,36 @@ describe('LaterPage', () => {
     ).toBeTruthy()
   })
 
+  it('collapses one Important group and leaves the others open', async () => {
+    seedLaterMocks([
+      {
+        id: '98fcaed4-d453-4cba-b561-4100fe7aa314',
+        message: MESSAGE,
+        due_at: '2020-01-01T00:00:00.000Z',
+        created_at: '2026-11-14T15:00:00Z',
+        updated_at: '2026-11-14T15:00:00Z',
+      },
+      {
+        id: 'a2e461f6-e1d8-44ec-b633-4debfda53b9f',
+        message: { ...MESSAGE, id: '20000000-0000-4000-8000-000000000002', body: 'Позже' },
+        due_at: '2099-01-01T00:00:00.000Z',
+        created_at: '2026-11-14T15:01:00Z',
+        updated_at: '2026-11-14T15:01:00Z',
+      },
+    ])
+    const auth = await authValue()
+    renderLater(auth)
+    expect(await screen.findByText('Не забыть ответить')).toBeInTheDocument()
+    const scheduled = screen.getByRole('button', { name: 'Запланировано' })
+    expect(scheduled).toHaveAttribute('aria-expanded', 'true')
+    await userEvent.click(scheduled)
+    expect(scheduled).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('Позже')).not.toBeInTheDocument()
+    expect(screen.getByText('Не забыть ответить')).toBeInTheDocument()
+    await userEvent.click(scheduled)
+    expect(screen.getByText('Позже')).toBeInTheDocument()
+  })
+
   it('reorders scheduled entries by due_at after reschedule', async () => {
     seedLaterMocks([
       {

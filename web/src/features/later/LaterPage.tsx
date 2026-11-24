@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { AlertDialog } from '@base-ui/react/alert-dialog'
-import { ArrowLeft, Bell, MessageCircle, User, Users } from 'lucide-react'
+import { ArrowLeft, Bell, ChevronDown, ChevronUp, MessageCircle, User, Users } from 'lucide-react'
 import {
   completeLater,
   listLater,
@@ -49,6 +49,11 @@ export function LaterPage() {
   const [reloadKey, setReloadKey] = useState(0)
   const [completingId, setCompletingId] = useState<string | null>(null)
   const [reschedulingId, setReschedulingId] = useState<string | null>(null)
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<LaterStatus, boolean>>({
+    due: false,
+    scheduled: false,
+    unscheduled: false,
+  })
   const [picker, setPicker] = useState({ date: '', time: '' })
   const [rescheduleBusy, setRescheduleBusy] = useState(false)
   const dateId = useId()
@@ -240,150 +245,178 @@ export function LaterPage() {
 
           {visibleStatus === 'ready' && groups.length > 0 ? (
             <div className="flex flex-col gap-4 pb-6">
-              {groups.map((group) => (
-                <section key={group.key} aria-labelledby={`later-group-${group.key}`}>
-                  <h2
-                    id={`later-group-${group.key}`}
-                    className="px-4 pb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-                  >
-                    {group.title}
-                  </h2>
-                  <ul className="flex flex-col">
-                    {group.items.map((entry) => (
-                      <li key={entry.id} className="border-b border-border px-4 py-3">
-                        <div className="flex items-start gap-2">
-                          <Link
-                            to={`/chats/${entry.message.chat_id}`}
-                            className="min-w-0 flex-1 space-y-1 hover:opacity-90"
-                          >
-                            {entry.due_at ? (
-                              <time
-                                className="text-xs text-muted-foreground"
-                                dateTime={entry.due_at}
+              {groups.map((group) => {
+                const open = !collapsedGroups[group.key]
+                const Chevron = open ? ChevronUp : ChevronDown
+                return (
+                  <section key={group.key} aria-labelledby={`later-group-${group.key}`}>
+                    <h2 id={`later-group-${group.key}`} className="text-xs font-semibold">
+                      <button
+                        type="button"
+                        className="flex min-h-11 w-full items-center justify-between gap-3 px-4 text-left tracking-wide text-muted-foreground uppercase"
+                        aria-expanded={open}
+                        onClick={() =>
+                          setCollapsedGroups((current) => ({
+                            ...current,
+                            [group.key]: !current[group.key],
+                          }))
+                        }
+                      >
+                        <span>{group.title}</span>
+                        <Chevron className="size-4 shrink-0" aria-hidden />
+                      </button>
+                    </h2>
+                    {open ? (
+                      <ul className="flex flex-col">
+                        {group.items.map((entry) => (
+                          <li key={entry.id} className="border-b border-border px-4 py-3">
+                            <div className="flex items-start gap-2">
+                              <Link
+                                to={`/chats/${entry.message.chat_id}`}
+                                className="min-w-0 flex-1 space-y-1 hover:opacity-90"
                               >
-                                {formatChatListTime(entry.due_at)}
-                              </time>
-                            ) : null}
-                            <p className="line-clamp-2 text-sm text-foreground">
-                              {entry.message.body}
-                            </p>
-                          </Link>
-                          <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              disabled={rescheduleBusy || completingId === entry.id}
-                              onClick={() => startReschedule(entry)}
-                            >
-                              Перенести
-                            </Button>
-                            <AlertDialog.Root>
-                              <AlertDialog.Trigger
-                                className={cn(
-                                  buttonVariants({ variant: 'outline', size: 'sm' }),
-                                  'shrink-0',
-                                )}
-                                disabled={completingId === entry.id}
-                              >
-                                Готово
-                              </AlertDialog.Trigger>
-                              <AlertDialog.Portal>
-                                <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
-                                <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-5 shadow-lg outline-none">
-                                  <AlertDialog.Title className="text-lg font-semibold">
-                                    Убрать из «Важно»?
-                                  </AlertDialog.Title>
-                                  <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-                                    Запись исчезнет из списка. Сообщение в чате останется.
-                                  </AlertDialog.Description>
-                                  <div className="mt-4 flex justify-end gap-2">
-                                    <AlertDialog.Close
-                                      className={cn(buttonVariants({ variant: 'outline' }))}
-                                    >
-                                      Отмена
-                                    </AlertDialog.Close>
-                                    <AlertDialog.Close
-                                      className={cn(buttonVariants())}
-                                      onClick={() => void onComplete(entry.id)}
-                                    >
-                                      Готово
-                                    </AlertDialog.Close>
-                                  </div>
-                                </AlertDialog.Popup>
-                              </AlertDialog.Portal>
-                            </AlertDialog.Root>
-                          </div>
-                        </div>
+                                {entry.due_at ? (
+                                  <time
+                                    className="text-xs text-muted-foreground"
+                                    dateTime={entry.due_at}
+                                  >
+                                    {formatChatListTime(entry.due_at)}
+                                  </time>
+                                ) : null}
+                                <p className="line-clamp-2 text-sm text-foreground">
+                                  {entry.message.body}
+                                </p>
+                              </Link>
+                              <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={rescheduleBusy || completingId === entry.id}
+                                  onClick={() => startReschedule(entry)}
+                                >
+                                  Перенести
+                                </Button>
+                                <AlertDialog.Root>
+                                  <AlertDialog.Trigger
+                                    className={cn(
+                                      buttonVariants({ variant: 'outline', size: 'sm' }),
+                                      'shrink-0',
+                                    )}
+                                    disabled={completingId === entry.id}
+                                  >
+                                    Готово
+                                  </AlertDialog.Trigger>
+                                  <AlertDialog.Portal>
+                                    <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
+                                    <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-5 shadow-lg outline-none">
+                                      <AlertDialog.Title className="text-lg font-semibold">
+                                        Убрать из «Важно»?
+                                      </AlertDialog.Title>
+                                      <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
+                                        Запись исчезнет из списка. Сообщение в чате останется.
+                                      </AlertDialog.Description>
+                                      <div className="mt-4 flex justify-end gap-2">
+                                        <AlertDialog.Close
+                                          className={cn(buttonVariants({ variant: 'outline' }))}
+                                        >
+                                          Отмена
+                                        </AlertDialog.Close>
+                                        <AlertDialog.Close
+                                          className={cn(buttonVariants())}
+                                          onClick={() => void onComplete(entry.id)}
+                                        >
+                                          Готово
+                                        </AlertDialog.Close>
+                                      </div>
+                                    </AlertDialog.Popup>
+                                  </AlertDialog.Portal>
+                                </AlertDialog.Root>
+                              </div>
+                            </div>
 
-                        {reschedulingId === entry.id ? (
-                          <div
-                            className="mt-3 space-y-3 rounded-lg border border-border bg-muted/30 p-3"
-                            aria-label="Перенести срок"
-                          >
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              <div className="space-y-1">
-                                <label htmlFor={dateId} className="text-xs text-muted-foreground">
-                                  Дата
-                                </label>
-                                <Input
-                                  id={dateId}
-                                  type="date"
-                                  value={picker.date}
-                                  onChange={(event) =>
-                                    setPicker((value) => ({ ...value, date: event.target.value }))
-                                  }
-                                />
+                            {reschedulingId === entry.id ? (
+                              <div
+                                className="mt-3 space-y-3 rounded-lg border border-border bg-muted/30 p-3"
+                                aria-label="Перенести срок"
+                              >
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <div className="space-y-1">
+                                    <label
+                                      htmlFor={dateId}
+                                      className="text-xs text-muted-foreground"
+                                    >
+                                      Дата
+                                    </label>
+                                    <Input
+                                      id={dateId}
+                                      type="date"
+                                      value={picker.date}
+                                      onChange={(event) =>
+                                        setPicker((value) => ({
+                                          ...value,
+                                          date: event.target.value,
+                                        }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label
+                                      htmlFor={timeId}
+                                      className="text-xs text-muted-foreground"
+                                    >
+                                      Время
+                                    </label>
+                                    <Input
+                                      id={timeId}
+                                      type="time"
+                                      value={picker.time}
+                                      onChange={(event) =>
+                                        setPicker((value) => ({
+                                          ...value,
+                                          time: event.target.value,
+                                        }))
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    disabled={rescheduleBusy}
+                                    onClick={submitPicker}
+                                  >
+                                    Сохранить срок
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={rescheduleBusy}
+                                    onClick={() => void submitReschedule(null)}
+                                  >
+                                    Без срока
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    disabled={rescheduleBusy}
+                                    onClick={() => setReschedulingId(null)}
+                                  >
+                                    Отмена
+                                  </Button>
+                                </div>
                               </div>
-                              <div className="space-y-1">
-                                <label htmlFor={timeId} className="text-xs text-muted-foreground">
-                                  Время
-                                </label>
-                                <Input
-                                  id={timeId}
-                                  type="time"
-                                  value={picker.time}
-                                  onChange={(event) =>
-                                    setPicker((value) => ({ ...value, time: event.target.value }))
-                                  }
-                                />
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <Button
-                                type="button"
-                                size="sm"
-                                disabled={rescheduleBusy}
-                                onClick={submitPicker}
-                              >
-                                Сохранить срок
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                disabled={rescheduleBusy}
-                                onClick={() => void submitReschedule(null)}
-                              >
-                                Без срока
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                disabled={rescheduleBusy}
-                                onClick={() => setReschedulingId(null)}
-                              >
-                                Отмена
-                              </Button>
-                            </div>
-                          </div>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ))}
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </section>
+                )
+              })}
             </div>
           ) : null}
         </div>
