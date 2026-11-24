@@ -18,6 +18,11 @@ const (
 	wsCommandQueueSize = 8
 )
 
+type wsInboundFrame struct {
+	data       []byte
+	receivedAt time.Time
+}
+
 type socketSession struct {
 	conn       *websocket.Conn
 	userID     string
@@ -80,7 +85,7 @@ func (ws *wsEndpoint) serveSocket(socket *socketSession) {
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
-	commands := make(chan []byte, wsCommandQueueSize)
+	commands := make(chan wsInboundFrame, wsCommandQueueSize)
 	workerDone, writeDone := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(workerDone)
@@ -105,6 +110,7 @@ func (ws *wsEndpoint) serveSocket(socket *socketSession) {
 			// Gorilla sends the close frame for protocol errors and read limits.
 			return
 		}
+		frame := wsInboundFrame{data: data, receivedAt: time.Now()}
 		switch {
 		case kind == websocket.BinaryMessage:
 			ws.sendClose(conn, websocket.CloseUnsupportedData, "text messages only")
@@ -117,7 +123,7 @@ func (ws *wsEndpoint) serveSocket(socket *socketSession) {
 		select {
 		case <-ctx.Done():
 			return
-		case commands <- data:
+		case commands <- frame:
 		default:
 			ws.sendClose(conn, websocket.CloseTryAgainLater, "inbound queue full")
 			return
@@ -125,14 +131,14 @@ func (ws *wsEndpoint) serveSocket(socket *socketSession) {
 	}
 }
 
-func (ws *wsEndpoint) runWSCommands(ctx context.Context, socket *socketSession, commands <-chan []byte) {
+func (ws *wsEndpoint) runWSCommands(ctx context.Context, socket *socketSession, commands <-chan wsInboundFrame) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ws.stopping:
 			return
-		case data := <-commands:
+		case frame := <-commands:
 			if ctx.Err() != nil || !time.Now().Before(socket.expiresAt) {
 				return
 			}
@@ -141,7 +147,7 @@ func (ws *wsEndpoint) runWSCommands(ctx context.Context, socket *socketSession, 
 				return
 			default:
 			}
-			ws.handleWSCommand(ctx, socket, data)
+			ws.handleWSCommand(ctx, socket, frame)
 		}
 	}
 }

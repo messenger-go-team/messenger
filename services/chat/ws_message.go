@@ -45,14 +45,19 @@ type wsErrorPayload struct {
 	ClientMsgID *string `json:"client_msg_id"`
 }
 
-func (ws *wsEndpoint) handleWSCommand(ctx context.Context, socket *socketSession, data []byte) {
-	cmd, problem := parseWSCommand(data)
+func (ws *wsEndpoint) handleWSCommand(ctx context.Context, socket *socketSession, frame wsInboundFrame) {
+	cmd, problem := parseWSCommand(frame.data)
 	if problem != "" {
 		ws.replyWSError(socket, cmd, problem)
 		return
 	}
 	if ws.history == nil {
 		ws.replyWSError(socket, cmd, "temporarily_unavailable")
+		return
+	}
+
+	if cmd.kind == wsTypingType {
+		ws.handleTyping(ctx, socket, cmd, frame.receivedAt)
 		return
 	}
 
@@ -105,7 +110,7 @@ func (ws *wsEndpoint) handleWSCommand(ctx context.Context, socket *socketSession
 		SenderID:     socket.userID,
 		Body:         cmd.body,
 	})
-	data, err = json.Marshal(event)
+	data, err := json.Marshal(event)
 	if err != nil {
 		ws.logger.Warn("could not encode message.new")
 		return
@@ -157,6 +162,9 @@ func (ws *wsEndpoint) replyWSError(socket *socketSession, cmd wsCommand, code st
 		payload.Retryable = true
 	case "temporarily_unavailable":
 		payload.Message = "Не удалось подтвердить сохранение. Повторите позже."
+		if cmd.kind == wsTypingType {
+			payload.Message = "Не удалось проверить доступ к чату."
+		}
 		payload.Retryable = true
 	default:
 		payload.Message = "Внутренняя ошибка. Повторите позже."

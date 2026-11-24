@@ -31,6 +31,7 @@ type wsEndpoint struct {
 
 	hub            *connectionHub
 	broker         Broker
+	typing         typingTracker
 	history        historyv1.HistoryServiceClient
 	historyTimeout time.Duration
 	logger         *slog.Logger
@@ -54,6 +55,7 @@ func newWSEndpoint(cfg config, ready *atomic.Bool, timing wsTiming,
 		cancelFanout:   cancelFanout,
 		hub:            hub,
 		broker:         memoryBroker{hub: hub},
+		typing:         typingTracker{byUser: make(map[string]map[string]*typingGroup)},
 		history:        history,
 		historyTimeout: cfg.HistoryRPCTimeout,
 		upgrader: websocket.Upgrader{
@@ -111,7 +113,10 @@ func (ws *wsEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !ws.hub.register(socket) {
 		return
 	}
-	defer ws.hub.unregister(socket)
+	defer func() {
+		ws.hub.unregister(socket)
+		ws.clearSocketTyping(socket)
+	}()
 	ws.serveSocket(socket)
 }
 
