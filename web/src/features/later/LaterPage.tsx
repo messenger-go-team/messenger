@@ -26,6 +26,18 @@ const GROUP_TITLE: Record<LaterStatus, string> = {
   unscheduled: 'Без срока',
 }
 
+function compareLaterEntries(left: LaterEntry, right: LaterEntry): number {
+  const rank: Record<LaterStatus, number> = { due: 0, scheduled: 1, unscheduled: 2 }
+  if (rank[left.status] !== rank[right.status]) return rank[left.status] - rank[right.status]
+  if (left.status !== 'unscheduled') {
+    const due = (left.due_at ?? '').localeCompare(right.due_at ?? '')
+    if (due !== 0) return due
+  }
+  const created = left.created_at.localeCompare(right.created_at)
+  if (created !== 0) return created
+  return left.id.localeCompare(right.id)
+}
+
 function pad(value: number) {
   return String(value).padStart(2, '0')
 }
@@ -89,7 +101,8 @@ export function LaterPage() {
       scheduled: [],
       unscheduled: [],
     }
-    for (const entry of visibleEntries) {
+    const sorted = [...visibleEntries].sort(compareLaterEntries)
+    for (const entry of sorted) {
       map[entry.status].push(entry)
     }
     return GROUP_ORDER.map((key) => ({ key, title: GROUP_TITLE[key], items: map[key] })).filter(
@@ -100,9 +113,11 @@ export function LaterPage() {
   async function onComplete(entryId: string) {
     if (!accessToken) return
     setCompletingId(entryId)
+    setError(null)
     try {
       await completeLater(accessToken, entryId)
       setEntries((current) => current.filter((entry) => entry.id !== entryId))
+      setError(null)
       if (reschedulingId === entryId) setReschedulingId(null)
     } catch {
       setError('Не удалось отметить готовым. Повторите попытку.')

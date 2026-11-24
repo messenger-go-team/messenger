@@ -387,6 +387,11 @@ export function markHistoryChatRead(chatId: string, userId: string, seq: number)
   }
 }
 
+/** Последний seq чата в REST-моке; 0, если чата нет. */
+export function historyLastSeq(chatId: string): number {
+  return chats.get(chatId)?.lastSeq ?? 0
+}
+
 /** Возвращает внутренний read cursor участника; используется для проверки state в тестах. */
 export function getLastReadSeq(chatId: string, userId: string): number | undefined {
   return members.get(chatId)?.get(userId)?.lastReadSeq

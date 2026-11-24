@@ -186,6 +186,29 @@ describe('ChatThread', () => {
     expect(mockWs.received[0]?.payload.body).toBe('новое из теста')
   })
 
+  it('saves an acked message into Later mocks', async () => {
+    const auth = await authValue()
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 6)
+    renderThread(auth, mockWs)
+
+    await screen.findByText('Да, договорились.')
+    await waitFor(() => expect(mockWs.connections.size).toBeGreaterThan(0))
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('Сообщение'), 'сохранить после ack')
+    await user.click(screen.getByRole('button', { name: 'Отправить' }))
+    const sentBubble = (await screen.findByText('сохранить после ack')).closest('li')
+    expect(sentBubble).toBeTruthy()
+    await waitFor(() => {
+      expect(within(sentBubble as HTMLElement).getByText('отправлено')).toBeInTheDocument()
+    })
+    await user.click(
+      within(sentBubble as HTMLElement).getByRole('button', { name: 'Действия с сообщением' }),
+    )
+    await user.click(screen.getByRole('menuitem', { name: 'Просто сохранить' }))
+    expect(await screen.findByRole('status')).toHaveTextContent(/Сохранено без срока/i)
+  })
+
   it('shows failed status and retries with the same client_msg_id', async () => {
     const auth = await authValue()
     const mockWs = new MockWebSocketServer({ senderId: ALICE.id })

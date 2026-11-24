@@ -140,6 +140,78 @@ describe('LaterPage', () => {
     expect(screen.queryByRole('heading', { name: 'Без срока' })).not.toBeInTheDocument()
   })
 
+  it('reorders scheduled entries by due_at after reschedule', async () => {
+    seedLaterMocks([
+      {
+        id: '98fcaed4-d453-4cba-b561-4100fe7aa314',
+        message: { ...MESSAGE, body: 'Десятое февраля' },
+        due_at: '2099-02-10T10:00:00.000Z',
+        created_at: '2026-11-14T15:00:00Z',
+        updated_at: '2026-11-14T15:00:00Z',
+      },
+      {
+        id: 'a2e461f6-e1d8-44ec-b633-4debfda53b9f',
+        message: {
+          ...MESSAGE,
+          id: '20000000-0000-4000-8000-000000000002',
+          body: 'Пятнадцатое февраля',
+        },
+        due_at: '2099-02-15T10:00:00.000Z',
+        created_at: '2026-11-14T15:01:00Z',
+        updated_at: '2026-11-14T15:01:00Z',
+      },
+    ])
+    const auth = await authValue()
+    renderLater(auth)
+    expect(await screen.findByText('Десятое февраля')).toBeInTheDocument()
+    const moveButtons = screen.getAllByRole('button', { name: 'Перенести' })
+    await userEvent.click(moveButtons[1]!)
+    const panel = screen.getByLabelText('Перенести срок')
+    await userEvent.clear(within(panel).getByLabelText('Дата'))
+    await userEvent.type(within(panel).getByLabelText('Дата'), '2099-02-05')
+    await userEvent.click(within(panel).getByRole('button', { name: 'Сохранить срок' }))
+    await screen.findByText('Пятнадцатое февраля')
+    const first = screen.getByText('Пятнадцатое февраля')
+    const second = screen.getByText('Десятое февраля')
+    expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('clears a complete error after a successful retry', async () => {
+    seedLaterMocks([
+      {
+        id: '98fcaed4-d453-4cba-b561-4100fe7aa314',
+        message: MESSAGE,
+        due_at: null,
+        created_at: '2026-11-14T15:00:00Z',
+        updated_at: '2026-11-14T15:00:00Z',
+      },
+    ])
+    let calls = 0
+    server.use(
+      http.post('/later/:laterId/done', () => {
+        calls += 1
+        if (calls === 1) {
+          return HttpResponse.json({ code: 'unavailable', message: 'down' }, { status: 503 })
+        }
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    const auth = await authValue()
+    renderLater(auth)
+    expect(await screen.findByText('Не забыть ответить')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Готово' }))
+    await userEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Готово' }),
+    )
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Не удалось отметить готовым/i)
+    await userEvent.click(screen.getByRole('button', { name: 'Готово' }))
+    await userEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Готово' }),
+    )
+    expect(await screen.findByText('Пока пусто')).toBeInTheDocument()
+    expect(screen.queryByText(/Не удалось отметить готовым/i)).not.toBeInTheDocument()
+  })
+
   it('shows error and retry', async () => {
     server.use(
       http.get('/later', () =>

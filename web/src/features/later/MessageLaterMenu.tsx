@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Bookmark, Calendar, Clock, MoreVertical, Moon } from 'lucide-react'
 import { saveForLater } from '@/api/later'
@@ -11,6 +11,19 @@ type Panel = 'closed' | 'menu' | 'picker'
 type Placement = 'above' | 'below'
 
 const MENU_ESTIMATE_PX = 280
+
+type MenuCloser = (returnFocus: boolean) => void
+
+let activeLaterMenu: { id: symbol; close: MenuCloser } | null = null
+
+function claimLaterMenu(id: symbol, close: MenuCloser) {
+  if (activeLaterMenu && activeLaterMenu.id !== id) activeLaterMenu.close(false)
+  activeLaterMenu = { id, close }
+}
+
+function releaseLaterMenu(id: symbol) {
+  if (activeLaterMenu?.id === id) activeLaterMenu = null
+}
 
 function eveningHint(now = new Date()): string {
   return now.getHours() >= 19 ? 'завтра в 19:00' : 'сегодня в 19:00'
@@ -64,10 +77,19 @@ export function MessageLaterMenu({
   const [notice, setNotice] = useState<string | null>(null)
   const [picker, setPicker] = useState(defaultPickerValues)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const instanceId = useRef(Symbol('later-menu'))
   const dateId = useId()
   const timeId = useId()
 
+  function closePanel(returnFocus: boolean) {
+    setPanel('closed')
+    releaseLaterMenu(instanceId.current)
+    if (returnFocus) triggerRef.current?.focus()
+  }
+
   function openPanel(next: Panel) {
+    claimLaterMenu(instanceId.current, closePanel)
     const rect = triggerRef.current?.getBoundingClientRect()
     if (rect) {
       const spaceBelow = window.innerHeight - rect.bottom
@@ -96,14 +118,40 @@ export function MessageLaterMenu({
     }
   }, [panel, placement])
 
-  useEffect(() => {
-    if (panel === 'closed') return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setPanel('closed')
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+  useLayoutEffect(() => {
+    if (panel !== 'menu') return
+    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
   }, [panel])
+
+  useEffect(() => {
+    const id = instanceId.current
+    return () => releaseLaterMenu(id)
+  }, [])
+
+  function onMenuKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
+    )
+    const index = items.indexOf(document.activeElement as HTMLElement)
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      closePanel(true)
+      return
+    }
+    if (event.key === 'Tab') {
+      closePanel(false)
+      return
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      if (items.length === 0) return
+      const next =
+        event.key === 'ArrowDown'
+          ? items[(index + 1 + items.length) % items.length]
+          : items[(index - 1 + items.length) % items.length]
+      next?.focus()
+    }
+  }
 
   async function persist(dueAt: string | null, successText: string) {
     setBusy(true)
@@ -114,7 +162,7 @@ export function MessageLaterMenu({
         message_id: messageId,
         due_at: toDueAtPayload(dueAt),
       })
-      setPanel('closed')
+      closePanel(true)
       setNotice(successText)
       window.setTimeout(() => setNotice(null), 2500)
     } catch {
@@ -143,9 +191,11 @@ export function MessageLaterMenu({
           >
             {panel === 'menu' ? (
               <div
+                ref={menuRef}
                 role="menu"
                 aria-label="Вернуться позже"
                 className="w-56 rounded-lg border border-border bg-card py-1 shadow-md"
+                onKeyDown={onMenuKeyDown}
               >
                 <p className="px-3 py-2 text-xs font-medium text-muted-foreground">
                   Вернуться позже
@@ -196,6 +246,11 @@ export function MessageLaterMenu({
                   <Calendar className="size-4 shrink-0" aria-hidden />
                   Выбрать время
                 </button>
+                {error ? (
+                  <p className="px-3 py-2 text-xs text-destructive" role="alert">
+                    {error}
+                  </p>
+                ) : null}
               </div>
             ) : null}
 
@@ -242,6 +297,11 @@ export function MessageLaterMenu({
                     Выбрать
                   </Button>
                 </div>
+                {error ? (
+                  <p className="text-xs text-destructive" role="alert">
+                    {error}
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </div>,
@@ -270,10 +330,17 @@ export function MessageLaterMenu({
         aria-haspopup="menu"
         aria-expanded={panel !== 'closed'}
         disabled={disabled || busy}
+        onKeyDown={(event) => {
+          if (panel === 'closed' && event.key === 'ArrowDown') {
+            event.preventDefault()
+            setError(null)
+            openPanel('menu')
+          }
+        }}
         onClick={() => {
           setError(null)
           if (panel === 'closed') openPanel('menu')
-          else setPanel('closed')
+          else closePanel(true)
         }}
       >
         <MoreVertical className="size-4" />
@@ -281,14 +348,6 @@ export function MessageLaterMenu({
 
       {floating}
 
-      {error ? (
-        <p
-          className="absolute top-8 left-1/2 z-20 w-48 -translate-x-1/2 rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive"
-          role="alert"
-        >
-          {error}
-        </p>
-      ) : null}
       {notice ? (
         <p
           className="absolute top-8 left-1/2 z-20 w-48 -translate-x-1/2 rounded-md border border-border bg-card px-2 py-1 text-xs text-muted-foreground shadow"
