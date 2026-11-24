@@ -45,6 +45,11 @@ export interface HistoryMessagePage {
   has_more_after: boolean
 }
 
+/** Окно вокруг цели для getMessageContext; цель присутствует ровно один раз. */
+export interface HistoryMessageContext extends HistoryMessagePage {
+  target_message_id: string
+}
+
 interface MockChat {
   id: string
   type: 'personal'
@@ -372,6 +377,39 @@ export function getHistoryMessagePage(
     next_after_seq: lastSeq,
     has_more_before: allMessages.some((message) => message.seq < firstSeq),
     has_more_after: allMessages.some((message) => message.seq > lastSeq),
+  }
+}
+
+/**
+ * Окно вокруг сообщения по OpenAPI getMessageContext: floor((limit - 1) / 2) более старых,
+ * остальные из limit - 1 — более новые. У края свободные места не переносятся на другую сторону.
+ * Возвращает null, если сообщения нет в этом чате (вызывающий отдаёт 404).
+ */
+export function getHistoryMessageContext(
+  chatId: string,
+  messageId: string,
+  limit: number,
+): HistoryMessageContext | null {
+  const allMessages = getSortedMessages(chatId)
+  const index = allMessages.findIndex((message) => message.id === messageId)
+
+  if (index === -1) {
+    return null
+  }
+
+  const olderSlots = Math.floor((limit - 1) / 2)
+  const newerSlots = limit - 1 - olderSlots
+  const start = Math.max(0, index - olderSlots)
+  const end = Math.min(allMessages.length, index + 1 + newerSlots)
+  const selected = allMessages.slice(start, end)
+
+  return {
+    target_message_id: messageId,
+    messages: selected.map(cloneMessage),
+    next_before_seq: selected[0].seq,
+    next_after_seq: selected[selected.length - 1].seq,
+    has_more_before: start > 0,
+    has_more_after: end < allMessages.length,
   }
 }
 

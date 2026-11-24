@@ -37,13 +37,17 @@ export interface SaveForLaterRequest {
   due_at: string | null
 }
 
-/** GET /later — активные записи «Вернуться позже». */
-export function listLater(accessToken: string): Promise<LaterList> {
+/** GET /later — активные записи «Вернуться позже». `signal` отменяет запрос прежнего аккаунта. */
+export function listLater(
+  accessToken: string,
+  init: { signal?: AbortSignal } = {},
+): Promise<LaterList> {
   return apiRequest<LaterList>('/later', {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
+    signal: init.signal,
   })
 }
 

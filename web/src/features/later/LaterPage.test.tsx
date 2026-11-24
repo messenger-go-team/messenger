@@ -7,6 +7,7 @@ import type { User } from '@/api/auth'
 import { login } from '@/api/auth'
 import { AuthContext, type AuthContextValue } from '@/features/auth/auth-context'
 import { LaterPage } from '@/features/later/LaterPage'
+import { LaterRemindersProvider } from '@/features/later/LaterRemindersProvider'
 import { server } from '../../../mocks/server'
 import { seedLaterMocks } from '../../../mocks/handlers/later'
 
@@ -43,12 +44,20 @@ function laterView(auth: AuthContextValue) {
   return (
     <AuthContext.Provider value={auth}>
       <MemoryRouter initialEntries={['/later']}>
-        <Routes>
-          <Route path="/later" element={<LaterPage />} />
-        </Routes>
+        <LaterRemindersProvider>
+          <Routes>
+            <Route path="/later" element={<LaterPage />} />
+          </Routes>
+        </LaterRemindersProvider>
       </MemoryRouter>
     </AuthContext.Provider>
   )
+}
+
+/** Просроченная запись показывает toast; тесты списка сначала скрывают его кнопкой «Позже». */
+async function dismissReminderToast() {
+  const toast = await screen.findByRole('region', { name: 'Напоминание' })
+  await userEvent.click(within(toast).getByRole('button', { name: 'Позже' }))
 }
 
 function renderLater(auth: AuthContextValue) {
@@ -63,6 +72,20 @@ describe('LaterPage', () => {
     expect(await screen.findByText('Пока пусто')).toBeInTheDocument()
   })
 
+  it('uses the shared reminders provider: one GET /later for provider and page', async () => {
+    seedLaterMocks([])
+    let requests = 0
+    server.use(
+      http.get('/later', () => {
+        requests += 1
+        return HttpResponse.json({ server_time: '2026-11-24T12:00:00Z', entries: [] })
+      }),
+    )
+    renderLater(await authValue())
+    expect(await screen.findByText('Пока пусто')).toBeInTheDocument()
+    expect(requests).toBe(1)
+  })
+
   it('groups entries into three sections', async () => {
     seedLaterMocks([
       {
@@ -74,7 +97,7 @@ describe('LaterPage', () => {
       },
       {
         id: 'a2e461f6-e1d8-44ec-b633-4debfda53b9f',
-        message: { ...MESSAGE, id: '20000000-0000-4000-8000-000000000002', body: 'Позже' },
+        message: { ...MESSAGE, id: '20000000-0000-4000-8000-000000000002', body: 'Через год' },
         due_at: '2099-01-01T00:00:00.000Z',
         created_at: '2026-11-14T15:01:00Z',
         updated_at: '2026-11-14T15:01:00Z',
@@ -94,10 +117,11 @@ describe('LaterPage', () => {
     const auth = await authValue()
     renderLater(auth)
     expect(await screen.findByRole('heading', { name: 'Сейчас' })).toBeInTheDocument()
+    await dismissReminderToast()
     expect(screen.getByRole('heading', { name: 'Запланировано' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Без срока' })).toBeInTheDocument()
     expect(screen.getByText('Не забыть ответить')).toBeInTheDocument()
-    expect(screen.getByText('Позже')).toBeInTheDocument()
+    expect(screen.getByText('Через год')).toBeInTheDocument()
     expect(screen.getByText('Сохранить на потом')).toBeInTheDocument()
   })
 
@@ -118,6 +142,54 @@ describe('LaterPage', () => {
     const dialog = await screen.findByRole('alertdialog')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Готово' }))
     expect(await screen.findByText('Пока пусто')).toBeInTheDocument()
+  })
+
+  it('drops the entry and says the message is unavailable when Готово returns 404', async () => {
+    seedLaterMocks([
+      {
+        id: '98fcaed4-d453-4cba-b561-4100fe7aa314',
+        message: MESSAGE,
+        due_at: null,
+        created_at: '2026-11-14T15:00:00Z',
+        updated_at: '2026-11-14T15:00:00Z',
+      },
+    ])
+    server.use(
+      http.post('/later/:laterId/done', () =>
+        HttpResponse.json({ code: 'not_found', message: 'Сообщение недоступно.' }, { status: 404 }),
+      ),
+    )
+    renderLater(await authValue())
+    expect(await screen.findByText('Не забыть ответить')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Готово' }))
+    const dialog = await screen.findByRole('alertdialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Готово' }))
+    expect(await screen.findByText('Сообщение недоступно')).toBeInTheDocument()
+    expect(screen.queryByText('Не забыть ответить')).not.toBeInTheDocument()
+  })
+
+  it('drops the entry and says the message is unavailable when reschedule returns 404', async () => {
+    seedLaterMocks([
+      {
+        id: '98fcaed4-d453-4cba-b561-4100fe7aa314',
+        message: MESSAGE,
+        due_at: null,
+        created_at: '2026-11-14T15:00:00Z',
+        updated_at: '2026-11-14T15:00:00Z',
+      },
+    ])
+    server.use(
+      http.patch('/later/:laterId', () =>
+        HttpResponse.json({ code: 'not_found', message: 'Сообщение недоступно.' }, { status: 404 }),
+      ),
+    )
+    renderLater(await authValue())
+    expect(await screen.findByText('Не забыть ответить')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Перенести' }))
+    const panel = screen.getByLabelText('Перенести срок')
+    await userEvent.click(within(panel).getByRole('button', { name: 'Без срока' }))
+    expect(await screen.findByText('Сообщение недоступно')).toBeInTheDocument()
+    expect(screen.queryByText('Не забыть ответить')).not.toBeInTheDocument()
   })
 
   it('reschedules entry due_at from the list', async () => {
@@ -236,7 +308,7 @@ describe('LaterPage', () => {
       },
       {
         id: 'a2e461f6-e1d8-44ec-b633-4debfda53b9f',
-        message: { ...MESSAGE, id: '20000000-0000-4000-8000-000000000002', body: 'Позже' },
+        message: { ...MESSAGE, id: '20000000-0000-4000-8000-000000000002', body: 'Через год' },
         due_at: '2099-01-01T00:00:00.000Z',
         created_at: '2026-11-14T15:01:00Z',
         updated_at: '2026-11-14T15:01:00Z',
@@ -244,15 +316,16 @@ describe('LaterPage', () => {
     ])
     const auth = await authValue()
     renderLater(auth)
+    await dismissReminderToast()
     expect(await screen.findByText('Не забыть ответить')).toBeInTheDocument()
     const scheduled = screen.getByRole('button', { name: 'Запланировано' })
     expect(scheduled).toHaveAttribute('aria-expanded', 'true')
     await userEvent.click(scheduled)
     expect(scheduled).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.queryByText('Позже')).not.toBeInTheDocument()
+    expect(screen.queryByText('Через год')).not.toBeInTheDocument()
     expect(screen.getByText('Не забыть ответить')).toBeInTheDocument()
     await userEvent.click(scheduled)
-    expect(screen.getByText('Позже')).toBeInTheDocument()
+    expect(screen.getByText('Через год')).toBeInTheDocument()
   })
 
   it('reorders scheduled entries by due_at after reschedule', async () => {
@@ -362,9 +435,11 @@ describe('LaterPage', () => {
         }}
       >
         <MemoryRouter initialEntries={['/later']}>
-          <Routes>
-            <Route path="/later" element={<LaterPage />} />
-          </Routes>
+          <LaterRemindersProvider>
+            <Routes>
+              <Route path="/later" element={<LaterPage />} />
+            </Routes>
+          </LaterRemindersProvider>
         </MemoryRouter>
       </AuthContext.Provider>,
     )

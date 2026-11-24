@@ -6,6 +6,7 @@ import {
   addMockHistoryMessage,
   createOrGetPersonalChat,
   findHistoryChat,
+  getHistoryMessageContext,
   getHistoryMessagePage,
   getLastReadSeq,
   listHistoryChats,
@@ -235,6 +236,51 @@ describe('History data', () => {
         }),
       ),
     ).toThrow('Duplicate mock message ID')
+  })
+
+  // Окно контекста: floor((limit - 1) / 2) старых соседей, остальное — новые.
+  describe('getHistoryMessageContext', () => {
+    const idOf = (seq: number) => `20000000-0000-4000-8000-00000000000${seq}`
+
+    it('centers the window with floor((limit - 1) / 2) older neighbours', () => {
+      const context = getHistoryMessageContext(INITIAL_CHAT_ID, idOf(3), 4)
+
+      // limit 4 → 3 neighbours: 1 older, 2 newer.
+      expect(context?.messages.map((message) => message.seq)).toEqual([2, 3, 4, 5])
+      expect(context).toMatchObject({
+        target_message_id: idOf(3),
+        next_before_seq: 2,
+        next_after_seq: 5,
+        has_more_before: true,
+        has_more_after: true,
+      })
+    })
+
+    it('does not move free slots to the other side at the edges', () => {
+      const first = getHistoryMessageContext(INITIAL_CHAT_ID, idOf(1), 5)
+      const last = getHistoryMessageContext(INITIAL_CHAT_ID, idOf(6), 5)
+
+      expect(first?.messages.map((message) => message.seq)).toEqual([1, 2, 3])
+      expect(first).toMatchObject({ has_more_before: false, has_more_after: true })
+      expect(last?.messages.map((message) => message.seq)).toEqual([4, 5, 6])
+      expect(last).toMatchObject({ has_more_before: true, has_more_after: false })
+    })
+
+    it('returns only the target for limit one', () => {
+      const context = getHistoryMessageContext(INITIAL_CHAT_ID, idOf(3), 1)
+
+      expect(context?.messages.map((message) => message.seq)).toEqual([3])
+      expect(context).toMatchObject({ has_more_before: true, has_more_after: true })
+    })
+
+    it('returns null for an unknown message or one from another chat', () => {
+      expect(
+        getHistoryMessageContext(INITIAL_CHAT_ID, '20000000-0000-4000-8000-0000000000ff', 5),
+      ).toBeNull()
+      expect(
+        getHistoryMessageContext('10000000-0000-4000-8000-0000000000ff', idOf(3), 5),
+      ).toBeNull()
+    })
   })
 
   // Reset удаляет динамические сущности и возвращает исходные cursor/messages.

@@ -3,6 +3,7 @@ import { findUserById } from '../data/auth'
 import {
   createOrGetPersonalChat,
   findHistoryChat,
+  getHistoryMessageContext,
   getHistoryMessagePage,
   isChatMember,
   listHistoryChats,
@@ -167,6 +168,44 @@ export const historyHandlers = [
         limit,
       }),
     )
+  }),
+
+  http.get('/chats/:chatId/messages/:messageId/context', async ({ request, params }) => {
+    const currentUserId = await authenticateAccessToken(request)
+
+    if (!currentUserId) {
+      return unauthorized()
+    }
+
+    const chatId = normalizeUuid(params.chatId)
+    const messageId = normalizeUuid(params.messageId)
+    const url = new URL(request.url)
+
+    // Единственный допустимый query-параметр — limit; before_seq/after_seq дают 422.
+    const unknownParameter = [...url.searchParams.keys()].some((key) => key !== 'limit')
+    const limitRaw = url.searchParams.get('limit')
+    const limit = limitRaw === null ? 50 : parseIntegerParameter(limitRaw, 1, 100)
+
+    if (
+      !chatId ||
+      !messageId ||
+      unknownParameter ||
+      hasDuplicateParameter(url, 'limit') ||
+      limit === null
+    ) {
+      return validationError('Некорректный запрос.')
+    }
+
+    // Отсутствующий чат/сообщение, потеря доступа и чужой chat_id неразличимы: всегда 404.
+    const context = isChatMember(chatId, currentUserId)
+      ? getHistoryMessageContext(chatId, messageId, limit)
+      : null
+
+    if (!context) {
+      return notFound('Сообщение недоступно.')
+    }
+
+    return HttpResponse.json(context)
   }),
 
   http.post('/chats/:chatId/read', async ({ request, params }) => {

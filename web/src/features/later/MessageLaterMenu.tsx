@@ -5,6 +5,7 @@ import { saveForLater } from '@/api/later'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { dueAtEvening, dueAtInOneHour, toDueAtPayload } from '@/features/later/dueAt'
+import { useOptionalLaterReminders } from '@/features/later/useLaterReminders'
 import { cn } from '@/lib/utils'
 
 type Panel = 'closed' | 'menu' | 'picker'
@@ -69,6 +70,7 @@ export function MessageLaterMenu({
   disabled?: boolean
   align?: 'start' | 'end'
 }) {
+  const reminders = useOptionalLaterReminders()
   const [panel, setPanel] = useState<Panel>('closed')
   const [placement, setPlacement] = useState<Placement>('below')
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
@@ -173,11 +175,13 @@ export function MessageLaterMenu({
     setBusy(true)
     setError(null)
     try {
-      await saveForLater(accessToken, {
+      const saved = await saveForLater(accessToken, {
         chat_id: chatId,
         message_id: messageId,
         due_at: toDueAtPayload(dueAt),
       })
+      // Общий список и таймер ближайшего срока должны сразу увидеть новую запись.
+      reminders?.replaceEntry(saved.entry, saved.server_time)
       // This response can arrive after dismissal or after another panel opens.
       if (panelId.current === submittedPanel) {
         closePanel(floatingRef.current?.contains(document.activeElement) ?? false)
