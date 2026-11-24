@@ -347,4 +347,65 @@ describe('ChatThread jump to message', () => {
     await waitFor(() => expect(bubble(20)).toHaveAttribute('data-highlighted', 'true'))
     expect(calls).toBe(2)
   })
+
+  it('keeps Retry after a 503 jump in an open chat when the user scrolls up', async () => {
+    server.use(
+      http.get(`/chats/${INITIAL_CHAT_ID}/messages/${messageId(20)}/context`, () =>
+        HttpResponse.json({ code: 'service_unavailable', message: 'down' }, { status: 503 }),
+      ),
+    )
+    const beforeRequests: string[] = []
+    server.events.on('request:start', ({ request }) => {
+      const url = new URL(request.url)
+      if (url.pathname.endsWith('/messages') && url.searchParams.has('before_seq')) {
+        beforeRequests.push(url.searchParams.get('before_seq') ?? '')
+      }
+    })
+
+    const auth = await authValue()
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, TOTAL)
+
+    function Harness() {
+      const [focus, setFocus] = useState<string | null>(null)
+      return (
+        <>
+          <button type="button" onClick={() => setFocus(messageId(20))}>
+            jump
+          </button>
+          <ChatThread chatId={INITIAL_CHAT_ID} peerUsername="bob_2" focusMessageId={focus} />
+        </>
+      )
+    }
+
+    render(
+      <AuthContext.Provider value={auth}>
+        <WsProvider webSocketFactory={mockWs.webSocketFactory} disableApiMockSocket>
+          <MemoryRouter>
+            <LaterRemindersProvider>
+              <Harness />
+            </LaterRemindersProvider>
+          </MemoryRouter>
+        </WsProvider>
+      </AuthContext.Provider>,
+    )
+    expect(await screen.findByText(bodyOf(TOTAL))).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'jump' }))
+
+    expect(await screen.findByText(/Не удалось открыть сообщение/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument()
+
+    const scroller = screen.getByTestId('chat-thread-scroll')
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 2000 })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 400 })
+    await act(async () => {
+      scroller.scrollTop = 0
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }))
+    })
+
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument()
+    expect(screen.getByText(/Не удалось открыть сообщение/)).toBeInTheDocument()
+    expect(screen.queryByText(bodyOf(20))).not.toBeInTheDocument()
+    expect(beforeRequests).toEqual([])
+  })
 })

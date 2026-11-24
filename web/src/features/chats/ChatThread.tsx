@@ -202,6 +202,8 @@ export function ChatThread({
 
   const loadOlder = useCallback(async () => {
     if (historyLoadingRef.current) return
+    // Только готовое окно: после 503 перехода loadOlder иначе снимет «Повторить».
+    if (historyStatus !== 'ready') return
     if (!accessToken || loadingOlder || !hasMoreBefore || history.length === 0) return
     const oldest = history[0]
     if (!oldest) return
@@ -235,11 +237,12 @@ export function ChatThread({
     } finally {
       setLoadingOlder(false)
     }
-  }, [accessToken, chatId, hasMoreBefore, history, loadingOlder])
+  }, [accessToken, chatId, hasMoreBefore, history, historyStatus, loadingOlder])
 
   /** Продолжает обычную after_seq-пагинацию вниз от окна контекста до последнего сообщения. */
   const loadNewer = useCallback(async () => {
     if (historyLoadingRef.current) return
+    if (historyStatus !== 'ready') return
     if (!accessToken || loadingNewer || !hasMoreAfter || history.length === 0) return
     const newest = history[history.length - 1]
     if (!newest) return
@@ -265,7 +268,7 @@ export function ChatThread({
     } finally {
       setLoadingNewer(false)
     }
-  }, [accessToken, chatId, hasMoreAfter, history, loadingNewer])
+  }, [accessToken, chatId, hasMoreAfter, history, historyStatus, loadingNewer])
 
   /** Выход из окна контекста к последним сообщениям чата. */
   const jumpToLatest = useCallback(() => {
