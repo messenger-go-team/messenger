@@ -61,13 +61,14 @@ function createClient(history: HistoryAdapter, server: MockWebSocketServer) {
   })
 }
 
-function rateLimitNextMessage(server: MockWebSocketServer): void {
+function rateLimitNextMessage(server: MockWebSocketServer, retryAfterMs?: number): void {
   server.failNextCommand({
     code: 'rate_limited',
     message: 'retry later',
     retryable: true,
     request_type: 'message.send',
     client_msg_id: null,
+    retry_after_ms: retryAfterMs,
   })
 }
 
@@ -693,6 +694,80 @@ describe('message retry backoff during History synchronization', () => {
     ])
     expect(server.received[1]?.payload).toEqual(server.received[0]?.payload)
     expect(server.received[1]?.id).not.toBe(server.received[0]?.id)
+    client.stop()
+  })
+
+  it('honors a twenty-second rate limit and then sends the first ready message in queue order', async () => {
+    const server = new MockWebSocketServer({
+      senderId: USER_ID,
+      ackDelayMs: 50,
+      newDelayMs: 50,
+    })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    server.failNextCommand({
+      code: 'temporarily_unavailable',
+      message: 'retry later',
+      retryable: true,
+      request_type: 'message.send',
+      client_msg_id: null,
+    })
+    const earlier = client.sendMessage(CHAT_ID, 'waiting for temporary retry', CLIENT_ID)
+    rateLimitNextMessage(server, 20_000)
+    const limited = client.sendMessage(CHAT_ID, 'waiting for new token')
+
+    await vi.advanceTimersByTimeAsync(19_999)
+    expect(server.received.map((event) => event.payload.client_msg_id)).toEqual([
+      earlier.clientMsgId,
+      limited.clientMsgId,
+    ])
+    expect(client.getSnapshot().pending).toMatchObject([
+      { attempts: 1, status: 'pending' },
+      { attempts: 1, status: 'pending' },
+    ])
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(server.received[2]?.payload.client_msg_id).toBe(earlier.clientMsgId)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(server.received).toHaveLength(4)
+    expect(server.received[3]?.payload).toEqual(server.received[1]?.payload)
+    expect(server.received[3]?.id).not.toBe(server.received[1]?.id)
+    expect(client.getSnapshot().pending).toMatchObject([
+      { attempts: 2, status: 'sent' },
+      { attempts: 2, status: 'sent' },
+    ])
+    client.stop()
+  })
+
+  it('waits past the maximum browser timeout without sending early', async () => {
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    const delay = 2_147_483_647 + 100
+    rateLimitNextMessage(server, delay)
+    client.sendMessage(CHAT_ID, 'long rate limit', CLIENT_ID)
+
+    await vi.advanceTimersByTimeAsync(delay - 1)
+    expect(server.received).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(server.received).toHaveLength(2)
+    expect(server.received[1]?.payload).toEqual(server.received[0]?.payload)
     client.stop()
   })
 

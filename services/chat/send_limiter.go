@@ -27,7 +27,8 @@ func newSendLimiter(interval time.Duration, burst int, now func() time.Time) *se
 	}
 }
 
-func (l *sendLimiter) allow(userID string) bool {
+// take consumes one token or returns the wait until the next token.
+func (l *sendLimiter) take(userID string) time.Duration {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
@@ -46,9 +47,9 @@ func (l *sendLimiter) allow(userID string) bool {
 	if fullAt.Before(now) {
 		fullAt = now
 	}
-	if fullAt.Sub(now) > l.window-l.interval {
-		return false
+	if wait := fullAt.Sub(now) - (l.window - l.interval); wait > 0 {
+		return wait
 	}
 	l.fullAt[userID] = fullAt.Add(l.interval)
-	return true
+	return 0
 }

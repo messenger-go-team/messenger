@@ -52,24 +52,24 @@ func TestSendLimiterRefillsAndDropsFullBuckets(t *testing.T) {
 	for _, tc := range []struct {
 		elapsed time.Duration
 		user    string
-		allow   bool
+		wait    time.Duration
 	}{
-		{0, "alice", true},
-		{0, "alice", true},
-		{0, "alice", false},
-		{0, "bob", true},
-		{interval - time.Nanosecond, "alice", false},
-		{interval, "alice", true},
-		{interval, "alice", false},
-		{2 * interval, "alice", true},
-		{5 * interval, "alice", true},
-		{5 * interval, "alice", true},
-		{5 * interval, "alice", false},
-		{sendBucketSweepInterval, "carol", true},
+		{0, "alice", 0},
+		{0, "alice", 0},
+		{0, "alice", interval},
+		{0, "bob", 0},
+		{interval - time.Nanosecond, "alice", time.Nanosecond},
+		{interval, "alice", 0},
+		{interval, "alice", interval},
+		{2 * interval, "alice", 0},
+		{5 * interval, "alice", 0},
+		{5 * interval, "alice", 0},
+		{5 * interval, "alice", interval},
+		{sendBucketSweepInterval, "carol", 0},
 	} {
 		now = start.Add(tc.elapsed)
-		if got := limiter.allow(tc.user); got != tc.allow {
-			t.Errorf("allow(%s) at %s = %t, want %t", tc.user, tc.elapsed, got, tc.allow)
+		if got := limiter.take(tc.user); got != tc.wait {
+			t.Errorf("take(%s) at %s = %s, want %s", tc.user, tc.elapsed, got, tc.wait)
 		}
 	}
 	if len(limiter.fullAt) != 1 || !limiter.fullAt["carol"].Equal(now.Add(interval)) {
@@ -85,7 +85,7 @@ func TestSendLimiterConcurrentAttemptsShareBurst(t *testing.T) {
 	var attempts sync.WaitGroup
 	for range 50 {
 		attempts.Go(func() {
-			if limiter.allow("same-user") {
+			if limiter.take("same-user") == 0 {
 				accepted.Add(1)
 			}
 		})

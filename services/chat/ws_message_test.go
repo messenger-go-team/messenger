@@ -70,7 +70,7 @@ func readTestEvent(t *testing.T, conn *websocket.Conn, want string, payload any)
 	return envelope.ID
 }
 
-func readTestSendError(t *testing.T, conn *websocket.Conn, id, code string, retryable bool) {
+func readTestSendError(t *testing.T, conn *websocket.Conn, id, code string, retryable bool) wsErrorPayload {
 	t.Helper()
 	var problem wsErrorPayload
 	gotID := readTestEvent(t, conn, "error", &problem)
@@ -82,6 +82,7 @@ func readTestSendError(t *testing.T, conn *websocket.Conn, id, code string, retr
 	if strings.Contains(problem.Message, "private test detail") {
 		t.Fatal("raw gRPC error text reached the WebSocket client")
 	}
+	return problem
 }
 
 func TestWSMessageSendAndRetry(t *testing.T) {

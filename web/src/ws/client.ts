@@ -30,6 +30,7 @@ import {
 const OPEN = 1
 const ACK_TIMEOUT_CLOSE_CODE = 4000
 const HISTORY_SYNC_INTERVAL_MS = 30_000
+const MAX_TIMEOUT_DELAY_MS = 2_147_483_647
 const NON_RETRYABLE_PROTOCOL_CLOSES = new Set([1000, 1002, 1003, 1007, 1009])
 
 function accessTokenExpiresAt(token: string): number | null {
@@ -537,7 +538,11 @@ export class MessengerWebSocketClient {
     this.clearMessageTimers(pending)
     pending.errorCode = event.payload.code
     if (event.payload.retryable && pending.automaticRetry) {
-      this.scheduleMessageRetry(pending, event.payload.code === 'rate_limited')
+      this.scheduleMessageRetry(
+        pending,
+        event.payload.code === 'rate_limited',
+        event.payload.retry_after_ms ?? 0,
+      )
     } else {
       pending.status = 'failed'
       pending.automaticRetry = false
@@ -629,7 +634,11 @@ export class MessengerWebSocketClient {
     this.emit()
   }
 
-  private scheduleMessageRetry(pending: MutablePending, rateLimited = false): void {
+  private scheduleMessageRetry(
+    pending: MutablePending,
+    rateLimited = false,
+    retryAfterMs = 0,
+  ): void {
     if (
       this.stopped ||
       pending.status !== 'pending' ||
@@ -641,10 +650,7 @@ export class MessengerWebSocketClient {
     this.clearMessageTimers(pending)
     // The server limit applies to every message.send from this user.
     if (rateLimited) {
-      this.rateLimitTimer = setTimeout(() => {
-        this.rateLimitTimer = undefined
-        this.flushPending()
-      }, pending.retryBackoff.nextDelay())
+      this.pauseSendQueue(Math.max(pending.retryBackoff.nextDelay(), retryAfterMs))
     }
     if (pending.attempts >= this.maxAutomaticAttempts) {
       this.markRetryLimitReached(pending)
@@ -656,6 +662,19 @@ export class MessengerWebSocketClient {
       }, delay)
     }
     this.flushPending()
+  }
+
+  private pauseSendQueue(delayMs: number): void {
+    // Browsers store timeout delays as signed 32-bit integers.
+    const timeout = Math.min(delayMs, MAX_TIMEOUT_DELAY_MS)
+    this.rateLimitTimer = setTimeout(() => {
+      if (delayMs > timeout) {
+        this.pauseSendQueue(delayMs - timeout)
+        return
+      }
+      this.rateLimitTimer = undefined
+      this.flushPending()
+    }, timeout)
   }
 
   private markRetryLimitReached(pending: MutablePending): void {
