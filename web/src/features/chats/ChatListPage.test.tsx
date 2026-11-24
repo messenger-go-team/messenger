@@ -1,7 +1,14 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from 'react-router'
+import {
+  createMemoryRouter,
+  MemoryRouter,
+  Route,
+  RouterProvider,
+  Routes,
+  useLocation,
+} from 'react-router'
 import { describe, expect, it } from 'vitest'
 import type { User } from '@/api/auth'
 import { login } from '@/api/auth'
@@ -651,5 +658,47 @@ describe('ChatListPage', () => {
     expect(writeDana).toBeDisabled()
     releaseCreate()
     expect(await screen.findByRole('heading', { name: 'charlie_3' })).toBeInTheDocument()
+  })
+  it('opens the chat at focusMessageId from navigation state and consumes it once', async () => {
+    const auth = await authValue()
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    const targetId = '20000000-0000-4000-8000-000000000003'
+
+    function LocationState() {
+      const location = useLocation()
+      return <output data-testid="nav-state">{JSON.stringify(location.state)}</output>
+    }
+
+    render(
+      <AuthContext.Provider value={auth}>
+        <WsProvider webSocketFactory={mockWs.webSocketFactory} disableApiMockSocket>
+          <MemoryRouter
+            initialEntries={[
+              {
+                pathname: `/chats/${INITIAL_CHAT_ID}`,
+                state: { peerUsername: 'bob_2', focusMessageId: targetId },
+              },
+            ]}
+          >
+            <LocationState />
+            <Routes>
+              <Route path="/chats/:chatId" element={<ChatListPage />} />
+            </Routes>
+          </MemoryRouter>
+        </WsProvider>
+      </AuthContext.Provider>,
+    )
+
+    expect(await screen.findByText('Как дела?')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(document.querySelector(`[data-message-id="${targetId}"]`)).toHaveAttribute(
+        'data-highlighted',
+        'true',
+      )
+    })
+    // One-shot: focusMessageId is dropped, peerUsername is kept for the header.
+    await waitFor(() =>
+      expect(screen.getByTestId('nav-state')).toHaveTextContent('{"peerUsername":"bob_2"}'),
+    )
   })
 })
