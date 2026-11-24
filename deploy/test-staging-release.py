@@ -3,6 +3,7 @@
 Requires Git history, Go, Docker with Compose, OpenSSL and curl. Uses dedicated containers
 and a temporary database. Run from the repository root.
 """
+import base64
 import concurrent.futures
 import json
 import os
@@ -242,8 +243,31 @@ http {{
                 token = json.load(resp)["access_token"]
             receipts = urllib.request.Request(origin + f"/chats/{chat_id}/receipts",
                                               headers={"Authorization": f"Bearer {token}"})
+
+            def open_receipts():
+                try:
+                    return urllib.request.urlopen(receipts, context=context, timeout=5)
+                except urllib.error.HTTPError as error:
+                    if error.code == 401:
+                        # Decode only public timing claims for diagnostics. Keep the token out of logs.
+                        try:
+                            payload = token.split(".")[1]
+                            claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+                        except (IndexError, ValueError):
+                            claims = {}
+                        dates = {
+                            name: claims[name]
+                            for name in ("iat", "exp")
+                            if isinstance(claims, dict) and type(claims.get(name)) is int
+                        }
+                        error.add_note(
+                            f"Authenticated receipts: request_id={error.headers.get('X-Request-ID')}, "
+                            f"response_date={error.headers.get('Date')}, jwt_timestamps={dates or 'unavailable'}"
+                        )
+                    raise
+
             def assert_receipts(cursors):
-                with urllib.request.urlopen(receipts, context=context, timeout=5) as resp:
+                with open_receipts() as resp:
                     assert resp.status == 200
                     assert resp.headers["Cache-Control"] == "no-store"
                     assert json.load(resp) == {"chat_id": chat_id, "members": [
@@ -275,7 +299,7 @@ http {{
             assert (snippets / "public-locations.conf").read_text() == baseline_snippet
             run("docker", "exec", edge, "wget", "-qO", "/dev/null", "http://history:8080/readyz")
             try:
-                with urllib.request.urlopen(receipts, context=context, timeout=5):
+                with open_receipts():
                     raise AssertionError("previous release unexpectedly exposes receipts")
             except urllib.error.HTTPError as error:
                 with error:
