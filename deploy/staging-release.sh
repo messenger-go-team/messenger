@@ -107,7 +107,7 @@ runtime_matches() {
 }
 
 verify_runtime() {
-    local revision=$1 expected actual attempt later_status
+    local revision=$1 expected actual attempt later_status receipts_status=404
     runtime_matches "$revision" && cmp -s "$revision/public-locations.conf" "$active_snippet" || return 1
     expected=$(<"$revision/marker") || return 1
     for ((attempt=1; attempt<=10; attempt++)); do
@@ -120,6 +120,10 @@ verify_runtime() {
     later_status=$(<"$revision/later.status") || return 1
     https_status /me 401 && https_status /internal/users/test 404 &&
         https_status /later "$later_status" || return 1
+    if [[ -f $revision/receipts.status ]]; then
+        receipts_status=$(<"$revision/receipts.status") || return 1
+    fi
+    https_status /chats/00000000-0000-4000-8000-000000000001/receipts "$receipts_status" || return 1
     "$wss_probe" "$url" "$wss_credentials"
 }
 
@@ -162,12 +166,13 @@ migrate() {
         --mount "type=bind,source=$release,target=/release,readonly" --workdir /release \
         --entrypoint /release/migrate "$(docker inspect --format '{{.Image}}' "$postgres")" \
         -service=all -direction=up
-    [[ $(schema) == '1:false,2:false' ]] || die 'expected Auth schema 1 and History schema 2, both clean'
+    [[ $(schema) == '1:false,3:false' ]] || die 'expected Auth schema 1 and History schema 3, both clean'
     db <<'SQL'
 BEGIN;
 GRANT SELECT, INSERT ON history.later_entries TO messenger36_history;
 GRANT UPDATE (due_at, state, updated_at) ON history.later_entries TO messenger36_history;
 GRANT UPDATE (id) ON history.messages TO messenger36_history;
+GRANT UPDATE (public_last_delivered_seq, public_last_read_seq) ON history.chat_members TO messenger36_history;
 COMMIT;
 SQL
 }
@@ -263,13 +268,13 @@ fi
 for service in auth history; do
     files=("$release/services/$service/migrations/"*.up.sql)
     case "$service:${#files[@]}:${files[-1]##*/}" in
-        auth:1:000001_initial_schema.up.sql|history:2:000002_later_entries.up.sql) ;;
+        auth:1:000001_initial_schema.up.sql|history:3:000003_public_receipts.up.sql) ;;
         *) die "unsupported $service migrations in release" ;;
     esac
 done
 before=$(schema)
 case "$before" in
-    1:false,1:false|1:false,2:false) ;;
+    1:false,1:false|1:false,2:false|1:false,3:false) ;;
     *) die "unexpected DB schema: $before" ;;
 esac
 docker exec "$ingress" nginx -t
@@ -291,6 +296,11 @@ previous_later=$(curl --silent --show-error --proto '=https' --max-time 5 \
 [[ $previous_later == 401 || $previous_later == 404 ]] || die 'unexpected /later baseline status'
 printf '%s\n' "$previous_later" > "$run/previous/later.status"
 printf '401\n' > "$run/next/later.status"
+previous_receipts=$(curl --silent --show-error --proto '=https' --max-time 5 \
+    --output /dev/null --write-out '%{http_code}' "$url/chats/00000000-0000-4000-8000-000000000001/receipts")
+[[ $previous_receipts == 401 || $previous_receipts == 404 ]] || die 'unexpected chat receipts baseline status'
+printf '%s\n' "$previous_receipts" > "$run/previous/receipts.status"
+printf '401\n' > "$run/next/receipts.status"
 for service in "${services[@]}"; do
     image="$project-$service:$sha"
     previous=$(container_image "$service") || die "$service must be running to capture rollback"
@@ -306,7 +316,7 @@ write_overlay "$id-previous" > "$run/previous/compose.yaml"
 write_overlay "$id-next" > "$run/next/compose.yaml"
 "${compose[@]}" --file "$run/next/compose.yaml" config --quiet
 
-if [[ $before == '1:false,1:false' ]]; then
+if [[ $before != '1:false,3:false' ]]; then
     "${compose[@]}" exec -T --interactive=false postgres sh -ec \
         'exec pg_dump -Fc -U "$POSTGRES_USER" -d messenger_stage' > "$run/before-migration.dump"
     test -s "$run/before-migration.dump"
