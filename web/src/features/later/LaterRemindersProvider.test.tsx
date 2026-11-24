@@ -385,7 +385,9 @@ describe('LaterRemindersProvider reminders', () => {
   it('keeps backoff when a mutation arrives during a GET that returns 503', async () => {
     listLaterMock.mockResolvedValueOnce(list([dueEntry('a')]))
     let rejectStale: (error: unknown) => void = () => undefined
-    listLaterMock.mockReturnValueOnce(new Promise<LaterList>((_resolve, reject) => (rejectStale = reject)))
+    listLaterMock.mockReturnValueOnce(
+      new Promise<LaterList>((_resolve, reject) => (rejectStale = reject)),
+    )
     listLaterMock.mockRejectedValue(new ApiError(503, 'service_unavailable', 'down'))
     render(tree(auth(ALICE)))
     await flush()
