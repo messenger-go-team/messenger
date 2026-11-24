@@ -135,7 +135,7 @@ describe('LaterRemindersProvider polling', () => {
     await flush()
 
     expect(listLaterMock).toHaveBeenCalledTimes(1)
-    expect(listLaterMock).toHaveBeenLastCalledWith('token-1')
+    expect(listLaterMock.mock.calls.at(-1)?.[0]).toBe('token-1')
     expect(screen.getByTestId('status')).toHaveTextContent('ready')
 
     await advance(29_000)
@@ -213,6 +213,26 @@ describe('LaterRemindersProvider polling', () => {
     expect(listLaterMock).toHaveBeenCalledTimes(2)
   })
 
+  it('backs off after a 503 on the due timer instead of retrying immediately', async () => {
+    listLaterMock.mockResolvedValueOnce(list([scheduledEntry('a', 10_000)]))
+    listLaterMock.mockRejectedValue(new ApiError(503, 'service_unavailable', 'down'))
+    render(tree(auth(ALICE)))
+    await flush()
+
+    await advance(10_000)
+    expect(listLaterMock).toHaveBeenCalledTimes(2)
+
+    await advance(4_999)
+    expect(listLaterMock).toHaveBeenCalledTimes(2)
+    await advance(1)
+    expect(listLaterMock).toHaveBeenCalledTimes(3)
+
+    await advance(9_999)
+    expect(listLaterMock).toHaveBeenCalledTimes(3)
+    await advance(1)
+    expect(listLaterMock).toHaveBeenCalledTimes(4)
+  })
+
   it('retries 5 → 10 → 20 → 30 → 30 s after 503 and shows the toast after recovery', async () => {
     listLaterMock.mockRejectedValue(new ApiError(503, 'service_unavailable', 'down'))
     render(tree(auth(ALICE)))
@@ -281,7 +301,7 @@ describe('LaterRemindersProvider polling', () => {
     await flush()
 
     expect(listLaterMock).toHaveBeenCalledTimes(2)
-    expect(listLaterMock).toHaveBeenLastCalledWith('token-2')
+    expect(listLaterMock.mock.calls.at(-1)?.[0]).toBe('token-2')
   })
 })
 
@@ -362,6 +382,41 @@ describe('LaterRemindersProvider reminders', () => {
     expect(screen.getByRole('region', { name: 'Напоминание' })).toBeInTheDocument()
   })
 
+  it('keeps a local completion when an older GET resolves afterwards', async () => {
+    listLaterMock.mockResolvedValueOnce(list([dueEntry('a')]))
+    let resolveStale: (value: LaterList) => void = () => undefined
+    listLaterMock.mockReturnValueOnce(new Promise<LaterList>((done) => (resolveStale = done)))
+    listLaterMock.mockResolvedValue(list([]))
+    render(tree(auth(ALICE)))
+    await flush()
+    expect(screen.getByTestId('ids')).toHaveTextContent('a')
+
+    await advance(30_000)
+    expect(listLaterMock).toHaveBeenCalledTimes(2)
+    act(() => api?.removeEntry('a'))
+    await act(async () => resolveStale(list([dueEntry('a')])))
+    await flush()
+
+    expect(screen.getByTestId('ids')).not.toHaveTextContent('a')
+    expect(screen.queryByRole('region', { name: 'Напоминание' })).not.toBeInTheDocument()
+    expect(listLaterMock.mock.calls.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('aborts the in-flight GET when the account session stops', async () => {
+    let signal: AbortSignal | undefined
+    listLaterMock.mockImplementation((_token: string, init?: { signal?: AbortSignal }) => {
+      signal = init?.signal
+      return new Promise<LaterList>(() => undefined)
+    })
+    const view = render(tree(auth(ALICE)))
+    await flush()
+    expect(signal?.aborted).toBe(false)
+
+    view.rerender(tree(auth(null)))
+    await flush()
+    expect(signal?.aborted).toBe(true)
+  })
+
   it('shows a rescheduled entry again once a fresh response reports it due', async () => {
     listLaterMock.mockResolvedValueOnce(list([dueEntry('a')]))
     render(tree(auth(ALICE)))
@@ -414,7 +469,7 @@ describe('LaterRemindersProvider account changes', () => {
     expect(screen.getByTestId('ids')).toHaveTextContent('bob-entry')
     expect(screen.getByTestId('ids')).not.toHaveTextContent('alice-entry')
     expect(screen.queryByRole('region', { name: 'Напоминание' })).not.toBeInTheDocument()
-    expect(listLaterMock).toHaveBeenLastCalledWith('token-bob')
+    expect(listLaterMock.mock.calls.at(-1)?.[0]).toBe('token-bob')
   })
 
   it('does not carry dismissed reminders over to another account', async () => {

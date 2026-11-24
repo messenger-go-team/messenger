@@ -2,6 +2,7 @@ import { useId, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { ArrowLeft, Bell, ChevronDown, ChevronUp, MessageCircle, User, Users } from 'lucide-react'
+import { ApiError } from '@/api/client'
 import { completeLater, rescheduleLater, type LaterEntry, type LaterStatus } from '@/api/later'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +13,12 @@ import { compareLaterEntries } from '@/features/later/laterOrder'
 import type { LaterRemindersStatus } from '@/features/later/LaterRemindersStore'
 import { useLaterReminders } from '@/features/later/useLaterReminders'
 import { cn } from '@/lib/utils'
+
+const MESSAGE_UNAVAILABLE = 'Сообщение недоступно'
+
+function isNotFound(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404
+}
 
 const GROUP_ORDER: LaterStatus[] = ['due', 'scheduled', 'unscheduled']
 
@@ -114,8 +121,13 @@ function LaterList({
       await completeLater(accessToken, entryId)
       removeEntry(entryId)
       if (reschedulingId === entryId) setReschedulingId(null)
-    } catch {
-      setActionError('Не удалось отметить готовым. Повторите попытку.')
+    } catch (error) {
+      if (isNotFound(error)) {
+        removeEntry(entryId)
+        setActionError(MESSAGE_UNAVAILABLE)
+      } else {
+        setActionError('Не удалось отметить готовым. Повторите попытку.')
+      }
     } finally {
       setCompletingId(null)
     }
@@ -135,8 +147,14 @@ function LaterList({
       const result = await rescheduleLater(accessToken, reschedulingId, toDueAtPayload(dueAt))
       replaceEntry(result.entry, result.server_time)
       setReschedulingId(null)
-    } catch {
-      setActionError('Не удалось перенести срок. Повторите попытку.')
+    } catch (error) {
+      if (isNotFound(error)) {
+        removeEntry(reschedulingId)
+        setReschedulingId(null)
+        setActionError(MESSAGE_UNAVAILABLE)
+      } else {
+        setActionError('Не удалось перенести срок. Повторите попытку.')
+      }
     } finally {
       setRescheduleBusy(false)
     }

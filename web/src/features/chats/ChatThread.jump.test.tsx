@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
@@ -220,8 +221,89 @@ describe('ChatThread jump to message', () => {
     await waitFor(() => expect(screen.getByTestId('later-count')).toHaveTextContent('1'))
 
     expect(await screen.findByText('Сообщение недоступно')).toBeInTheDocument()
+    expect(screen.getByTestId('chat-thread-scroll')).not.toHaveTextContent('Сообщение недоступно')
     expect(await screen.findByText(bodyOf(TOTAL))).toBeInTheDocument()
     await waitFor(() => expect(screen.getByTestId('later-count')).toHaveTextContent('0'))
+  })
+
+  it('does not merge the previous page into a context window that is still loading', async () => {
+    let release: () => void = () => undefined
+    const contextReady = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(
+      http.get(`/chats/${INITIAL_CHAT_ID}/messages/${messageId(20)}/context`, async () => {
+        await contextReady
+        return HttpResponse.json({
+          target_message_id: messageId(20),
+          messages: Array.from({ length: 45 }, (_, index) => {
+            const seq = index + 1
+            return {
+              id: messageId(seq),
+              chat_id: INITIAL_CHAT_ID,
+              seq,
+              sender_id: BOB_ID,
+              body: bodyOf(seq),
+              created_at: '2026-11-02T10:00:00Z',
+            }
+          }),
+          next_before_seq: 1,
+          next_after_seq: 45,
+          has_more_before: false,
+          has_more_after: true,
+        })
+      }),
+    )
+    const beforeRequests: string[] = []
+    server.events.on('request:start', ({ request }) => {
+      const url = new URL(request.url)
+      if (url.pathname.endsWith('/messages') && url.searchParams.has('before_seq')) {
+        beforeRequests.push(url.searchParams.get('before_seq') ?? '')
+      }
+    })
+
+    const auth = await authValue()
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, TOTAL)
+
+    function Harness() {
+      const [focus, setFocus] = useState<string | null>(null)
+      return (
+        <>
+          <button type="button" onClick={() => setFocus(messageId(20))}>
+            jump
+          </button>
+          <ChatThread chatId={INITIAL_CHAT_ID} peerUsername="bob_2" focusMessageId={focus} />
+        </>
+      )
+    }
+
+    render(
+      <AuthContext.Provider value={auth}>
+        <WsProvider webSocketFactory={mockWs.webSocketFactory} disableApiMockSocket>
+          <MemoryRouter>
+            <LaterRemindersProvider>
+              <Harness />
+            </LaterRemindersProvider>
+          </MemoryRouter>
+        </WsProvider>
+      </AuthContext.Provider>,
+    )
+    expect(await screen.findByText(bodyOf(TOTAL))).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'jump' }))
+
+    const scroller = screen.getByTestId('chat-thread-scroll')
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 2000 })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 400 })
+    await act(async () => {
+      scroller.scrollTop = 0
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }))
+    })
+    release()
+
+    expect(await screen.findByText(bodyOf(20))).toBeInTheDocument()
+    expect(screen.queryByText(bodyOf(70))).not.toBeInTheDocument()
+    expect(beforeRequests).toEqual([])
   })
 
   it('keeps the target on a temporary error and retries the context', async () => {

@@ -56,7 +56,10 @@ export class LaterRemindersStore {
   private running = false
   private generation = 0
   private inFlight: Promise<void> | null = null
+  private abortController: AbortController | null = null
   private rerunRequested = false
+  /** Локальные правки (Готово / перенос / сохранение) новее начатого GET. */
+  private mutationEpoch = 0
   private lastRequestToken: string | null = null
   private timer: ReturnType<typeof setTimeout> | null = null
   private failures = 0
@@ -99,10 +102,11 @@ export class LaterRemindersStore {
     if (this.isVisible()) void this.refresh()
   }
 
-  /** Останавливает таймеры и отбрасывает ответы запросов, начатых до остановки. */
+  /** Останавливает таймеры, отменяет GET и отбрасывает ответы, начатые до остановки. */
   stop(): void {
     this.running = false
     this.generation += 1
+    this.abortInFlight()
     this.inFlight = null
     this.rerunRequested = false
     this.clearTimer()
@@ -122,7 +126,9 @@ export class LaterRemindersStore {
     if (this.snapshot.status === 'error') this.setSnapshot({ status: 'loading' })
 
     const generation = this.generation
-    const run = this.load(token, generation).finally(() => {
+    const controller = new AbortController()
+    this.abortController = controller
+    const run = this.load(token, generation, controller.signal, this.mutationEpoch).finally(() => {
       if (this.generation !== generation) return
       this.inFlight = null
       if (this.rerunRequested) {
@@ -150,6 +156,7 @@ export class LaterRemindersStore {
 
   /** Убирает запись (complete, 404 контекста) и её напоминание. */
   removeEntry(entryId: string): void {
+    this.noteMutation()
     this.reminders.delete(entryId)
     this.dueAt.delete(entryId)
     this.setSnapshot({ entries: this.snapshot.entries.filter((entry) => entry.id !== entryId) })
@@ -161,6 +168,7 @@ export class LaterRemindersStore {
    * изменился; новое показывается только из следующего свежего GET (не из тела POST/PATCH).
    */
   replaceEntry(entry: LaterEntry, serverTime?: string): void {
+    this.noteMutation()
     const entries = this.snapshot.entries.some((item) => item.id === entry.id)
       ? this.snapshot.entries.map((item) => (item.id === entry.id ? entry : item))
       : [...this.snapshot.entries, entry]
@@ -181,13 +189,30 @@ export class LaterRemindersStore {
     this.setSnapshot({})
   }
 
-  private async load(token: string, generation: number): Promise<void> {
+  private noteMutation(): void {
+    this.mutationEpoch += 1
+    if (this.inFlight) this.rerunRequested = true
+  }
+
+  private abortInFlight(): void {
+    this.abortController?.abort()
+    this.abortController = null
+  }
+
+  private async load(
+    token: string,
+    generation: number,
+    signal: AbortSignal,
+    epochAtStart: number,
+  ): Promise<void> {
     try {
-      const response = await listLater(token)
-      if (generation !== this.generation) return
+      const response = await listLater(token, { signal })
+      if (generation !== this.generation || signal.aborted) return
+      // Ответ начат до «Готово» / переноса / сохранения — не откатываем локальный список.
+      if (epochAtStart !== this.mutationEpoch) return
       this.applySuccess(response.entries, response.server_time)
     } catch (error) {
-      if (generation !== this.generation) return
+      if (generation !== this.generation || signal.aborted) return
       if (error instanceof ApiError && error.status === 401) {
         await this.recoverFromUnauthorized(generation)
         return
@@ -252,11 +277,15 @@ export class LaterRemindersStore {
     this.clearTimer()
     if (!this.running || this.inFlight || !this.hasLoadedOrFailed() || !this.isVisible()) return
 
+    const now = Date.now()
     let target = this.pollAt
-    for (const due of this.dueAt.values()) {
-      if (due < target) target = due
+    // После ошибки ждём backoff. Прошедший due_at иначе даёт delay 0 и зацикливает GET.
+    if (this.failures === 0) {
+      for (const due of this.dueAt.values()) {
+        if (due > now && due < target) target = due
+      }
     }
-    const delay = Math.min(Math.max(0, target - Date.now()), MAX_POLL_INTERVAL_MS)
+    const delay = Math.min(Math.max(0, target - now), MAX_POLL_INTERVAL_MS)
     this.timer = setTimeout(() => {
       this.timer = null
       void this.refresh()

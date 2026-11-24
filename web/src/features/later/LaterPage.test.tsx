@@ -144,6 +144,54 @@ describe('LaterPage', () => {
     expect(await screen.findByText('Пока пусто')).toBeInTheDocument()
   })
 
+  it('drops the entry and says the message is unavailable when Готово returns 404', async () => {
+    seedLaterMocks([
+      {
+        id: '98fcaed4-d453-4cba-b561-4100fe7aa314',
+        message: MESSAGE,
+        due_at: null,
+        created_at: '2026-11-14T15:00:00Z',
+        updated_at: '2026-11-14T15:00:00Z',
+      },
+    ])
+    server.use(
+      http.post('/later/:laterId/done', () =>
+        HttpResponse.json({ code: 'not_found', message: 'Сообщение недоступно.' }, { status: 404 }),
+      ),
+    )
+    renderLater(await authValue())
+    expect(await screen.findByText('Не забыть ответить')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Готово' }))
+    const dialog = await screen.findByRole('alertdialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Готово' }))
+    expect(await screen.findByText('Сообщение недоступно')).toBeInTheDocument()
+    expect(screen.queryByText('Не забыть ответить')).not.toBeInTheDocument()
+  })
+
+  it('drops the entry and says the message is unavailable when reschedule returns 404', async () => {
+    seedLaterMocks([
+      {
+        id: '98fcaed4-d453-4cba-b561-4100fe7aa314',
+        message: MESSAGE,
+        due_at: null,
+        created_at: '2026-11-14T15:00:00Z',
+        updated_at: '2026-11-14T15:00:00Z',
+      },
+    ])
+    server.use(
+      http.patch('/later/:laterId', () =>
+        HttpResponse.json({ code: 'not_found', message: 'Сообщение недоступно.' }, { status: 404 }),
+      ),
+    )
+    renderLater(await authValue())
+    expect(await screen.findByText('Не забыть ответить')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Перенести' }))
+    const panel = screen.getByLabelText('Перенести срок')
+    await userEvent.click(within(panel).getByRole('button', { name: 'Без срока' }))
+    expect(await screen.findByText('Сообщение недоступно')).toBeInTheDocument()
+    expect(screen.queryByText('Не забыть ответить')).not.toBeInTheDocument()
+  })
+
   it('reschedules entry due_at from the list', async () => {
     seedLaterMocks([
       {

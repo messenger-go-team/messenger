@@ -75,6 +75,8 @@ export function ChatThread({
   /** id, который нужно прокрутить и подсветить, когда строка появится в DOM. */
   const pendingScrollRef = useRef<string | null>(null)
   const initialLoadStartedRef = useRef(false)
+  /** Пока грузится новое окно, before/after-пагинация старого окна запрещена. */
+  const historyLoadingRef = useRef(false)
   const onFocusConsumedRef = useRef(onFocusConsumed)
   const accessTokenRef = useRef(accessToken)
   const laterRemindersRef = useRef(laterReminders)
@@ -108,6 +110,7 @@ export function ChatThread({
     const accessToken = accessTokenRef.current
     if (!accessToken) return
     initialLoadStartedRef.current = true
+    historyLoadingRef.current = true
     const requestId = ++historyRequestRef.current
     setHistoryStatus('loading')
     setHistoryError(null)
@@ -116,56 +119,60 @@ export function ChatThread({
     setHasMoreAfter(false)
     pendingScrollRef.current = null
 
-    const applyPage = (
-      messages: Message[],
-      hasBefore: boolean,
-      hasAfter: boolean,
-      stickToBottom: boolean,
-    ) => {
-      setHistory(messages)
-      setHasMoreBefore(hasBefore)
-      setHasMoreAfter(hasAfter)
-      setHistoryStatus(messages.length === 0 ? 'empty' : 'ready')
-      stickToBottomRef.current = stickToBottom
-      for (const item of messages) knownMessageIdsRef.current.add(item.id)
-    }
-
-    const target = jumpTargetRef.current
-    if (target) {
-      try {
-        const context = await getMessageContext(chatId, target, accessToken, {
-          limit: HISTORY_PAGE_SIZE,
-        })
-        if (requestId !== historyRequestRef.current) return
-        jumpTargetRef.current = null
-        pendingScrollRef.current = context.target_message_id
-        applyPage(context.messages, context.has_more_before, context.has_more_after, false)
-        return
-      } catch (error) {
-        if (requestId !== historyRequestRef.current) return
-        if (!(error instanceof ApiError && error.status === 404)) {
-          // Временная ошибка: цель сохраняем, «Повторить» снова запросит контекст.
-          setHistoryStatus('error')
-          setHistoryError('Не удалось открыть сообщение. Повторите попытку.')
-          return
-        }
-        // 404: сообщение недоступно — убираем запись Later и показываем обычную ленту.
-        jumpTargetRef.current = null
-        const reminders = laterRemindersRef.current
-        const stale = reminders?.entries.find((entry) => entry.message.id === target)
-        if (stale) reminders?.removeEntry(stale.id)
-        setNotice(MESSAGE_UNAVAILABLE_NOTICE)
-      }
-    }
-
     try {
-      const page = await getMessageHistory(chatId, accessToken, { limit: HISTORY_PAGE_SIZE })
-      if (requestId !== historyRequestRef.current) return
-      applyPage(page.messages, page.has_more_before, false, true)
-    } catch {
-      if (requestId !== historyRequestRef.current) return
-      setHistoryStatus('error')
-      setHistoryError('Не удалось загрузить сообщения. Повторите попытку.')
+      const applyPage = (
+        messages: Message[],
+        hasBefore: boolean,
+        hasAfter: boolean,
+        stickToBottom: boolean,
+      ) => {
+        setHistory(messages)
+        setHasMoreBefore(hasBefore)
+        setHasMoreAfter(hasAfter)
+        setHistoryStatus(messages.length === 0 ? 'empty' : 'ready')
+        stickToBottomRef.current = stickToBottom
+        for (const item of messages) knownMessageIdsRef.current.add(item.id)
+      }
+
+      const target = jumpTargetRef.current
+      if (target) {
+        try {
+          const context = await getMessageContext(chatId, target, accessToken, {
+            limit: HISTORY_PAGE_SIZE,
+          })
+          if (requestId !== historyRequestRef.current) return
+          jumpTargetRef.current = null
+          pendingScrollRef.current = context.target_message_id
+          applyPage(context.messages, context.has_more_before, context.has_more_after, false)
+          return
+        } catch (error) {
+          if (requestId !== historyRequestRef.current) return
+          if (!(error instanceof ApiError && error.status === 404)) {
+            // Временная ошибка: цель сохраняем, «Повторить» снова запросит контекст.
+            setHistoryStatus('error')
+            setHistoryError('Не удалось открыть сообщение. Повторите попытку.')
+            return
+          }
+          // 404: сообщение недоступно — убираем запись Later и показываем обычную ленту.
+          jumpTargetRef.current = null
+          const reminders = laterRemindersRef.current
+          const stale = reminders?.entries.find((entry) => entry.message.id === target)
+          if (stale) reminders?.removeEntry(stale.id)
+          setNotice(MESSAGE_UNAVAILABLE_NOTICE)
+        }
+      }
+
+      try {
+        const page = await getMessageHistory(chatId, accessToken, { limit: HISTORY_PAGE_SIZE })
+        if (requestId !== historyRequestRef.current) return
+        applyPage(page.messages, page.has_more_before, false, true)
+      } catch {
+        if (requestId !== historyRequestRef.current) return
+        setHistoryStatus('error')
+        setHistoryError('Не удалось загрузить сообщения. Повторите попытку.')
+      }
+    } finally {
+      if (requestId === historyRequestRef.current) historyLoadingRef.current = false
     }
   }, [chatId])
 
@@ -194,6 +201,7 @@ export function ChatThread({
   }, [loadInitial])
 
   const loadOlder = useCallback(async () => {
+    if (historyLoadingRef.current) return
     if (!accessToken || loadingOlder || !hasMoreBefore || history.length === 0) return
     const oldest = history[0]
     if (!oldest) return
@@ -231,6 +239,7 @@ export function ChatThread({
 
   /** Продолжает обычную after_seq-пагинацию вниз от окна контекста до последнего сообщения. */
   const loadNewer = useCallback(async () => {
+    if (historyLoadingRef.current) return
     if (!accessToken || loadingNewer || !hasMoreAfter || history.length === 0) return
     const newest = history[history.length - 1]
     if (!newest) return
@@ -531,6 +540,15 @@ export function ChatThread({
         </div>
       ) : null}
 
+      {notice ? (
+        <p
+          className="border-b border-border bg-muted px-4 py-2 text-center text-sm text-muted-foreground"
+          role="status"
+        >
+          {notice}
+        </p>
+      ) : null}
+
       <div
         ref={listRef}
         className="min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-6"
@@ -565,15 +583,6 @@ export function ChatThread({
               <p className="text-sm text-muted-foreground">Сообщения появятся в этом окне</p>
             </div>
           </div>
-        ) : null}
-
-        {notice ? (
-          <p
-            className="mb-3 rounded-lg bg-muted px-3 py-2 text-center text-sm text-muted-foreground"
-            role="status"
-          >
-            {notice}
-          </p>
         ) : null}
 
         {loadingOlder ? (
