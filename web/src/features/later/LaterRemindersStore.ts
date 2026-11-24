@@ -158,7 +158,7 @@ export class LaterRemindersStore {
 
   /**
    * Заменяет или добавляет запись после PATCH/POST. Прежнее напоминание снимается, если срок
-   * изменился; новое показывается только из следующего свежего GET.
+   * изменился; новое показывается только из следующего свежего GET (не из тела POST/PATCH).
    */
   replaceEntry(entry: LaterEntry, serverTime?: string): void {
     const entries = this.snapshot.entries.some((item) => item.id === entry.id)
@@ -169,6 +169,8 @@ export class LaterRemindersStore {
     this.trackDue(entry, serverTime ?? this.snapshot.serverTime, Date.now())
     this.setSnapshot({ entries })
     this.arm()
+    // Уже due после сохранения: не ждать до 30 с — сразу свежий GET покажет toast.
+    if (entry.status === 'due' && this.isVisible()) void this.refresh()
   }
 
   /** «Позже» на toast: скрывает напоминание в этой сессии, запись остаётся в списке. */

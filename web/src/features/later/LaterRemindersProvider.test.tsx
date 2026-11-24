@@ -347,6 +347,21 @@ describe('LaterRemindersProvider reminders', () => {
     expect(screen.getByTestId('ids')).toHaveTextContent('a')
   })
 
+  it('refreshes immediately after saving an already-due entry so the toast can appear', async () => {
+    listLaterMock.mockResolvedValueOnce(list([]))
+    listLaterMock.mockResolvedValue(list([dueEntry('a')]))
+    render(tree(auth(ALICE)))
+    await flush()
+    expect(listLaterMock).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('region', { name: 'Напоминание' })).not.toBeInTheDocument()
+
+    act(() => api?.replaceEntry(dueEntry('a'), SERVER_TIME))
+    await flush()
+
+    expect(listLaterMock).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole('region', { name: 'Напоминание' })).toBeInTheDocument()
+  })
+
   it('shows a rescheduled entry again once a fresh response reports it due', async () => {
     listLaterMock.mockResolvedValueOnce(list([dueEntry('a')]))
     render(tree(auth(ALICE)))
