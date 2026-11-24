@@ -26,12 +26,18 @@ export function mergeThreadMessages({
   currentUserId,
   chatId,
   history,
+  windowMaxSeq = null,
   wsMessages,
   pending,
 }: {
   currentUserId: string
   chatId: string
   history: readonly Message[]
+  /**
+   * Верхняя граница окна контекста, не доходящего до конца чата: WS/ack новее неё скрыты,
+   * иначе в ленте появится дыра. null — окно у последних сообщений (обычный режим).
+   */
+  windowMaxSeq?: number | null
   wsMessages: readonly StoredMessage[]
   pending: readonly PendingMessage[]
 }): ThreadMessage[] {
@@ -74,6 +80,7 @@ export function mergeThreadMessages({
   for (const message of wsMessages) {
     if (message.chat_id !== chatId) continue
     if (historyMinSeq != null && message.seq < historyMinSeq) continue
+    if (windowMaxSeq != null && message.seq > windowMaxSeq) continue
     upsertConfirmed(message)
   }
 
@@ -83,6 +90,7 @@ export function mergeThreadMessages({
     if (item.status === 'sent' && item.messageId) {
       // Та же нижняя граница окна, что и для WS-кэша (ACK не обходит before_seq).
       if (historyMinSeq != null && item.seq != null && item.seq < historyMinSeq) continue
+      if (windowMaxSeq != null && item.seq != null && item.seq > windowMaxSeq) continue
       const confirmed: ThreadMessage = {
         key: item.messageId,
         id: item.messageId,

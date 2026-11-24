@@ -45,6 +45,14 @@ export interface MessagePage {
 }
 
 /**
+ * Окно истории вокруг целевого сообщения (GET /chats/{chat_id}/messages/{message_id}/context).
+ * Курсоры равны seq первого и последнего сообщения окна для обычного `getMessageHistory`.
+ */
+export interface MessageContext extends MessagePage {
+  target_message_id: string
+}
+
+/**
  * Допустимые варианты cursor pagination.
  * Union запрещает одновременную передачу `beforeSeq` и `afterSeq` на уровне TypeScript.
  */
@@ -106,6 +114,29 @@ export function getMessageHistory(
       Authorization: `Bearer ${accessToken}`,
     },
   })
+}
+
+/**
+ * Загружает окно вокруг сообщения по стабильному `messageId`.
+ * 404 одинаков для отсутствующего чата/сообщения и потери доступа; read cursor не меняется.
+ */
+export function getMessageContext(
+  chatId: string,
+  messageId: string,
+  accessToken: string,
+  options: { limit?: number } = {},
+): Promise<MessageContext> {
+  const query = options.limit !== undefined ? `?limit=${options.limit}` : ''
+
+  return apiRequest<MessageContext>(
+    `/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}/context${query}`,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  )
 }
 
 /** Монотонно отмечает сообщения до `seq` прочитанными; успешный ответ не содержит body. */

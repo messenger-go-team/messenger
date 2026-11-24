@@ -245,4 +245,39 @@ describe('maxConfirmedSeq', () => {
       ]),
     ).toBe(3)
   })
+
+  it('hides ws and acked messages newer than a context window that is not at the chat end', () => {
+    const message = (seq: number) => ({
+      id: `m${seq}`,
+      chat_id: CHAT,
+      seq,
+      sender_id: PEER,
+      body: `t${seq}`,
+      created_at: '2026-11-01T11:01:00Z',
+    })
+    const base = {
+      currentUserId: USER,
+      chatId: CHAT,
+      history: [message(10), message(11)],
+      wsMessages: [message(11), message(40)],
+      pending: [
+        {
+          clientMsgId: 'c41',
+          chatId: CHAT,
+          body: 'mine',
+          status: 'sent' as const,
+          attempts: 1,
+          messageId: 'm41',
+          seq: 41,
+          createdAt: '2026-11-01T11:05:00Z',
+        },
+      ],
+    }
+
+    const windowed = mergeThreadMessages({ ...base, windowMaxSeq: 11 })
+    const live = mergeThreadMessages({ ...base, windowMaxSeq: null })
+
+    expect(windowed.map((item) => item.seq)).toEqual([10, 11])
+    expect(live.map((item) => item.seq)).toEqual([10, 11, 40, 41])
+  })
 })

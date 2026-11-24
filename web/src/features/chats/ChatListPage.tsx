@@ -31,6 +31,19 @@ const SEARCH_DEBOUNCE_MS = 300
 type ListStatus = 'loading' | 'ready' | 'error'
 type SearchStatus = 'idle' | 'loading' | 'ready' | 'error' | 'invalid'
 
+/** Сохраняет только peerUsername из state навигации (без одноразового focusMessageId). */
+function peerStateFrom(state: unknown): { peerUsername: string } | null {
+  if (
+    typeof state === 'object' &&
+    state !== null &&
+    'peerUsername' in state &&
+    typeof state.peerUsername === 'string'
+  ) {
+    return { peerUsername: state.peerUsername }
+  }
+  return null
+}
+
 /** Главный экран списка чатов и поиска пользователей (#43). */
 export function ChatListPage() {
   const { user, accessToken, logout } = useAuth()
@@ -220,12 +233,27 @@ export function ChatListPage() {
     })()
   }
 
+  /** focusMessageId одноразовый: после приёма ChatThread убираем его из history state. */
+  const consumeFocusMessage = useCallback(() => {
+    navigate(location.pathname, {
+      replace: true,
+      state: peerStateFrom(location.state),
+    })
+  }, [location.pathname, location.state, navigate])
+
   const peerFromState =
     typeof location.state === 'object' &&
     location.state !== null &&
     'peerUsername' in location.state &&
     typeof location.state.peerUsername === 'string'
       ? location.state.peerUsername
+      : null
+  const focusMessageId =
+    typeof location.state === 'object' &&
+    location.state !== null &&
+    'focusMessageId' in location.state &&
+    typeof location.state.focusMessageId === 'string'
+      ? location.state.focusMessageId
       : null
   const selectedChat = chatId ? chats.find((chat) => chat.id === chatId) : undefined
   const selectedPeer = chatId
@@ -349,6 +377,8 @@ export function ChatListPage() {
             chatId={chatId}
             peerUsername={selectedPeer}
             onReadCommitted={reloadChats}
+            focusMessageId={focusMessageId}
+            onFocusConsumed={consumeFocusMessage}
           />
         ) : (
           <ChatNotSelectedPanel onFindPerson={() => focusSearch()} />

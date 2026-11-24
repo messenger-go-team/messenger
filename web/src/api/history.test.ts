@@ -3,7 +3,13 @@ import { addUser } from '../../mocks/data/auth'
 import { INITIAL_CHAT_ID, addMockHistoryMessage, getLastReadSeq } from '../../mocks/data/history'
 import { createAccessToken } from '../../mocks/lib/tokens'
 import { login } from './auth'
-import { createPersonalChat, getMessageHistory, listChats, markChatRead } from './history'
+import {
+  createPersonalChat,
+  getMessageContext,
+  getMessageHistory,
+  listChats,
+  markChatRead,
+} from './history'
 
 const ALICE_ID = '00000000-0000-4000-8000-000000000001'
 const BOB_ID = '00000000-0000-4000-8000-000000000002'
@@ -571,6 +577,67 @@ describe('History API', () => {
       expect(response.status).toBe(422)
       const error = await response.json()
       expect(error).toMatchObject({ code: 'validation_error' })
+    })
+  })
+  describe('GET /chats/{chat_id}/messages/{message_id}/context', () => {
+    const TARGET_ID = '20000000-0000-4000-8000-000000000003'
+
+    it('returns the window around the target without changing read state', async () => {
+      const before = getLastReadSeq(INITIAL_CHAT_ID, ALICE_ID)
+      const context = await getMessageContext(INITIAL_CHAT_ID, TARGET_ID, await aliceToken(), {
+        limit: 3,
+      })
+
+      expect(context.target_message_id).toBe(TARGET_ID)
+      expect(context.messages.map((message) => message.seq)).toEqual([2, 3, 4])
+      expect(context).toMatchObject({
+        next_before_seq: 2,
+        next_after_seq: 4,
+        has_more_before: true,
+        has_more_after: true,
+      })
+      expect(getLastReadSeq(INITIAL_CHAT_ID, ALICE_ID)).toBe(before)
+    })
+
+    it('defaults to a limit of 50 and includes the whole short chat', async () => {
+      const context = await getMessageContext(INITIAL_CHAT_ID, TARGET_ID, await aliceToken())
+
+      expect(context.messages).toHaveLength(6)
+      expect(context.has_more_before).toBe(false)
+      expect(context.has_more_after).toBe(false)
+    })
+
+    it('returns 404 for an unknown message and for a non-member without leaking data', async () => {
+      await expect(
+        getMessageContext(INITIAL_CHAT_ID, UNKNOWN_ID, await aliceToken()),
+      ).rejects.toMatchObject({ status: 404, code: 'not_found', message: 'Сообщение недоступно.' })
+
+      const charlieToken = await addCharlieAndCreateToken()
+      await expect(
+        getMessageContext(INITIAL_CHAT_ID, TARGET_ID, charlieToken),
+      ).rejects.toMatchObject({ status: 404, code: 'not_found' })
+    })
+
+    it('returns 401 for an invalid token', async () => {
+      await expect(
+        getMessageContext(INITIAL_CHAT_ID, TARGET_ID, 'bad-token'),
+      ).rejects.toMatchObject({ status: 401 })
+    })
+
+    it.each([
+      ['invalid message UUID', `/chats/${INITIAL_CHAT_ID}/messages/nope/context`],
+      ['limit zero', `/chats/${INITIAL_CHAT_ID}/messages/${TARGET_ID}/context?limit=0`],
+      ['limit above 100', `/chats/${INITIAL_CHAT_ID}/messages/${TARGET_ID}/context?limit=101`],
+      ['before_seq', `/chats/${INITIAL_CHAT_ID}/messages/${TARGET_ID}/context?before_seq=3`],
+      ['after_seq', `/chats/${INITIAL_CHAT_ID}/messages/${TARGET_ID}/context?after_seq=3`],
+      ['repeated limit', `/chats/${INITIAL_CHAT_ID}/messages/${TARGET_ID}/context?limit=2&limit=3`],
+    ])('returns 422 for %s', async (_name, path) => {
+      const response = await fetch(path, {
+        headers: { Authorization: `Bearer ${await aliceToken()}` },
+      })
+
+      expect(response.status).toBe(422)
+      expect(await response.json()).toMatchObject({ code: 'validation_error' })
     })
   })
 })
