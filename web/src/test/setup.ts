@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll } from 'vitest'
 import { server } from '../../mocks/server'
 import { resetAuthData } from '../../mocks/data/auth'
 import { resetHistoryData } from '../../mocks/data/history'
+import { resetLaterMocks } from '../../mocks/handlers/later'
 import { resetSharedRefreshCoordinatorForTests } from '@/features/auth/refreshCoordinator'
 
 // Один server обслуживает весь test run; незамоканные запросы MSW сообщает стандартным способом.
@@ -15,6 +16,7 @@ afterEach(() => {
   server.resetHandlers()
   resetHistoryData()
   resetAuthData()
+  resetLaterMocks()
   resetSharedRefreshCoordinatorForTests()
 })
 

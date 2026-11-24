@@ -129,4 +129,32 @@ func TestMessageReadinessPrivileges(t *testing.T) {
 		t.Fatal(read, delivered)
 	}
 
+	if err := repo.ReceiptsReady(t.Context()); err == nil {
+		t.Fatal("receipt readiness ignored missing v3")
+	}
+	applyHistoryMigration(t, db, "000003_public_receipts")
+	if _, err := db.Exec(`GRANT UPDATE(public_last_read_seq,public_last_delivered_seq) ON history.chat_members TO ` + quoted); err != nil {
+		t.Fatal(err)
+	}
+	for _, column := range []string{"public_last_read_seq", "public_last_delivered_seq"} {
+		if _, err := db.Exec(`REVOKE UPDATE(` + column + `) ON history.chat_members FROM ` + quoted); err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.ReceiptsReady(t.Context()); err == nil {
+			t.Fatal("readiness ignored public cursor privilege", column)
+		}
+		if _, _, err := repo.AdvanceReceipt(t.Context(), chat, userA, 1, true); err == nil {
+			t.Fatal("public read worked without cursor privilege", column)
+		}
+		if _, err := db.Exec(`GRANT UPDATE(` + column + `) ON history.chat_members TO ` + quoted); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := repo.ReceiptsReady(t.Context()); err != nil {
+		t.Fatal("readiness with public cursor grants", err)
+	}
+	cursors, advanced, err := repo.AdvanceReceipt(t.Context(), chat, userA, 1, true)
+	if err != nil || cursors.Read != 1 || cursors.Delivered != 1 || !advanced {
+		t.Fatal(cursors, advanced, err)
+	}
 }

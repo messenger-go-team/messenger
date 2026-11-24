@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"net/url"
 	"strconv"
@@ -21,6 +22,8 @@ type config struct {
 	AllowedOrigins    map[string]struct{}
 	HistoryGRPCAddr   string
 	HistoryRPCTimeout time.Duration
+	SendInterval      time.Duration
+	SendBurst         int
 }
 
 func loadConfig(lookup func(string) (string, bool)) (config, error) {
@@ -76,6 +79,14 @@ func loadConfig(lookup func(string) (string, bool)) (config, error) {
 	cfg.HistoryRPCTimeout, err = time.ParseDuration(value("HISTORY_RPC_TIMEOUT", "3s"))
 	if err != nil || cfg.HistoryRPCTimeout <= 0 {
 		return config{}, fmt.Errorf("HISTORY_RPC_TIMEOUT must be a positive duration")
+	}
+	cfg.SendInterval, err = time.ParseDuration(value("WS_SEND_INTERVAL", "200ms"))
+	if err != nil || cfg.SendInterval <= 0 {
+		return config{}, fmt.Errorf("WS_SEND_INTERVAL must be a positive duration")
+	}
+	cfg.SendBurst, err = strconv.Atoi(value("WS_SEND_BURST", "10"))
+	if err != nil || cfg.SendBurst <= 0 || time.Duration(cfg.SendBurst) > math.MaxInt64/cfg.SendInterval {
+		return config{}, fmt.Errorf("WS_SEND_BURST must be a positive integer with a representable refill duration")
 	}
 	return cfg, nil
 }

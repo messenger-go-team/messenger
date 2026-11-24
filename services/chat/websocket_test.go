@@ -282,7 +282,11 @@ func startTestChat(t *testing.T, timing wsTiming) string {
 
 func startTestWSEndpoint(t *testing.T, timing wsTiming, history historyv1.HistoryServiceClient) (*wsEndpoint, string) {
 	t.Helper()
-	cfg := testConfig(t)
+	return startTestWSEndpointWithConfig(t, testConfig(t), timing, history)
+}
+
+func startTestWSEndpointWithConfig(t *testing.T, cfg config, timing wsTiming, history historyv1.HistoryServiceClient) (*wsEndpoint, string) {
+	t.Helper()
 	var ready atomic.Bool
 	ready.Store(true)
 	logger := newLogger(io.Discard, "chat", cfg.LogLevel)

@@ -22,6 +22,7 @@ import (
 func newLaterHTTPFixture(t *testing.T) *readingFixture {
 	t.Helper()
 	f := &readingFixture{db: laterDatabase(t)}
+	applyHistoryMigration(t, f.db, "000003_public_receipts")
 	f.repo = &postgres.Repository{DB: f.db}
 	saved := &postgres.LaterRepository{DB: f.db}
 	verifier, err := jwtauth.New(testSecret)
