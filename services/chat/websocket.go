@@ -122,10 +122,7 @@ func (ws *wsEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !ws.hub.register(socket) {
 		return
 	}
-	defer func() {
-		ws.hub.unregister(socket)
-		ws.clearSocketTyping(socket)
-	}()
+	defer ws.hub.unregister(socket)
 	ws.serveSocket(socket)
 }
 

@@ -364,6 +364,108 @@ func TestWSTypingLookupDoesNotBlockMessageAck(t *testing.T) {
 	}
 }
 
+func TestWSTypingClearsBeforeMessageFanoutFinishes(t *testing.T) {
+	fanoutStarted, releaseFanout := make(chan struct{}), make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(releaseFanout) })
+	defer unblock()
+	var lookups atomic.Int32
+	history := startTestHistoryRPC(t, messageTestServer{
+		membershipTestServer: membershipTestServer{members: func(ctx context.Context, _ *historyv1.GetChatMembersRequest) (*historyv1.GetChatMembersResponse, error) {
+			if lookups.Add(1) == 2 {
+				close(fanoutStarted)
+				select {
+				case <-releaseFanout:
+				case <-ctx.Done():
+					return nil, status.FromContextError(ctx.Err()).Err()
+				}
+			}
+			return &historyv1.GetChatMembersResponse{UserIds: []string{fanoutAlice, fanoutBob}}, nil
+		}},
+		save: func(context.Context, *historyv1.SaveMessageRequest) (*historyv1.SaveMessageResponse, error) {
+			return &historyv1.SaveMessageResponse{
+				MessageId: sendTestMessageID, Seq: 1, CreatedAt: timestamppb.Now(),
+			}, nil
+		},
+	})
+	cfg := testConfig(t)
+	cfg.HistoryRPCTimeout = 3 * typingTTL
+	ws, url := startTestWSEndpointWithConfig(t, cfg, defaultWSTiming(), history)
+	alice, _ := dialTestUser(t, url, fanoutAlice)
+	bob, _ := dialTestUser(t, url, fanoutBob)
+	waitForConnections(t, ws, 2)
+
+	writeTestTyping(t, alice, true)
+	typingDeadline := readWSTyping(t, bob, true)
+	const body = "deliver while clearing typing"
+	id := newWSEventID()
+	sendTestMessage(t, alice, id, sendTestClientID, body)
+	var ack wsAckPayload
+	if got := readTestEvent(t, alice, "message.ack", &ack); got != id || ack.MessageID != sendTestMessageID {
+		t.Fatalf("unexpected ack: id %s payload %+v", got, ack)
+	}
+	select {
+	case <-fanoutStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("message fanout lookup did not start")
+	}
+	if err := alice.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if clearedAt := readWSTyping(t, bob, false); !clearedAt.Before(typingDeadline) {
+		t.Fatalf("typing cleared at %s, want disconnect cleanup before TTL %s", clearedAt, typingDeadline)
+	}
+	unblock()
+
+	var event wsNewPayload
+	readTestEvent(t, bob, "message.new", &event)
+	if event.wsAckPayload != ack || event.SenderID != fanoutAlice || event.Body != body {
+		t.Fatalf("unexpected message after sender disconnected: %+v", event)
+	}
+}
+
+func TestWSTypingLeavesMessageSendBudgetIntact(t *testing.T) {
+	var saves atomic.Int32
+	history := startTestHistoryRPC(t, messageTestServer{
+		membershipTestServer: membershipTestServer{members: func(context.Context, *historyv1.GetChatMembersRequest) (*historyv1.GetChatMembersResponse, error) {
+			return &historyv1.GetChatMembersResponse{UserIds: []string{fanoutAlice, fanoutBob}}, nil
+		}},
+		save: func(context.Context, *historyv1.SaveMessageRequest) (*historyv1.SaveMessageResponse, error) {
+			return &historyv1.SaveMessageResponse{
+				MessageId: sendTestMessageID, Seq: int64(saves.Add(1)), CreatedAt: timestamppb.Now(),
+			}, nil
+		},
+	})
+	cfg := testConfig(t)
+	cfg.SendInterval, cfg.SendBurst = time.Minute, 1
+	ws, url := startTestWSEndpointWithConfig(t, cfg, defaultWSTiming(), history)
+	alice, _ := dialTestUser(t, url, fanoutAlice)
+	bob, _ := dialTestUser(t, url, fanoutBob)
+	waitForConnections(t, ws, 2)
+
+	writeTestTyping(t, alice, true)
+	typingDeadline := readWSTyping(t, bob, true)
+	writeTestTyping(t, alice, false)
+	if clearedAt := readWSTyping(t, bob, false); !clearedAt.Before(typingDeadline) {
+		t.Fatalf("typing cleared at %s, want explicit false before TTL %s", clearedAt, typingDeadline)
+	}
+
+	id, clientID := newWSEventID(), newWSEventID()
+	sendTestMessage(t, alice, id, clientID, "consume the only send token")
+	var ack wsAckPayload
+	if got := readTestEvent(t, alice, "message.ack", &ack); got != id || ack.ClientMsgID != clientID || ack.MessageID != sendTestMessageID {
+		t.Fatalf("unexpected ack: id %s payload %+v", got, ack)
+	}
+	var event wsNewPayload
+	readTestEvent(t, alice, "message.new", &event)
+
+	rejected := newWSEventID()
+	sendTestMessage(t, alice, rejected, sendTestClientID, "exceed the send budget")
+	readTestSendError(t, alice, rejected, "rate_limited", true)
+	if got := saves.Load(); got != 1 {
+		t.Fatalf("SaveMessage called %d times, want once", got)
+	}
+}
+
 func writeTestTyping(t *testing.T, conn *websocket.Conn, active bool) string {
 	t.Helper()
 	event := newWSEnvelope(wsTypingType, newWSEventID(), map[string]any{

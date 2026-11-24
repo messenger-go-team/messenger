@@ -109,6 +109,8 @@ func (ws *wsEndpoint) serveSocket(socket *socketSession) {
 	defer func() {
 		cancel()
 		_ = conn.Close()
+		// A saved message may still be fanning out after the socket closes.
+		ws.clearSocketTyping(socket)
 		<-writeDone
 		<-workerDone
 		<-typingDone
