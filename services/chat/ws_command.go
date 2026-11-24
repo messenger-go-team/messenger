@@ -12,7 +12,10 @@ import (
 	"unicode/utf8"
 )
 
-const wsSendType = "message.send"
+const (
+	wsSendType   = "message.send"
+	wsTypingType = "typing"
+)
 
 var wsUUIDPattern = regexp.MustCompile(
 	`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`,
@@ -27,6 +30,7 @@ type wsCommand struct {
 	chatID      string
 	clientMsgID string
 	body        string
+	isTyping    bool
 }
 
 func validWSUUID(value string) bool {
@@ -101,6 +105,17 @@ func parseWSCommand(raw []byte) (wsCommand, string) {
 		!validWSTime(wsString(fields["ts"])) || payload == nil || payloadDuplicate {
 		return cmd, "invalid_payload"
 	}
+
+	if cmd.kind == wsTypingType {
+		cmd.chatID = strings.ToLower(wsString(payload["chat_id"]))
+		flag := string(bytes.TrimSpace(payload["is_typing"]))
+		if len(payload) != 2 || !validWSUUID(cmd.chatID) || (flag != "true" && flag != "false") {
+			return cmd, "invalid_payload"
+		}
+		cmd.isTyping = flag == "true"
+		return cmd, ""
+	}
+
 	if cmd.kind != wsSendType {
 		return cmd, "unsupported_type"
 	}
