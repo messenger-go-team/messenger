@@ -1,23 +1,17 @@
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { ArrowLeft, Bell, ChevronDown, ChevronUp, MessageCircle, User, Users } from 'lucide-react'
-import {
-  completeLater,
-  listLater,
-  rescheduleLater,
-  type LaterEntry,
-  type LaterStatus,
-} from '@/api/later'
+import { completeLater, rescheduleLater, type LaterEntry, type LaterStatus } from '@/api/later'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/features/auth/useAuth'
 import { formatChatListTime } from '@/features/chats/formatChatListTime'
 import { toDueAtPayload } from '@/features/later/dueAt'
 import { compareLaterEntries } from '@/features/later/laterOrder'
+import type { LaterRemindersStatus } from '@/features/later/LaterRemindersStore'
+import { useLaterReminders } from '@/features/later/useLaterReminders'
 import { cn } from '@/lib/utils'
-
-type Status = 'loading' | 'ready' | 'error'
 
 const GROUP_ORDER: LaterStatus[] = ['due', 'scheduled', 'unscheduled']
 
@@ -40,20 +34,47 @@ function valuesFromDueAt(dueAt: string | null, now = new Date()) {
   }
 }
 
-/** Список «Важно» / Later: три группы, перенос срока, Готово, loading/empty/error. */
+/**
+ * Список «Важно» / Later: три группы, перенос срока, Готово, loading/empty/error.
+ * Данные приходят из LaterRemindersProvider — единственного владельца GET /later.
+ */
 export function LaterPage() {
   const { accessToken, isAuthenticated, user } = useAuth()
-  const ownerId = isAuthenticated ? user?.id : undefined
+  const reminders = useLaterReminders()
+  const sessionActive = isAuthenticated && Boolean(accessToken)
 
-  // A new owner must never render the previous owner's entries, even for one frame.
-  return <LaterList key={ownerId} accessToken={ownerId ? accessToken : null} />
+  // Без сессии прежние записи не показываем ни на один кадр.
+  const entries = useMemo(
+    () => (sessionActive ? reminders.entries : []),
+    [sessionActive, reminders.entries],
+  )
+  const status = sessionActive ? reminders.status : 'ready'
+  const loadError = sessionActive ? reminders.error : null
+
+  return (
+    <LaterList
+      key={sessionActive ? user?.id : undefined}
+      accessToken={sessionActive ? accessToken : null}
+      entries={entries}
+      status={status}
+      loadError={loadError}
+    />
+  )
 }
 
-function LaterList({ accessToken }: { accessToken: string | null }) {
-  const [status, setStatus] = useState<Status>('loading')
-  const [error, setError] = useState<string | null>(null)
-  const [entries, setEntries] = useState<LaterEntry[]>([])
-  const [reloadKey, setReloadKey] = useState(0)
+function LaterList({
+  accessToken,
+  entries,
+  status,
+  loadError,
+}: {
+  accessToken: string | null
+  entries: LaterEntry[]
+  status: LaterRemindersStatus
+  loadError: string | null
+}) {
+  const { refresh, removeEntry, replaceEntry } = useLaterReminders()
+  const [actionError, setActionError] = useState<string | null>(null)
   const [completingId, setCompletingId] = useState<string | null>(null)
   const [reschedulingId, setReschedulingId] = useState<string | null>(null)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<LaterStatus, boolean>>({
@@ -65,36 +86,10 @@ function LaterList({ accessToken }: { accessToken: string | null }) {
   const [rescheduleBusy, setRescheduleBusy] = useState(false)
   const dateId = useId()
   const timeId = useId()
-  const sessionActive = Boolean(accessToken)
 
-  useEffect(() => {
-    if (!sessionActive || !accessToken) return
-    let cancelled = false
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        setStatus('loading')
-        setError(null)
-        try {
-          const response = await listLater(accessToken)
-          if (cancelled) return
-          setEntries(response.entries)
-          setStatus('ready')
-        } catch {
-          if (cancelled) return
-          setStatus('error')
-          setError('Не удалось загрузить напоминания. Повторите попытку.')
-        }
-      })()
-    }, 0)
-    return () => {
-      cancelled = true
-      window.clearTimeout(timer)
-    }
-  }, [accessToken, sessionActive, reloadKey])
-
-  const visibleEntries = useMemo(() => (sessionActive ? entries : []), [sessionActive, entries])
-  const visibleStatus: Status = sessionActive ? status : 'ready'
-  const visibleError = sessionActive ? error : null
+  const visibleEntries = entries
+  const visibleStatus = status
+  const visibleError = actionError ?? loadError
 
   const groups = useMemo(() => {
     const map: Record<LaterStatus, LaterEntry[]> = {
@@ -114,21 +109,20 @@ function LaterList({ accessToken }: { accessToken: string | null }) {
   async function onComplete(entryId: string) {
     if (!accessToken) return
     setCompletingId(entryId)
-    setError(null)
+    setActionError(null)
     try {
       await completeLater(accessToken, entryId)
-      setEntries((current) => current.filter((entry) => entry.id !== entryId))
-      setError(null)
+      removeEntry(entryId)
       if (reschedulingId === entryId) setReschedulingId(null)
     } catch {
-      setError('Не удалось отметить готовым. Повторите попытку.')
+      setActionError('Не удалось отметить готовым. Повторите попытку.')
     } finally {
       setCompletingId(null)
     }
   }
 
   function startReschedule(entry: LaterEntry) {
-    setError(null)
+    setActionError(null)
     setPicker(valuesFromDueAt(entry.due_at))
     setReschedulingId(entry.id)
   }
@@ -136,15 +130,13 @@ function LaterList({ accessToken }: { accessToken: string | null }) {
   async function submitReschedule(dueAt: string | null) {
     if (!accessToken || !reschedulingId) return
     setRescheduleBusy(true)
-    setError(null)
+    setActionError(null)
     try {
       const result = await rescheduleLater(accessToken, reschedulingId, toDueAtPayload(dueAt))
-      setEntries((current) =>
-        current.map((entry) => (entry.id === result.entry.id ? result.entry : entry)),
-      )
+      replaceEntry(result.entry, result.server_time)
       setReschedulingId(null)
     } catch {
-      setError('Не удалось перенести срок. Повторите попытку.')
+      setActionError('Не удалось перенести срок. Повторите попытку.')
     } finally {
       setRescheduleBusy(false)
     }
@@ -153,7 +145,7 @@ function LaterList({ accessToken }: { accessToken: string | null }) {
   function submitPicker() {
     const local = new Date(`${picker.date}T${picker.time}:00`)
     if (Number.isNaN(local.getTime())) {
-      setError('Проверьте дату и время.')
+      setActionError('Проверьте дату и время.')
       return
     }
     void submitReschedule(local.toISOString())
@@ -221,7 +213,7 @@ function LaterList({ accessToken }: { accessToken: string | null }) {
               <p className="text-sm text-destructive">
                 {visibleError ?? 'Не удалось загрузить напоминания. Повторите попытку.'}
               </p>
-              <Button type="button" variant="outline" onClick={() => setReloadKey((v) => v + 1)}>
+              <Button type="button" variant="outline" onClick={() => void refresh()}>
                 Повторить
               </Button>
             </div>
@@ -280,6 +272,7 @@ function LaterList({ accessToken }: { accessToken: string | null }) {
                             <div className="flex items-start gap-2">
                               <Link
                                 to={`/chats/${entry.message.chat_id}`}
+                                state={{ focusMessageId: entry.message.id }}
                                 className="min-w-0 flex-1 space-y-1 hover:opacity-90"
                               >
                                 {entry.due_at ? (
