@@ -108,11 +108,26 @@ jobs:
           printf '%s\n' "$STAGING_KNOWN_HOSTS" > "$key_dir/known_hosts"
           unset STAGING_SSH_KEY
           set -o pipefail
-          ssh -n -T -i "$key_dir/id" \
+          bundle_run=$(gh api "repos/$GH_REPO/actions/workflows/frontend-ci.yml/runs?branch=main&event=push&head_sha=$RELEASE_SHA&per_page=1" \
+            --jq '.workflow_runs[0] | select(.status == "completed" and .conclusion == "success" and .event == "push" and .head_branch == "main") | [.head_sha,.id,.run_attempt] | @tsv')
+          IFS=$'\t' read -r bundle_sha run_id attempt <<< "$bundle_run"
+          [[ "$bundle_sha" == "$RELEASE_SHA" && "$run_id" =~ ^[0-9]+$ && "$attempt" =~ ^[0-9]+$ ]]
+          artifact_name="web-dist-$RELEASE_SHA-attempt-$attempt"
+          artifact=$(gh api "repos/$GH_REPO/actions/runs/$run_id/artifacts?name=$artifact_name" \
+            --jq ".artifacts | map(select(.name == \"$artifact_name\" and .expired == false)) | select(length == 1) | .[0] | [.id,.digest] | @tsv")
+          IFS=$'\t' read -r artifact_id digest <<< "$artifact"
+          [[ "$artifact_id" =~ ^[0-9]+$ && "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          if ! gh api "repos/$GH_REPO/actions/artifacts/$artifact_id/zip" > "$key_dir/web.zip" 2>"$key_dir/download.log"; then
+            echo "Could not download $artifact_name" >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "${digest#sha256:}" "$key_dir/web.zip" | sha256sum -c -
+          echo "Sending $artifact_name to staging (artifact $artifact_id, $digest)"
+          ssh -T -i "$key_dir/id" \
             -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$key_dir/known_hosts" -o ConnectTimeout=15 \
             -o ServerAliveInterval=20 -o ServerAliveCountMax=3 \
-            "messenger-stage@$STAGING_SSH_HOST" "deploy $RELEASE_SHA" |
+            "messenger-stage@$STAGING_SSH_HOST" "deploy-web $RELEASE_SHA" < "$key_dir/web.zip" |
             tee "$key_dir/result"
           receipt=$(tail -n 1 "$key_dir/result")
           if [[ $receipt == "STAGING_RESULT skipped $RELEASE_SHA" ]]; then
