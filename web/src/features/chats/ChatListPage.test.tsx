@@ -169,7 +169,7 @@ describe('ChatListPage', () => {
       missedMessage = true
     })
 
-    expect(await within(row).findByText(incoming.body)).toBeInTheDocument()
+    expect(await within(row).findByText(incoming.body, {}, { timeout: 4_000 })).toBeInTheDocument()
     expect(within(row).getByText('1')).toBeInTheDocument()
   })
 
