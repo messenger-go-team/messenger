@@ -9,12 +9,14 @@ import {
   Routes,
   useLocation,
 } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { User } from '@/api/auth'
 import { login } from '@/api/auth'
+import * as historyApi from '@/api/history'
 import { AuthContext, type AuthContextValue } from '@/features/auth/auth-context'
 import { ChatListPage } from '@/features/chats/ChatListPage'
 import { WsProvider } from '@/features/ws/WsProvider'
+import { useWs } from '@/features/ws/useWs'
 import { MockWebSocketServer } from '@/ws/mock/server'
 import { server } from '../../../mocks/server'
 import { addUser } from '../../../mocks/data/auth'
@@ -52,6 +54,7 @@ function renderChats(
   return render(
     <AuthContext.Provider value={auth}>
       <WsProvider webSocketFactory={mockWs.webSocketFactory} disableApiMockSocket>
+        <HistoryState />
         <MemoryRouter initialEntries={[initialPath]}>
           <Routes>
             <Route path="/" element={<ChatListPage />} />
@@ -61,6 +64,61 @@ function renderChats(
         </MemoryRouter>
       </WsProvider>
     </AuthContext.Provider>,
+  )
+}
+
+function HistoryState() {
+  const { snapshot } = useWs()
+  return (
+    <span data-testid="history-sync-state" hidden>
+      {snapshot.history}
+    </span>
+  )
+}
+
+function savedMessage(seq: number, body: string) {
+  return {
+    id: crypto.randomUUID(),
+    chat_id: INITIAL_CHAT_ID,
+    seq,
+    sender_id: BOB_ID,
+    body,
+    created_at: '2026-11-25T10:00:00Z',
+  }
+}
+
+function chatListResponse(lastMessage: ReturnType<typeof savedMessage> | null, unread: number) {
+  return HttpResponse.json({
+    chats: [
+      {
+        id: INITIAL_CHAT_ID,
+        type: 'personal',
+        created_at: '2026-11-07T11:00:00Z',
+        members: [ALICE, { id: BOB_ID, username: 'bob_2' }],
+        last_message: lastMessage,
+        unread_count: unread,
+      },
+    ],
+  })
+}
+
+function deliverMessage(mockWs: MockWebSocketServer, message: ReturnType<typeof savedMessage>) {
+  const socket = [...mockWs.connections][0]!
+  socket.serverMessage(
+    JSON.stringify({
+      id: crypto.randomUUID(),
+      type: 'message.new',
+      ts: message.created_at,
+      payload: {
+        message_id: message.id,
+        client_msg_id: crypto.randomUUID(),
+        chat_id: message.chat_id,
+        seq: message.seq,
+        sender_id: message.sender_id,
+        body: message.body,
+        created_at: message.created_at,
+      },
+    }),
   )
 }
 
@@ -122,55 +180,206 @@ describe('ChatListPage', () => {
     expect(within(rows[1]).getByText('2')).toBeInTheDocument()
   })
 
-  it('refreshes the server unread count after catching up with a missed message', async () => {
-    const incoming = {
-      id: '20000000-0000-4000-8000-000000000042',
-      chat_id: INITIAL_CHAT_ID,
-      seq: 1,
-      sender_id: BOB_ID,
-      body: 'Получено во время разрыва',
-      created_at: '2026-11-25T10:00:00Z',
-    }
-    let missedMessage = false
-    let historyReads = 0
-    server.use(
-      http.get('/chats', () =>
-        HttpResponse.json({
-          chats: [
-            {
-              id: INITIAL_CHAT_ID,
-              type: 'personal',
-              created_at: '2026-11-07T11:00:00Z',
-              members: [ALICE, { id: BOB_ID, username: 'bob_2' }],
-              last_message: missedMessage ? incoming : null,
-              unread_count: missedMessage ? 1 : 0,
-            },
-          ],
+  it.each([true, false])(
+    'applies the server list after reconnect (missed message: %s)',
+    async (missed) => {
+      const first = savedMessage(1, 'До разрыва')
+      const second = savedMessage(2, 'Получено во время разрыва')
+      let reconnecting = false
+      let listCalls = 0
+      const afterSequences: Array<string | null> = []
+      let releaseRecovery!: () => void
+      const recoveryGate = new Promise<void>((resolve) => {
+        releaseRecovery = resolve
+      })
+      server.use(
+        http.get('/chats', () => {
+          listCalls += 1
+          return chatListResponse(
+            reconnecting && missed ? second : first,
+            reconnecting && !missed ? 0 : 1,
+          )
         }),
-      ),
-      http.get(`/chats/${INITIAL_CHAT_ID}/messages`, ({ request }) => {
-        expect(new URL(request.url).searchParams.get('after_seq')).toBe('0')
-        historyReads += 1
-        return HttpResponse.json({
-          messages: missedMessage ? [incoming] : [],
-          next_after_seq: missedMessage ? incoming.seq : null,
-          has_more_after: false,
+        http.get(`/chats/${INITIAL_CHAT_ID}/messages`, async ({ request }) => {
+          afterSequences.push(new URL(request.url).searchParams.get('after_seq'))
+          if (reconnecting) await recoveryGate
+          const message = reconnecting ? (missed ? second : null) : first
+          return HttpResponse.json({
+            messages: message ? [message] : [],
+            next_after_seq: message?.seq ?? null,
+            has_more_after: false,
+          })
+        }),
+      )
+      const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+      renderChats(await authValue(), '/', mockWs)
+      const row = await screen.findByRole('link', { name: /bob_2/i })
+      expect(within(row).getByText('1')).toBeInTheDocument()
+      await waitFor(() =>
+        expect(screen.getByTestId('history-sync-state')).toHaveTextContent('ready'),
+      )
+      expect(listCalls).toBe(1)
+      expect(afterSequences).toEqual(['0'])
+
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      try {
+        await act(async () => {
+          reconnecting = true
+          mockWs.disconnectAll()
+          await vi.advanceTimersByTimeAsync(2_000)
         })
+      } finally {
+        vi.useRealTimers()
+      }
+      await waitFor(() => expect(afterSequences).toEqual(['0', '1']))
+      expect(within(row).getByText('До разрыва')).toBeInTheDocument()
+      expect(within(row).getByText('1')).toBeInTheDocument()
+      await act(async () => releaseRecovery())
+      await waitFor(() => {
+        expect(within(row).getByText(missed ? second.body : first.body)).toBeInTheDocument()
+        expect(Boolean(within(row).queryByText('1'))).toBe(missed)
+      })
+      expect(listCalls).toBe(2)
+    },
+  )
+
+  it('shows successful list responses while coalescing a continuing burst of live messages', async () => {
+    const messages = Array.from({ length: 7 }, (_, index) =>
+      savedMessage(index + 1, `Сообщение ${index + 1}`),
+    )
+    const gates: Array<() => void> = []
+    let calls = 0
+    server.use(
+      http.get('/chats', async () => {
+        const index = calls++
+        await new Promise<void>((resolve) => {
+          gates[index] = resolve
+        })
+        return chatListResponse(messages[index]!, index + 1)
       }),
+      http.get(`/chats/${INITIAL_CHAT_ID}/messages`, () =>
+        HttpResponse.json({ messages: [], next_after_seq: null, has_more_after: false }),
+      ),
     )
     const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
     renderChats(await authValue(), '/', mockWs)
-    const row = await screen.findByRole('link', { name: /bob_2/i })
-    expect(within(row).queryByText('1')).not.toBeInTheDocument()
-    await waitFor(() => expect(historyReads).toBe(1))
-
+    await waitFor(() => expect(gates[0]).toBeDefined())
+    await waitFor(() =>
+      expect(screen.getByTestId('history-sync-state')).toHaveTextContent('syncing'),
+    )
     act(() => {
-      mockWs.disconnectAll()
-      missedMessage = true
+      for (const message of messages.slice(0, 3)) deliverMessage(mockWs, message)
     })
+    expect(calls).toBe(1)
+    await act(async () => gates[0]!())
+    const row = await screen.findByRole('link', { name: /bob_2/i })
+    expect(within(row).getByText('Сообщение 1')).toBeInTheDocument()
+    await waitFor(() => expect(gates[1]).toBeDefined())
+    for (const message of messages.slice(3, 6)) {
+      act(() => deliverMessage(mockWs, message))
+    }
+    expect(calls).toBe(2)
+    await act(async () => gates[1]!())
+    expect(await within(row).findByText('Сообщение 2')).toBeInTheDocument()
+    await waitFor(() => expect(gates[2]).toBeDefined())
+    await act(async () => gates[2]!())
+    expect(await within(row).findByText('Сообщение 3')).toBeInTheDocument()
+    expect(calls).toBe(3)
+  })
 
-    expect(await within(row).findByText(incoming.body, {}, { timeout: 4_000 })).toBeInTheDocument()
-    expect(within(row).getByText('1')).toBeInTheDocument()
+  it('discards the pending list response after a successful mark-read', async () => {
+    const message = savedMessage(1, 'Непрочитанное')
+    const stale = { ...message, body: 'Устаревший ответ' }
+    let releaseRead!: () => void
+    let releaseOldList!: () => void
+    let releaseNewList!: () => void
+    let calls = 0
+    const readGate = new Promise<void>((resolve) => {
+      releaseRead = resolve
+    })
+    const oldListGate = new Promise<void>((resolve) => {
+      releaseOldList = resolve
+    })
+    const newListGate = new Promise<void>((resolve) => {
+      releaseNewList = resolve
+    })
+    server.use(
+      http.get('/chats', async () => {
+        calls += 1
+        if (calls === 2) {
+          await oldListGate
+          return chatListResponse(stale, 1)
+        }
+        if (calls === 3) {
+          await newListGate
+          return chatListResponse(message, 0)
+        }
+        return chatListResponse(message, 1)
+      }),
+      http.get(`/chats/${INITIAL_CHAT_ID}/messages`, ({ request }) =>
+        HttpResponse.json({
+          messages: [message],
+          next_before_seq: null,
+          has_more: false,
+          next_after_seq: new URL(request.url).searchParams.has('after_seq') ? message.seq : null,
+          has_more_after: false,
+        }),
+      ),
+      http.post(`/chats/${INITIAL_CHAT_ID}/read`, async () => {
+        await readGate
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    const markRead = vi.spyOn(historyApi, 'markChatRead')
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        private readonly callback: IntersectionObserverCallback
+
+        constructor(callback: IntersectionObserverCallback) {
+          this.callback = callback
+        }
+        observe(target: Element) {
+          queueMicrotask(() =>
+            this.callback(
+              [{ target, isIntersecting: true, intersectionRatio: 1 } as IntersectionObserverEntry],
+              this as unknown as IntersectionObserver,
+            ),
+          )
+        }
+        unobserve() {}
+        disconnect() {}
+      },
+    )
+    try {
+      const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+      renderChats(await authValue(), `/chats/${INITIAL_CHAT_ID}`, mockWs)
+      const row = await screen.findByRole('link', { name: /bob_2/i })
+      await waitFor(() => expect(markRead).toHaveBeenCalled())
+      await waitFor(() =>
+        expect(screen.getByTestId('history-sync-state')).toHaveTextContent('ready'),
+      )
+      act(() =>
+        deliverMessage(mockWs, { ...savedMessage(1, 'Другой чат'), chat_id: LATER_CHAT_ID }),
+      )
+      await waitFor(() => expect(calls).toBe(2))
+      await act(async () => {
+        releaseRead()
+        await markRead.mock.results[0]?.value
+      })
+      expect(calls).toBe(2)
+      await act(async () => releaseOldList())
+      await waitFor(() => expect(calls).toBe(3))
+      expect(within(row).queryByText(stale.body)).not.toBeInTheDocument()
+      await act(async () => releaseNewList())
+      await waitFor(() => expect(within(row).queryByText('1')).not.toBeInTheDocument())
+    } finally {
+      releaseRead()
+      releaseOldList()
+      releaseNewList()
+      markRead.mockRestore()
+      vi.unstubAllGlobals()
+    }
   })
 
   it('shows empty state when there are no chats', async () => {
@@ -420,7 +629,7 @@ describe('ChatListPage', () => {
     ).toBeInTheDocument()
   })
 
-  it('ignores a stale initial GET that arrives after a newer refresh', async () => {
+  it('queues a fresh list after chat creation and ignores the pre-mutation response', async () => {
     addUser({
       id: CHARLIE_ID,
       username: 'charlie_3',
@@ -482,7 +691,7 @@ describe('ChatListPage', () => {
     expect(await screen.findByRole('heading', { name: 'charlie_3' })).toBeInTheDocument()
 
     await user.clear(screen.getByRole('searchbox', { name: 'Поиск по логину' }))
-    expect(await screen.findByRole('link', { name: /charlie_3/i })).toBeInTheDocument()
+    expect(listCalls).toBe(1)
 
     await act(async () => {
       releaseInitial()

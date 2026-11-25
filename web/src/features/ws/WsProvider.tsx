@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { refresh as refreshRequest } from '@/api/auth'
 import { ApiError } from '@/api/client'
-import { getMessageHistory, listChats } from '@/api/history'
+import { getMessageHistory } from '@/api/history'
 import { useAuth } from '@/features/auth/useAuth'
 import {
   getSharedRefreshCoordinator,
@@ -9,6 +9,7 @@ import {
   RefreshCancelledError,
   RefreshTimeoutError,
 } from '@/features/auth/refreshCoordinator'
+import { createChatListReader } from '@/features/ws/chatListReader'
 import { idleSnapshot, WsContext } from '@/features/ws/ws-context'
 import {
   MessengerWebSocketClient,
@@ -18,6 +19,8 @@ import {
   type WebSocketFactory,
 } from '@/ws'
 import { MockWebSocketServer } from '@/ws/mock/server'
+
+const idleChatList = createChatListReader()
 
 interface WsProviderProps {
   children: ReactNode
@@ -41,6 +44,11 @@ export function WsProvider({
   const clientRef = useRef<MessengerWebSocketClient | null>(null)
   const mockServerRef = useRef<MockWebSocketServer | null>(null)
   const [client, setClient] = useState<MessengerWebSocketClient | null>(null)
+  const userId = user?.id
+  const chatList = useMemo(
+    () => (isAuthenticated && userId ? createChatListReader() : idleChatList),
+    [isAuthenticated, userId],
+  )
 
   const authAdapter = useMemo<AuthAdapter>(
     () => ({
@@ -69,8 +77,8 @@ export function WsProvider({
 
   const historyAdapter = useMemo<HistoryAdapter>(
     () => ({
-      async listChats(token) {
-        const response = await listChats(token)
+      async listChats(token, initial) {
+        const response = await chatList.load(token, initial)
         return response.chats.map((chat) => ({ id: chat.id }))
       },
       async getMessages(chatId, token, options) {
@@ -89,7 +97,7 @@ export function WsProvider({
         }
       },
     }),
-    [],
+    [chatList],
   )
 
   useEffect(() => {
@@ -152,7 +160,7 @@ export function WsProvider({
     webSocketFactory,
   ])
 
-  const value = useMemo(() => ({ client, snapshot }), [client, snapshot])
+  const value = useMemo(() => ({ client, snapshot, chatList }), [client, snapshot, chatList])
 
   return <WsContext.Provider value={value}>{children}</WsContext.Provider>
 }
