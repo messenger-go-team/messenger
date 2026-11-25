@@ -1,0 +1,25 @@
+meta {
+  name: SEARCH-LIMIT
+  type: http
+  seq: 33
+}
+
+get {
+  url: {{baseUrl}}/users/search?prefix=qa49_search_
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("SEARCH-LIMIT", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("SEARCH-LIMIT", bru, req, res, test, expect);
+}

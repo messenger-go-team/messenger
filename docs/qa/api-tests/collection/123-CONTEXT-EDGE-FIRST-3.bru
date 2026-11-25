@@ -1,0 +1,25 @@
+meta {
+  name: CONTEXT-EDGE-FIRST-3
+  type: http
+  seq: 123
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/messages/{{firstID}}/context?limit=3
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CONTEXT-EDGE-FIRST-3", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CONTEXT-EDGE-FIRST-3", bru, req, res, test, expect);
+}

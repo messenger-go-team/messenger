@@ -1,0 +1,25 @@
+meta {
+  name: UNREAD-PARTIAL
+  type: http
+  seq: 100
+}
+
+get {
+  url: {{baseUrl}}/chats
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("UNREAD-PARTIAL", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("UNREAD-PARTIAL", bru, req, res, test, expect);
+}

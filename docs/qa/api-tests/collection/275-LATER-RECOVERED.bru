@@ -1,0 +1,25 @@
+meta {
+  name: LATER-RECOVERED
+  type: http
+  seq: 275
+}
+
+get {
+  url: {{baseUrl}}/later
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-RECOVERED", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-RECOVERED", bru, req, res, test, expect);
+}

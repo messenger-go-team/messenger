@@ -1,0 +1,25 @@
+meta {
+  name: AUTH-COOKIE-NOT-ACCESS
+  type: http
+  seq: 30
+}
+
+get {
+  url: {{baseUrl}}/me
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("AUTH-COOKIE-NOT-ACCESS", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("AUTH-COOKIE-NOT-ACCESS", bru, req, res, test, expect);
+}

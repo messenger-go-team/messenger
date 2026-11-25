@@ -1,0 +1,33 @@
+meta {
+  name: AUTH-MISSING-ACCOUNT
+  type: http
+  seq: 13
+}
+
+post {
+  url: {{baseUrl}}/auth/login
+  body: json
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"username":"qa49_absent","password":"{{password}}"}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("AUTH-MISSING-ACCOUNT", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("AUTH-MISSING-ACCOUNT", bru, req, res, test, expect);
+}

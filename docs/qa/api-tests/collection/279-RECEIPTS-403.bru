@@ -1,0 +1,25 @@
+meta {
+  name: RECEIPTS-403
+  type: http
+  seq: 279
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/receipts
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("RECEIPTS-403", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("RECEIPTS-403", bru, req, res, test, expect);
+}

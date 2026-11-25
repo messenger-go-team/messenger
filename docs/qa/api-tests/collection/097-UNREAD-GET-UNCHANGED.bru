@@ -1,0 +1,25 @@
+meta {
+  name: UNREAD-GET-UNCHANGED
+  type: http
+  seq: 97
+}
+
+get {
+  url: {{baseUrl}}/chats
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("UNREAD-GET-UNCHANGED", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("UNREAD-GET-UNCHANGED", bru, req, res, test, expect);
+}

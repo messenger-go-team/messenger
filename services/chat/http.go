@@ -10,8 +10,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	historyv1 "github.com/messenger-go-team/messenger/api/gen/history/v1"
 	"github.com/messenger-go-team/messenger/internal/metrics"
 	"github.com/prometheus/client_golang/prometheus"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 type requestLoggerKey struct{}
@@ -53,18 +55,27 @@ func requestLogging(logger *slog.Logger, next http.Handler) http.Handler {
 }
 
 // WebSocket authentication runs inside the endpoint, before the HTTP upgrade.
-func newServiceHandler(ready *atomic.Bool, logger *slog.Logger, ws *wsEndpoint) http.Handler {
+func newServiceHandler(ready *atomic.Bool, logger *slog.Logger, ws *wsEndpoint, historyHealth healthpb.HealthClient) http.Handler {
 	mux := http.NewServeMux()
 	connections := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "chat_active_websocket_connections",
 		Help: "Number of WebSocket connections registered in the Chat hub.",
 	}, func() float64 { return float64(ws.hub.size()) })
-	mux.Handle("GET /metrics", metrics.NewHandler(connections))
+	mux.Handle("GET /metrics", metrics.NewHandler(connections, ws.sendRejections))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeHealth(w, r, http.StatusOK, "{\"status\":\"ok\"}\n")
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		if !ready.Load() {
+		available := ready.Load()
+		if available && historyHealth != nil {
+			ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+			defer cancel()
+			result, err := historyHealth.Check(ctx, &healthpb.HealthCheckRequest{
+				Service: historyv1.HistoryService_ServiceDesc.ServiceName,
+			})
+			available = err == nil && result.GetStatus() == healthpb.HealthCheckResponse_SERVING
+		}
+		if !available || !ready.Load() {
 			writeHealth(w, r, http.StatusServiceUnavailable, "{\"status\":\"not_ready\"}\n")
 			return
 		}

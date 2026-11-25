@@ -1,3 +1,4 @@
+import { addMockHistoryMessage, historyLastSeq } from '../../../mocks/data/history'
 import { isValidOutgoingMessage, isValidUuid } from '../protocol'
 import {
   MESSENGER_PROTOCOL,
@@ -88,6 +89,12 @@ export class MockWebSocketServer {
 
   get storedMessages(): readonly StoredMockMessage[] {
     return Array.from(this.messages.values())
+  }
+
+  /** Поднимает курсор seq, чтобы новые ack не пересекались с уже известной REST-историей. */
+  ensureSequenceAtLeast(chatId: string, seq: number): void {
+    const current = this.nextSequence.get(chatId) ?? 0
+    if (seq > current) this.nextSequence.set(chatId, seq)
   }
 
   private connect(url: string, protocols: string[]): MockWebSocket {
@@ -227,7 +234,7 @@ export class MockWebSocketServer {
 
   private storeMessage(event: MessageSendEvent): StoredMockMessage {
     const chatId = event.payload.chat_id
-    const seq = (this.nextSequence.get(chatId) ?? 0) + 1
+    const seq = Math.max(this.nextSequence.get(chatId) ?? 0, historyLastSeq(chatId)) + 1
     this.nextSequence.set(chatId, seq)
     const stored: StoredMockMessage = {
       chatId,
@@ -239,6 +246,18 @@ export class MockWebSocketServer {
       createdAt: this.now().toISOString(),
     }
     this.messages.set(`${this.senderId}:${chatId}:${stored.clientMsgId}`, stored)
+    try {
+      addMockHistoryMessage({
+        id: stored.messageId,
+        chat_id: stored.chatId,
+        seq: stored.seq,
+        sender_id: stored.senderId,
+        body: stored.body,
+        created_at: stored.createdAt,
+      })
+    } catch {
+      // WS-only fixtures may target a chat that is not in the History mock.
+    }
     return stored
   }
 

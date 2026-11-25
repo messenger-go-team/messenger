@@ -1,0 +1,33 @@
+meta {
+  name: CHAT-empty
+  type: http
+  seq: 75
+}
+
+post {
+  url: {{baseUrl}}/chats/personal
+  body: json
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CHAT-empty", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CHAT-empty", bru, req, res, test, expect);
+}

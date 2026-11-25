@@ -71,17 +71,54 @@ class RoutingTest(unittest.TestCase):
             # Exact repository configs are mounted unchanged.
             print(config + ": " + docker("exec", container, "nginx", "-t"), flush=True)
             for port in ports:
-                host_port = int(docker("port", container, str(port)).rsplit(":", 1)[1])
-                edge = (host_port, port == 443)
-                cls.edges[(config, port)] = edge
-                for attempt in range(50):
-                    try:
-                        cls.request(edge, "GET", "/")
-                        break
-                    except (OSError, http.client.HTTPException):
-                        if attempt == 49:
-                            raise
-                        time.sleep(0.1)
+                cls.edges[(config, port)] = cls.wait_for_endpoint(container, port, tls=port == 443)
+            if config == "staging.conf.example":
+                cls.staging_peer = cls.start_staging_peer(container, certs / "fullchain.pem")
+
+    @classmethod
+    def start_staging_peer(cls, staging_container, certificate):
+        # The relay has its own address on the Docker network, so the ingress
+        # receives its requests from a different TCP peer than the published port.
+        config = cls.work / "staging-peer.conf"
+        config.write_text(
+            f"""events {{}}
+http {{
+    server {{
+        listen 8080;
+        location / {{
+            proxy_pass https://{staging_container};
+            proxy_ssl_name staging.example.com;
+            proxy_ssl_server_name on;
+            proxy_ssl_trusted_certificate /etc/nginx/staging-test-ca.pem;
+            proxy_ssl_verify on;
+            proxy_http_version 1.1;
+            proxy_set_header Host staging.example.com;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $http_connection;
+        }}
+    }}
+}}
+""", encoding="utf-8",
+        )
+        container = cls.start(
+            "-v", f"{config}:/etc/nginx/nginx.conf:ro",
+            "-v", f"{certificate}:/etc/nginx/staging-test-ca.pem:ro",
+            "-p", "127.0.0.1::8080",
+        )
+        return cls.wait_for_endpoint(container, 8080)
+
+    @classmethod
+    def wait_for_endpoint(cls, container, port, *, tls=False):
+        host_port = int(docker("port", container, str(port)).rsplit(":", 1)[1])
+        edge = (host_port, tls)
+        for attempt in range(50):
+            try:
+                cls.request(edge, "GET", "/")
+                return edge
+            except (OSError, http.client.HTTPException):
+                if attempt == 49:
+                    raise
+                time.sleep(0.1)
 
     @classmethod
     def start(cls, *args):
@@ -96,7 +133,7 @@ class RoutingTest(unittest.TestCase):
             docker("rm", "-f", name)
 
     @staticmethod
-    def request(edge, method, uri, token=""):
+    def request(edge, method, uri, token="", *, extra_headers=None):
         port, tls = edge
         if tls:
             context = ssl.create_default_context(
@@ -107,7 +144,7 @@ class RoutingTest(unittest.TestCase):
         else:
             connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
         try:
-            headers = {"Host": "staging.example.com"}
+            headers = {"Host": "staging.example.com", **(extra_headers or {})}
             if token:
                 headers["Authorization"] = "Bearer " + token
             connection.request(method, uri, headers=headers)
@@ -124,6 +161,8 @@ class RoutingTest(unittest.TestCase):
             ("DELETE", "/contacts/x%252F..%252Fid", "auth"),
             ("POST", "/chats/personal", "history"), ("GET", "/chats", "history"),
             ("GET", "/chats/id/messages?after_seq=2&limit=10", "history"),
+            ("GET", "/chats/id/receipts", "history"),
+            ("GET", "/chats/id/receipts?unexpected=%ZZ", "history"),
             ("GET", "/chats/id/messages/target/context?limit=3", "history"),
             ("GET", "/chats/id/messages/target/context?before_seq=1&limit=%ZZ", "history"),
             ("GET", "/chats/id/messages/x%2f..%2ftarget/context?limit=1", "history"),
@@ -153,7 +192,7 @@ class RoutingTest(unittest.TestCase):
             for uri in (
                 "/internal", "/internal/users/id", "/internal%2Fusers%2Fid",
                 "/later/%2e%2e/internal/users/id", "/auth/%2e%2e/internal/users/id",
-                "/chats/id/messages/target/context/extra", "/chats/id/context",
+                "/chats/id/messages/target/context/extra", "/chats/id/context", "/chats/id/receipts/extra",
                 "/readyz", "/healthz", "/metrics", "/api/history", "/later-other",
             ):
                 with self.subTest(edge=edge, uri=uri):
@@ -172,6 +211,50 @@ class RoutingTest(unittest.TestCase):
             )
             self.assertEqual(status, 308)
             self.assertEqual(headers["Location"], "https://staging.example.com/later/id?x=a%2Fb&n=2")
+
+    def test_staging_rate_limits(self):
+        edge = self.edges[("staging.conf.example", 443)]
+        cases = (
+            ("POST", "/auth/login", {}, 6),
+            ("POST", "/auth/register", {}, 3),
+            ("GET", "/ws", {"Connection": "Upgrade", "Upgrade": "WebSocket"}, 8),
+        )
+        for method, uri, headers, shared_ip_requests in cases:
+            with self.subTest(method=method, uri=uri):
+                for _ in range(shared_ip_requests):
+                    status, _, _ = self.request(edge, method, uri, extra_headers=headers)
+                    self.assertEqual(status, 200)
+
+                # Changing client-supplied IP headers must still exhaust the same zone.
+                for attempt in range(1, 49):
+                    claimed_ip = f"192.0.2.{attempt}"
+                    status, _, _ = self.request(
+                        edge, method, f"{uri}?attempt={attempt}",
+                        extra_headers={
+                            **headers,
+                            "X-Forwarded-For": claimed_ip,
+                            "X-Real-IP": claimed_ip,
+                        },
+                    )
+                    if status == 429:
+                        peer_status, _, _ = self.request(
+                            self.staging_peer, method, uri, extra_headers=headers
+                        )
+                        self.assertEqual(peer_status, 200, "second TCP client did not reach the upstream")
+                        break
+                    self.assertEqual(status, 200)
+                else:
+                    self.fail(f"{method} {uri} did not reach 429")
+
+        for method, uri in (
+            ("POST", "/auth/refresh"),
+            ("GET", "/me"),
+            ("GET", "/chats/id/messages"),
+            ("PATCH", "/later/id"),
+            ("GET", "/ws"),
+        ):
+            with self.subTest(method=method, uri=uri):
+                self.assertEqual(self.request(edge, method, uri)[0], 200)
 
 
 if __name__ == "__main__":

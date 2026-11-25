@@ -1,6 +1,7 @@
 import { BrowserRouter } from 'react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { appBasename } from '@/app/basename'
 import './index.css'
 import App from './App.tsx'
 
@@ -22,9 +23,11 @@ async function enableMocking() {
 async function bootstrap() {
   await enableMocking()
 
+  const basename = appBasename(import.meta.env.BASE_URL)
+
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <BrowserRouter>
+      <BrowserRouter basename={basename || undefined}>
         <App />
       </BrowserRouter>
     </StrictMode>,

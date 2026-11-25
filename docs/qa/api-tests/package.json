@@ -1,0 +1,33 @@
+{
+  "name": "messenger-api-contract-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "T49 isolated auth/history OpenAPI contract collection",
+  "engines": {
+    "node": ">=24.16.0 <25"
+  },
+  "scripts": {
+    "test": "node run.cjs",
+    "generate": "node generate.cjs",
+    "check": "node check.cjs && node compatibility.cjs && node regression-controls.cjs",
+    "compose": "node compose.cjs",
+    "check:reports": "node report-check.cjs"
+  },
+  "devDependencies": {
+    "@usebruno/cli": "4.3.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "yaml": "2.9.1"
+  },
+  "overrides": {
+    "axios": "1.20.0",
+    "form-data": "4.0.6",
+    "@faker-js/faker": "10.5.0",
+    "js-yaml": "4.3.2",
+    "yaml": "2.9.1",
+    "csv-parse": "7.0.2",
+    "glob": "14.0.2",
+    "minimatch": "11.0.1",
+    "uuid": "11.1.1"
+  }
+}

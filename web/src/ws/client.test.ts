@@ -504,7 +504,153 @@ describe('MessengerWebSocketClient connection and events', () => {
     expect(client.getSnapshot().pending[0]?.status).toBe('sent')
   })
 
-  it('accepts a late ack from a previous sent attempt after a manual retry', async () => {
+  it('drains twelve queued messages after reconnect and retries a lost acknowledgement without duplicates', async () => {
+    const makeId = ids()
+    const server = new MockWebSocketServer({
+      senderId: USER_ID,
+      createId: makeId,
+      ackDelayMs: 50,
+      newDelayMs: 50,
+    })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      createId: makeId,
+      random: () => 0.5,
+    })
+    client.start()
+    await flushMicrotasks()
+    const queued = Array.from({ length: 12 }, (_, index) =>
+      client.sendMessage(CHAT_ID, 'queued ' + index),
+    )
+    expect(server.received).toHaveLength(1)
+    expect(server.storedMessages).toHaveLength(1)
+    server.disconnectAll(1013)
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(server.received).toHaveLength(2)
+    expect(server.received[1]?.payload).toEqual(server.received[0]?.payload)
+    expect(server.received[1]?.id).not.toBe(server.received[0]?.id)
+
+    for (let sent = 1; sent <= queued.length; sent++) {
+      await vi.advanceTimersByTimeAsync(50)
+      expect(
+        client.getSnapshot().pending.filter((message) => message.status === 'sent'),
+      ).toHaveLength(sent)
+      expect(server.received).toHaveLength(Math.min(sent + 2, queued.length + 1))
+    }
+    expect(client.getSnapshot().transport).toBe('connected')
+    expect(server.storedMessages.map((message) => message.clientMsgId)).toEqual(
+      queued.map((message) => message.clientMsgId),
+    )
+    client.stop()
+  })
+
+  it('retires a socket at the ack deadline before advancing a twelve-message backlog', async () => {
+    const makeId = ids()
+    const server = new MockWebSocketServer({
+      senderId: USER_ID,
+      createId: makeId,
+      ackDelayMs: 5_000,
+      newDelayMs: 5_000,
+    })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      createId: makeId,
+      random: () => 0.5,
+      ackTimeoutMs: 100,
+    })
+    client.start()
+    await flushMicrotasks()
+    server.disconnectAll(1013)
+    const queued = Array.from({ length: 12 }, (_, index) =>
+      client.sendMessage(CHAT_ID, 'waiting ' + index),
+    )
+    await vi.advanceTimersByTimeAsync(1_000)
+    const timedOutSocket = latestConnection(server)
+    const close = vi.spyOn(timedOutSocket, 'close').mockImplementation(() => {
+      // Delay the close handshake, leaving readyState open until recovery finishes.
+    })
+    expect(server.received).toHaveLength(1)
+
+    await vi.advanceTimersByTimeAsync(100)
+    expect(server.received).toHaveLength(1)
+    expect(close).toHaveBeenCalledOnce()
+    expect(close).toHaveBeenCalledWith(4000, 'message acknowledgement timed out')
+    expect(client.getSnapshot().transport).toBe('disconnected')
+
+    server.setAckDelay(20)
+    server.setNewDelay(20)
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(latestConnection(server)).not.toBe(timedOutSocket)
+    expect(server.received).toHaveLength(2)
+    expect(server.received[1]?.payload).toEqual(server.received[0]?.payload)
+    expect(server.received[1]?.id).not.toBe(server.received[0]?.id)
+    timedOutSocket.serverClose(4000, 'late close')
+    expect(client.getSnapshot().transport).toBe('connected')
+
+    await vi.advanceTimersByTimeAsync(240)
+    expect(
+      client.getSnapshot().pending.filter((message) => message.status === 'sent'),
+    ).toHaveLength(queued.length)
+    expect(server.received).toHaveLength(queued.length + 1)
+    expect(server.storedMessages.map((message) => message.clientMsgId)).toEqual(
+      queued.map((message) => message.clientMsgId),
+    )
+    client.stop()
+  })
+
+  it('correlates canonical ack and retry errors with mixed-case chat and client UUIDs', async () => {
+    const chatId = '20000000-0000-4000-8000-000000000abc'
+    const clientMsgId = '30000000-0000-4000-8000-000000000abc'
+    const makeId = ids()
+    const server = new MockWebSocketServer({ senderId: USER_ID, createId: makeId })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      createId: makeId,
+    })
+    client.start()
+    await flushMicrotasks()
+    const pending = client.sendMessage(chatId.toUpperCase(), 'hello', clientMsgId.toUpperCase())
+    expect(pending.chatId).toBe(chatId)
+    expect(pending.clientMsgId).toBe(clientMsgId)
+    expect(server.received[0]?.payload).toEqual({
+      chat_id: chatId,
+      client_msg_id: clientMsgId,
+      body: 'hello',
+    })
+    latestConnection(server).serverMessage(
+      JSON.stringify(
+        errorEvent(
+          {
+            code: 'forbidden',
+            message: 'forbidden',
+            retryable: false,
+            request_type: 'message.send',
+            client_msg_id: clientMsgId.toUpperCase(),
+          },
+          server.received[0]?.id,
+        ),
+      ),
+    )
+    expect(client.getSnapshot().pending[0]?.status).toBe('failed')
+    client.retryMessage(clientMsgId.toUpperCase())
+    expect(server.received).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(client.getSnapshot().pending).toMatchObject([{ status: 'sent', clientMsgId, chatId }])
+    expect(server.storedMessages).toHaveLength(1)
+    expect(client.getSnapshot().messages).toHaveLength(1)
+    client.stop()
+  })
+
+  it('accepts a correlated ack for a manual retry on the replacement socket', async () => {
     const makeId = ids()
     const server = new MockWebSocketServer({
       senderId: OTHER_USER_ID,
@@ -517,6 +663,7 @@ describe('MessengerWebSocketClient connection and events', () => {
       currentUserId: USER_ID,
       webSocketFactory: server.webSocketFactory,
       createId: makeId,
+      random: () => 0.5,
       ackTimeoutMs: 100,
       maxAutomaticAttempts: 1,
     })
@@ -530,10 +677,15 @@ describe('MessengerWebSocketClient connection and events', () => {
     expect(client.getSnapshot().pending[0]?.status).toBe('failed')
 
     client.retryMessage(CLIENT_ID)
+    expect(server.received).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1_000)
     expect(server.received).toHaveLength(2)
+    const retryAttemptId = server.received[1]?.id
+    if (!retryAttemptId) throw new Error('Expected a retry attempt')
+    expect(retryAttemptId).not.toBe(firstAttemptId)
     latestConnection(server).serverMessage(
       JSON.stringify(
-        ackEvent(firstAttemptId, {
+        ackEvent(retryAttemptId, {
           chatId: stored.chatId,
           clientMsgId: stored.clientMsgId,
           messageId: stored.messageId,
@@ -574,7 +726,7 @@ describe('MessengerWebSocketClient connection and events', () => {
     expect(client.getSnapshot().pending[0]?.status).toBe('sent')
   })
 
-  it('allows a late ack to move failed back to sent', async () => {
+  it('keeps the message failed when its timed-out socket receives a late ack', async () => {
     const makeId = ids()
     const server = new MockWebSocketServer({
       senderId: OTHER_USER_ID,
@@ -596,7 +748,8 @@ describe('MessengerWebSocketClient connection and events', () => {
     await vi.advanceTimersByTimeAsync(100)
     expect(client.getSnapshot().pending[0]?.status).toBe('failed')
     await vi.advanceTimersByTimeAsync(4_900)
-    expect(client.getSnapshot().pending[0]?.status).toBe('sent')
+    expect(client.getSnapshot().pending[0]?.status).toBe('failed')
+    expect(server.received).toHaveLength(1)
   })
 
   it('ignores a late correlated error after sent', async () => {
@@ -742,6 +895,7 @@ describe('MessengerWebSocketClient connection and events', () => {
       accessToken: 'access',
       currentUserId: USER_ID,
       webSocketFactory: server.webSocketFactory,
+      random: () => 0.5,
       ackTimeoutMs: 100,
       maxAutomaticAttempts: 1,
     })
@@ -752,7 +906,7 @@ describe('MessengerWebSocketClient connection and events', () => {
     expect(client.getSnapshot().pending[0]?.status).toBe('failed')
 
     client.retryMessage(CLIENT_ID)
-    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(1_001)
     expect(server.received).toHaveLength(2)
     expect(server.received[0]?.payload).toEqual(server.received[1]?.payload)
     expect(client.getSnapshot().pending[0]?.status).toBe('sent')

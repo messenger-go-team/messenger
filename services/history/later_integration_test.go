@@ -17,16 +17,21 @@ import (
 func laterDatabase(t *testing.T) *sql.DB {
 	t.Helper()
 	db := historyDatabase(t)
-	migration, err := os.ReadFile("migrations/000002_later_entries.up.sql")
+	applyHistoryMigration(t, db, "000002_later_entries")
+	db.SetMaxOpenConns(16)
+	return db
+}
+func applyHistoryMigration(t *testing.T, db *sql.DB, name string) {
+	t.Helper()
+	migration, err := os.ReadFile("migrations/" + name + ".up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.ExecContext(t.Context(), string(migration)); err != nil {
 		t.Fatal(err)
 	}
-	db.SetMaxOpenConns(16)
-	return db
 }
+
 func laterMessage(t *testing.T, db *sql.DB) (string, string) {
 	t.Helper()
 	chat := messageChat(t, db, 0, userA, userB)

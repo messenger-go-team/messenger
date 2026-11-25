@@ -61,13 +61,14 @@ function createClient(history: HistoryAdapter, server: MockWebSocketServer) {
   })
 }
 
-function rateLimitNextMessage(server: MockWebSocketServer): void {
+function rateLimitNextMessage(server: MockWebSocketServer, retryAfterMs?: number): void {
   server.failNextCommand({
     code: 'rate_limited',
     message: 'retry later',
     retryable: true,
     request_type: 'message.send',
     client_msg_id: null,
+    retry_after_ms: retryAfterMs,
   })
 }
 
@@ -657,6 +658,119 @@ describe('message retry backoff during History synchronization', () => {
     vi.useRealTimers()
   })
 
+  it('backs off the queued sends after message.send is rate limited', async () => {
+    const server = new MockWebSocketServer({
+      senderId: USER_ID,
+      ackDelayMs: 50,
+      newDelayMs: 50,
+    })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    server.disconnectAll(1013)
+    const first = client.sendMessage(CHAT_ID, 'first in queue', CLIENT_ID)
+    const second = client.sendMessage(CHAT_ID, 'second in queue')
+    rateLimitNextMessage(server)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(server.received.map((event) => event.payload.client_msg_id)).toEqual([first.clientMsgId])
+    await vi.advanceTimersByTimeAsync(999)
+    expect(server.received).toHaveLength(1)
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(server.received).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(50)
+    expect(server.received.map((event) => event.payload.client_msg_id)).toEqual([
+      first.clientMsgId,
+      first.clientMsgId,
+      second.clientMsgId,
+    ])
+    expect(server.received[1]?.payload).toEqual(server.received[0]?.payload)
+    expect(server.received[1]?.id).not.toBe(server.received[0]?.id)
+    client.stop()
+  })
+
+  it('honors a twenty-second rate limit and then sends the first ready message in queue order', async () => {
+    const server = new MockWebSocketServer({
+      senderId: USER_ID,
+      ackDelayMs: 50,
+      newDelayMs: 50,
+    })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    server.failNextCommand({
+      code: 'temporarily_unavailable',
+      message: 'retry later',
+      retryable: true,
+      request_type: 'message.send',
+      client_msg_id: null,
+    })
+    const earlier = client.sendMessage(CHAT_ID, 'waiting for temporary retry', CLIENT_ID)
+    rateLimitNextMessage(server, 20_000)
+    const limited = client.sendMessage(CHAT_ID, 'waiting for new token')
+
+    await vi.advanceTimersByTimeAsync(19_999)
+    expect(server.received.map((event) => event.payload.client_msg_id)).toEqual([
+      earlier.clientMsgId,
+      limited.clientMsgId,
+    ])
+    expect(client.getSnapshot().pending).toMatchObject([
+      { attempts: 1, status: 'pending' },
+      { attempts: 1, status: 'pending' },
+    ])
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(server.received[2]?.payload.client_msg_id).toBe(earlier.clientMsgId)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(server.received).toHaveLength(4)
+    expect(server.received[3]?.payload).toEqual(server.received[1]?.payload)
+    expect(server.received[3]?.id).not.toBe(server.received[1]?.id)
+    expect(client.getSnapshot().pending).toMatchObject([
+      { attempts: 2, status: 'sent' },
+      { attempts: 2, status: 'sent' },
+    ])
+    client.stop()
+  })
+
+  it('waits past the maximum browser timeout without sending early', async () => {
+    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const client = new MessengerWebSocketClient({
+      wsOrigin: 'ws://localhost',
+      accessToken: 'access',
+      currentUserId: USER_ID,
+      webSocketFactory: server.webSocketFactory,
+      random: () => 0.5,
+    })
+
+    client.start()
+    await flushMicrotasks()
+    const delay = 2_147_483_647 + 100
+    rateLimitNextMessage(server, delay)
+    client.sendMessage(CHAT_ID, 'long rate limit', CLIENT_ID)
+
+    await vi.advanceTimersByTimeAsync(delay - 1)
+    expect(server.received).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(server.received).toHaveLength(2)
+    expect(server.received[1]?.payload).toEqual(server.received[0]?.payload)
+    client.stop()
+  })
+
   it('preserves a rate-limited retry deadline across periodic History sync', async () => {
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
     const listChats = vi.fn().mockResolvedValue([])
@@ -692,6 +806,8 @@ describe('message retry backoff during History synchronization', () => {
 
     await vi.advanceTimersByTimeAsync(1)
     expect(server.received).toHaveLength(2)
+    expect(server.received[1]?.id).not.toBe(server.received[0]?.id)
+    expect(server.received[1]?.payload).toEqual(server.received[0]?.payload)
     expect(client.getSnapshot().pending[0]?.attempts).toBe(2)
 
     client.stop()
@@ -776,7 +892,11 @@ describe('message retry backoff during History synchronization', () => {
       listChats: vi.fn().mockResolvedValue([]),
       getMessages: vi.fn(),
     }
-    const server = new MockWebSocketServer({ senderId: USER_ID })
+    const server = new MockWebSocketServer({
+      senderId: USER_ID,
+      ackDelayMs: 50,
+      newDelayMs: 50,
+    })
     const client = new MessengerWebSocketClient({
       wsOrigin: 'ws://localhost',
       accessToken: 'access',
@@ -794,6 +914,7 @@ describe('message retry backoff during History synchronization', () => {
     await vi.advanceTimersByTimeAsync(1_000)
     expect(server.received).toHaveLength(2)
     server.disconnectAll(1013)
+    const queued = client.sendMessage(CHAT_ID, 'queued across reconnect')
 
     await vi.advanceTimersByTimeAsync(1_000)
     expect(client.getSnapshot()).toMatchObject({ transport: 'connected', history: 'ready' })
@@ -802,11 +923,14 @@ describe('message retry backoff during History synchronization', () => {
     expect(server.received).toHaveLength(2)
     await vi.advanceTimersByTimeAsync(1)
     expect(server.received).toHaveLength(3)
+    await vi.advanceTimersByTimeAsync(50)
+    expect(server.received).toHaveLength(4)
     expect(server.received[2]?.payload.client_msg_id).toBe(CLIENT_ID)
+    expect(server.received[3]?.payload.client_msg_id).toBe(queued.clientMsgId)
     client.stop()
   })
 
-  it('cancels a scheduled message retry when an ack arrives during backoff', async () => {
+  it('ignores an ack from the retired socket and retries after recovering history', async () => {
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
     const history: HistoryAdapter = {
       listChats: vi.fn().mockResolvedValue([]),
@@ -829,11 +953,12 @@ describe('message retry backoff during History synchronization', () => {
     const firstAttempt = server.received[0]
     const stored = server.storedMessages[0]
     const connection = Array.from(server.connections)[0]
-    if (!firstAttempt || !stored || !connection) throw new Error('Expected a sent attempt')
+    const onmessage = connection?.onmessage
+    if (!firstAttempt || !stored || !onmessage) throw new Error('Expected a sent attempt')
 
     await vi.advanceTimersByTimeAsync(100)
-    connection.serverMessage(
-      JSON.stringify({
+    onmessage({
+      data: JSON.stringify({
         type: 'message.ack',
         id: firstAttempt.id,
         ts: '2026-11-08T12:00:00Z',
@@ -845,12 +970,13 @@ describe('message retry backoff during History synchronization', () => {
           created_at: stored.createdAt,
         },
       }),
-    )
-    await client.synchronizeHistory()
-    await vi.advanceTimersByTimeAsync(1_000)
+    })
+    expect(client.getSnapshot().pending[0]?.status).toBe('pending')
+    await vi.advanceTimersByTimeAsync(1_001)
 
-    expect(server.received).toHaveLength(1)
-    expect(client.getSnapshot().pending[0]).toMatchObject({ attempts: 1, status: 'sent' })
+    expect(server.received).toHaveLength(2)
+    expect(server.received[1]?.payload).toEqual(firstAttempt.payload)
+    expect(client.getSnapshot().pending[0]).toMatchObject({ attempts: 2, status: 'sent' })
 
     client.stop()
   })

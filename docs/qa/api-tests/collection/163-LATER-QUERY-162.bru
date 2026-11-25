@@ -1,0 +1,33 @@
+meta {
+  name: LATER-QUERY-162
+  type: http
+  seq: 163
+}
+
+post {
+  url: {{baseUrl}}/later?due_at=%zz
+  body: json
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"chat_id":"{{chatAB}}","message_id":"{{targetID}}","due_at":"2099-01-01T00:00:00Z"}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-QUERY-162", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-QUERY-162", bru, req, res, test, expect);
+}

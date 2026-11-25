@@ -227,3 +227,7 @@ func TestListEnrichmentPreservesUnreadAndNeverReturnsPartialList(t *testing.T) {
 		}
 	}
 }
+
+func (repositoryFuncs) Receipts(context.Context, string, string) ([]MemberReceipt, error) {
+	panic("unexpected Receipts call")
+}

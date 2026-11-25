@@ -28,7 +28,9 @@ import {
 } from './types'
 
 const OPEN = 1
+const ACK_TIMEOUT_CLOSE_CODE = 4000
 const HISTORY_SYNC_INTERVAL_MS = 30_000
+const MAX_TIMEOUT_DELAY_MS = 2_147_483_647
 const NON_RETRYABLE_PROTOCOL_CLOSES = new Set([1000, 1002, 1003, 1007, 1009])
 
 function accessTokenExpiresAt(token: string): number | null {
@@ -91,9 +93,12 @@ interface MutablePending extends PendingMessage {
   ackTimer?: ReturnType<typeof setTimeout>
   retryBackoff: ExponentialBackoff
   automaticRetry: boolean
-  sending: boolean
-  inFlightEnvelopeId?: string
   sentEnvelopeIds: Set<string>
+}
+
+interface SendAttempt {
+  pending: MutablePending
+  envelopeId: string
 }
 
 function defaultFactory(url: string, protocols: string[]): WebSocketLike {
@@ -141,8 +146,14 @@ export class MessengerWebSocketClient {
   private readonly historyRetryBackoff: ExponentialBackoff
   private readonly listeners = new Set<(snapshot: WebSocketClientSnapshot) => void>()
   private readonly pending = new Map<string, MutablePending>()
+  private inFlight?: SendAttempt
+  private rateLimitTimer?: ReturnType<typeof setTimeout>
+  private flushingPending = false
   private readonly messagesById = new Map<string, StoredMessage>()
   private readonly messageIdBySequence = new Map<string, string>()
+  private liveMessageVersion = 0
+  private recoveryVersion = 0
+  private initialHistoryRequest = true
   private readonly syncedCursors = new Map<string, number>()
   private socket: WebSocketLike | null = null
   private transport: TransportState = 'idle'
@@ -176,7 +187,7 @@ export class MessengerWebSocketClient {
     if (!isValidUuid(options.currentUserId)) throw new Error('currentUserId must be a UUID')
     this.wsOrigin = (options.wsOrigin ?? defaultWsOrigin()).replace(/\/+$/, '')
     this.accessToken = options.accessToken
-    this.currentUserId = options.currentUserId
+    this.currentUserId = options.currentUserId.toLowerCase()
     this.webSocketFactory = options.webSocketFactory ?? defaultFactory
     this.auth = options.auth
     this.history = options.history
@@ -243,6 +254,8 @@ export class MessengerWebSocketClient {
     return {
       transport: this.transport,
       history: this.historyState,
+      liveMessageVersion: this.liveMessageVersion,
+      recoveryVersion: this.recoveryVersion,
       authFailure: this.authFailure,
       pending: Array.from(this.pending.values(), clonePending),
       messages: Array.from(this.messagesById.values()).sort(
@@ -252,11 +265,13 @@ export class MessengerWebSocketClient {
   }
 
   getSyncedCursor(chatId: string): number {
-    return this.syncedCursors.get(chatId) ?? 0
+    return this.syncedCursors.get(chatId.toLowerCase()) ?? 0
   }
 
   sendMessage(chatId: string, body: string, clientMsgId = this.createId()): PendingMessage {
     if (this.stopped) throw new Error('WebSocket client is stopped')
+    chatId = chatId.toLowerCase()
+    clientMsgId = clientMsgId.toLowerCase()
     const existing = this.pending.get(clientMsgId)
     if (existing) {
       if (existing.chatId !== chatId || existing.body !== body) {
@@ -277,18 +292,17 @@ export class MessengerWebSocketClient {
       attempts: 0,
       retryBackoff: new ExponentialBackoff({ random: this.random }),
       automaticRetry: true,
-      sending: false,
       sentEnvelopeIds: new Set(),
     }
     this.pending.set(clientMsgId, pending)
     this.emit()
-    this.dispatchPending(pending)
+    this.flushPending()
     return clonePending(pending)
   }
 
   retryMessage(clientMsgId: string): void {
     if (this.stopped) return
-    const pending = this.pending.get(clientMsgId)
+    const pending = this.pending.get(clientMsgId.toLowerCase())
     if (!pending || pending.status !== 'failed') return
     pending.status = 'pending'
     pending.errorCode = undefined
@@ -297,7 +311,7 @@ export class MessengerWebSocketClient {
     pending.retryBackoff.reset()
     this.clearMessageTimers(pending)
     this.emit()
-    this.dispatchPending(pending)
+    this.flushPending()
   }
 
   synchronizeHistory(): Promise<void> {
@@ -348,7 +362,7 @@ export class MessengerWebSocketClient {
         this.refreshedTokenLifetime = null
       }, this.stableConnectionMs)
       if (this.history) void this.synchronizeHistory()
-      else this.resendPendingAfterReconnect()
+      else this.flushPending()
     }
 
     socket.onmessage = (event) => {
@@ -362,26 +376,34 @@ export class MessengerWebSocketClient {
 
     socket.onclose = (event) => {
       if (!this.isCurrent(socket, generation)) return
-      this.socket = null
-      this.clearStableTimer()
-      const shouldRefresh =
-        event.code === 4401 || (event.code === 1006 && isAccessTokenExpired(this.accessToken))
-      const shouldReconnect = !NON_RETRYABLE_PROTOCOL_CLOSES.has(event.code)
-      // ACK timers belong to the old socket. Send backoff survives a recoverable close.
-      this.clearPendingTimers(shouldRefresh || shouldReconnect)
-      this.historyGeneration++
-      this.historyPromise = null
-      this.clearHistoryRetryTimer()
-      this.clearHistoryPeriodicTimer()
-      const historyWasSyncing = this.historyState === 'syncing'
-      if (this.bufferingMessages) this.commitBufferedMessages()
-      if (historyWasSyncing) this.setHistoryState('error')
-      if (this.stopped) return
-      // Arm recovery before notifying subscribers that the socket is disconnected.
-      if (shouldRefresh) void this.refreshAndReconnect()
-      else if (shouldReconnect) this.scheduleReconnect()
-      if (this.transport !== 'auth_failed') this.setTransport('disconnected')
+      this.handleDisconnect(event.code)
     }
+  }
+
+  private handleDisconnect(code: number, timedOut?: MutablePending): void {
+    const socket = this.socket
+    this.socket = null
+    if (timedOut) socket?.close(code, 'message acknowledgement timed out')
+    this.clearStableTimer()
+    const shouldRefresh =
+      code === 4401 ||
+      ((code === 1006 || code === ACK_TIMEOUT_CLOSE_CODE) && isAccessTokenExpired(this.accessToken))
+    const shouldReconnect = !NON_RETRYABLE_PROTOCOL_CLOSES.has(code)
+    // ACK timers belong to the old socket. Send backoff survives a recoverable close.
+    this.clearPendingTimers(shouldRefresh || shouldReconnect)
+    this.historyGeneration++
+    this.historyPromise = null
+    this.clearHistoryRetryTimer()
+    this.clearHistoryPeriodicTimer()
+    const historyWasSyncing = this.historyState === 'syncing'
+    if (this.bufferingMessages) this.commitBufferedMessages()
+    if (historyWasSyncing) this.setHistoryState('error')
+    if (this.stopped) return
+    if (timedOut) this.scheduleMessageRetry(timedOut)
+    // Arm recovery before notifying subscribers that the socket is disconnected.
+    if (shouldRefresh) void this.refreshAndReconnect()
+    else if (shouldReconnect) this.scheduleReconnect()
+    if (this.transport !== 'auth_failed') this.setTransport('disconnected')
   }
 
   private isCurrent(socket: WebSocketLike, generation: number): boolean {
@@ -484,10 +506,10 @@ export class MessengerWebSocketClient {
   }
 
   private handleAck(event: MessageAckEvent): void {
-    const pending = this.pending.get(event.payload.client_msg_id)
+    const pending = this.pending.get(event.payload.client_msg_id.toLowerCase())
     if (
       !pending ||
-      pending.chatId !== event.payload.chat_id ||
+      pending.chatId !== event.payload.chat_id.toLowerCase() ||
       !pending.sentEnvelopeIds.has(event.id)
     ) {
       return
@@ -496,17 +518,18 @@ export class MessengerWebSocketClient {
   }
 
   private handleNew(event: MessageNewEvent): void {
-    const pending = this.pending.get(event.payload.client_msg_id)
+    const pending = this.pending.get(event.payload.client_msg_id.toLowerCase())
     if (
       pending &&
-      event.payload.sender_id === this.currentUserId &&
-      pending.chatId === event.payload.chat_id
+      event.payload.sender_id.toLowerCase() === this.currentUserId &&
+      pending.chatId === event.payload.chat_id.toLowerCase()
     ) {
       this.markSent(pending, event.payload)
     }
     if (this.bufferingMessages) this.bufferedMessages.push(event)
     else {
       this.mergeNew(event)
+      this.liveMessageVersion += 1
       this.emit()
     }
   }
@@ -514,18 +537,23 @@ export class MessengerWebSocketClient {
   private handleError(event: ErrorEvent): void {
     const clientMsgId = event.payload.client_msg_id
     if (!clientMsgId || event.payload.request_type !== 'message.send') return
-    const pending = this.pending.get(clientMsgId)
-    if (!pending || pending.status === 'sent' || pending.inFlightEnvelopeId !== event.id) {
+    const pending = this.pending.get(clientMsgId.toLowerCase())
+    if (!pending || this.inFlight?.pending !== pending || this.inFlight.envelopeId !== event.id) {
       return
     }
     this.clearMessageTimers(pending)
     pending.errorCode = event.payload.code
     if (event.payload.retryable && pending.automaticRetry) {
-      this.scheduleMessageRetry(pending)
+      this.scheduleMessageRetry(
+        pending,
+        event.payload.code === 'rate_limited',
+        event.payload.retry_after_ms ?? 0,
+      )
     } else {
       pending.status = 'failed'
       pending.automaticRetry = false
       this.emit()
+      this.flushPending()
     }
   }
 
@@ -537,90 +565,129 @@ export class MessengerWebSocketClient {
     pending.status = 'sent'
     pending.automaticRetry = false
     pending.errorCode = undefined
-    pending.messageId = server.message_id
+    pending.messageId = server.message_id.toLowerCase()
     pending.seq = server.seq
     pending.createdAt = server.created_at
     this.emit()
+    this.flushPending()
   }
 
-  private dispatchPending(pending: MutablePending): void {
-    const socket = this.socket
-    if (
-      this.stopped ||
-      !socket ||
-      socket.readyState !== OPEN ||
-      this.transport !== 'connected' ||
-      this.recoveringHistory ||
-      pending.status === 'sent' ||
-      !pending.automaticRetry ||
-      pending.sending ||
-      pending.retryTimer !== undefined ||
-      pending.ackTimer !== undefined
-    ) {
-      return
+  private flushPending(): void {
+    if (this.flushingPending) return
+    this.flushingPending = true
+    try {
+      for (const pending of this.pending.values()) {
+        const socket = this.socket
+        if (
+          this.stopped ||
+          !socket ||
+          socket.readyState !== OPEN ||
+          this.transport !== 'connected' ||
+          this.recoveringHistory ||
+          this.rateLimitTimer !== undefined ||
+          this.inFlight
+        ) {
+          return
+        }
+        if (
+          pending.status !== 'pending' ||
+          !pending.automaticRetry ||
+          pending.retryTimer !== undefined
+        ) {
+          continue
+        }
+        if (pending.attempts >= this.maxAutomaticAttempts) {
+          this.markRetryLimitReached(pending)
+          continue
+        }
+        this.dispatchPending(pending, socket)
+      }
+    } finally {
+      this.flushingPending = false
     }
-    if (pending.attempts >= this.maxAutomaticAttempts) {
-      pending.status = 'failed'
-      pending.errorCode = 'retry_limit_reached'
-      pending.automaticRetry = false
-      this.emit()
-      return
-    }
+  }
+
+  private dispatchPending(pending: MutablePending, socket: WebSocketLike): void {
     const event = createMessageSendEvent(
       { chat_id: pending.chatId, client_msg_id: pending.clientMsgId, body: pending.body },
       this.createId(),
       this.now().toISOString(),
     )
     pending.attempts++
-    pending.sending = true
-    pending.inFlightEnvelopeId = event.id
+    const attempt = { pending, envelopeId: event.id }
+    this.inFlight = attempt
     pending.sentEnvelopeIds.add(event.id)
     try {
       socket.send(serializeClientEvent(event))
     } catch {
-      pending.sending = false
-      pending.sentEnvelopeIds.delete(event.id)
-      if (pending.inFlightEnvelopeId === event.id) pending.inFlightEnvelopeId = undefined
-      pending.errorCode = 'send_failed'
-      this.emit()
-      this.scheduleMessageRetry(pending)
+      if (this.inFlight === attempt) {
+        pending.sentEnvelopeIds.delete(event.id)
+        pending.errorCode = 'send_failed'
+        this.emit()
+        this.scheduleMessageRetry(pending)
+      }
       return
     }
-    pending.sending = false
-    if (
-      pending.status === 'pending' &&
-      pending.automaticRetry &&
-      pending.inFlightEnvelopeId === event.id &&
-      !pending.retryTimer
-    ) {
+    if (this.inFlight === attempt) {
       pending.errorCode = undefined
-      pending.ackTimer = setTimeout(() => this.scheduleMessageRetry(pending), this.ackTimeoutMs)
+      pending.ackTimer = setTimeout(() => {
+        if (this.inFlight !== attempt || this.socket !== socket) return
+        // History may still be processing this attempt. Retire the socket before
+        // releasing the slot, even if the browser's close handshake takes time.
+        this.handleDisconnect(ACK_TIMEOUT_CLOSE_CODE, pending)
+      }, this.ackTimeoutMs)
     }
     this.emit()
   }
 
-  private scheduleMessageRetry(pending: MutablePending): void {
-    if (pending.status === 'sent' || !pending.automaticRetry || pending.retryTimer) return
-    if (pending.ackTimer) clearTimeout(pending.ackTimer)
-    pending.ackTimer = undefined
-    if (pending.attempts >= this.maxAutomaticAttempts) {
-      pending.status = 'failed'
-      pending.errorCode = 'retry_limit_reached'
-      pending.automaticRetry = false
-      this.emit()
+  private scheduleMessageRetry(
+    pending: MutablePending,
+    rateLimited = false,
+    retryAfterMs = 0,
+  ): void {
+    if (
+      this.stopped ||
+      pending.status !== 'pending' ||
+      !pending.automaticRetry ||
+      pending.retryTimer !== undefined
+    ) {
       return
     }
-    const delay = pending.retryBackoff.nextDelay()
-    pending.retryTimer = setTimeout(() => {
-      pending.retryTimer = undefined
-      this.dispatchPending(pending)
-    }, delay)
+    this.clearMessageTimers(pending)
+    // The server limit applies to every message.send from this user.
+    if (rateLimited) {
+      this.pauseSendQueue(Math.max(pending.retryBackoff.nextDelay(), retryAfterMs))
+    }
+    if (pending.attempts >= this.maxAutomaticAttempts) {
+      this.markRetryLimitReached(pending)
+    } else if (!rateLimited) {
+      const delay = pending.retryBackoff.nextDelay()
+      pending.retryTimer = setTimeout(() => {
+        pending.retryTimer = undefined
+        this.flushPending()
+      }, delay)
+    }
+    this.flushPending()
   }
 
-  private resendPendingAfterReconnect(): void {
-    for (const pending of this.pending.values()) {
-      if (pending.status !== 'sent' && pending.automaticRetry) this.dispatchPending(pending)
-    }
+  private pauseSendQueue(delayMs: number): void {
+    // Browsers store timeout delays as signed 32-bit integers.
+    const timeout = Math.min(delayMs, MAX_TIMEOUT_DELAY_MS)
+    this.rateLimitTimer = setTimeout(() => {
+      if (delayMs > timeout) {
+        this.pauseSendQueue(delayMs - timeout)
+        return
+      }
+      this.rateLimitTimer = undefined
+      this.flushPending()
+    }, timeout)
+  }
+
+  private markRetryLimitReached(pending: MutablePending): void {
+    pending.status = 'failed'
+    pending.errorCode = 'retry_limit_reached'
+    pending.automaticRetry = false
+    this.emit()
   }
 
   private async runHistorySync(): Promise<void> {
@@ -631,13 +698,20 @@ export class MessengerWebSocketClient {
     this.setHistoryState('syncing')
     const stagedCursors = new Map(this.syncedCursors)
     try {
-      const chats = await this.history.listChats(this.accessToken)
+      const mode = this.recoveringHistory
+        ? 'reconnect'
+        : this.initialHistoryRequest
+          ? 'initial'
+          : undefined
+      this.initialHistoryRequest = false
+      const chats = await this.history.listChats(this.accessToken, mode)
       if (syncGeneration !== this.historyGeneration || this.stopped) return
       for (const chat of chats) {
-        let cursor = stagedCursors.get(chat.id) ?? 0
+        const chatId = chat.id.toLowerCase()
+        let cursor = stagedCursors.get(chatId) ?? 0
         let hasMore = true
         while (hasMore) {
-          const page = await this.history.getMessages(chat.id, this.accessToken, {
+          const page = await this.history.getMessages(chatId, this.accessToken, {
             afterSeq: cursor,
             limit: 100,
           })
@@ -651,16 +725,17 @@ export class MessengerWebSocketClient {
             throw new Error('History returned has_more_after without next_after_seq')
           }
         }
-        stagedCursors.set(chat.id, cursor)
+        stagedCursors.set(chatId, cursor)
       }
       if (syncGeneration !== this.historyGeneration || this.stopped) return
       this.commitBufferedMessages()
       this.syncedCursors.clear()
       for (const [chatId, cursor] of stagedCursors) this.syncedCursors.set(chatId, cursor)
+      if (this.recoveringHistory) this.recoveryVersion += 1
       this.recoveringHistory = false
       this.setHistoryState('ready')
       this.historyRetryBackoff.reset()
-      this.resendPendingAfterReconnect()
+      this.flushPending()
       this.scheduleHistoryPeriodicSync()
     } catch {
       if (syncGeneration !== this.historyGeneration || this.stopped) return
@@ -729,6 +804,7 @@ export class MessengerWebSocketClient {
     this.bufferedMessages = []
     this.bufferingMessages = false
     for (const event of messages) this.mergeNew(event)
+    if (messages.length > 0) this.liveMessageVersion += 1
     this.emit()
   }
 
@@ -749,6 +825,14 @@ export class MessengerWebSocketClient {
   }
 
   private mergeMessage(message: StoredMessage): void {
+    message = {
+      ...message,
+      id: message.id.toLowerCase(),
+      chat_id: message.chat_id.toLowerCase(),
+      sender_id: message.sender_id.toLowerCase(),
+    }
+    if (message.client_msg_id !== undefined)
+      message.client_msg_id = message.client_msg_id.toLowerCase()
     const sequenceKey = `${message.chat_id}:${message.seq}`
     const existingBySequence = this.messageIdBySequence.get(sequenceKey)
     if (existingBySequence && existingBySequence !== message.id) return
@@ -767,7 +851,7 @@ export class MessengerWebSocketClient {
   private clearMessageTimers(pending: MutablePending, preserveRetry = false): void {
     if (pending.ackTimer) clearTimeout(pending.ackTimer)
     pending.ackTimer = undefined
-    pending.sending = false
+    if (this.inFlight?.pending === pending) this.inFlight = undefined
     if (!preserveRetry && pending.retryTimer !== undefined) {
       clearTimeout(pending.retryTimer)
       pending.retryTimer = undefined
@@ -775,6 +859,10 @@ export class MessengerWebSocketClient {
   }
 
   private clearPendingTimers(preserveRetries = false): void {
+    if (!preserveRetries && this.rateLimitTimer !== undefined) {
+      clearTimeout(this.rateLimitTimer)
+      this.rateLimitTimer = undefined
+    }
     for (const pending of this.pending.values()) this.clearMessageTimers(pending, preserveRetries)
   }
 

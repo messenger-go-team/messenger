@@ -45,6 +45,11 @@ export interface HistoryMessagePage {
   has_more_after: boolean
 }
 
+/** Окно вокруг цели для getMessageContext; цель присутствует ровно один раз. */
+export interface HistoryMessageContext extends HistoryMessagePage {
+  target_message_id: string
+}
+
 interface MockChat {
   id: string
   type: 'personal'
@@ -225,6 +230,15 @@ export function resetHistoryData(): void {
 }
 
 /** Возвращает публичное представление чата без выдачи mutable внутреннего объекта. */
+/** Ищет сообщение по id среди всех чатов (для Later save validation). */
+export function findHistoryMessage(messageId: string): HistoryMessage | undefined {
+  for (const chatMessages of messages.values()) {
+    const found = chatMessages.find((message) => message.id === messageId)
+    if (found) return cloneMessage(found)
+  }
+  return undefined
+}
+
 export function findHistoryChat(chatId: string): HistoryChat | undefined {
   const chat = chats.get(chatId)
   return chat ? toHistoryChat(chat) : undefined
@@ -367,6 +381,39 @@ export function getHistoryMessagePage(
 }
 
 /**
+ * Окно вокруг сообщения по OpenAPI getMessageContext: floor((limit - 1) / 2) более старых,
+ * остальные из limit - 1 — более новые. У края свободные места не переносятся на другую сторону.
+ * Возвращает null, если сообщения нет в этом чате (вызывающий отдаёт 404).
+ */
+export function getHistoryMessageContext(
+  chatId: string,
+  messageId: string,
+  limit: number,
+): HistoryMessageContext | null {
+  const allMessages = getSortedMessages(chatId)
+  const index = allMessages.findIndex((message) => message.id === messageId)
+
+  if (index === -1) {
+    return null
+  }
+
+  const olderSlots = Math.floor((limit - 1) / 2)
+  const newerSlots = limit - 1 - olderSlots
+  const start = Math.max(0, index - olderSlots)
+  const end = Math.min(allMessages.length, index + 1 + newerSlots)
+  const selected = allMessages.slice(start, end)
+
+  return {
+    target_message_id: messageId,
+    messages: selected.map(cloneMessage),
+    next_before_seq: selected[0].seq,
+    next_after_seq: selected[selected.length - 1].seq,
+    has_more_before: start > 0,
+    has_more_after: end < allMessages.length,
+  }
+}
+
+/**
  * Монотонно продвигает `last_read_seq` участника и никогда не уменьшает его.
  * Проверки membership и верхней границы `last_seq` выполняет HTTP handler.
  */
@@ -376,6 +423,11 @@ export function markHistoryChatRead(chatId: string, userId: string, seq: number)
   if (member && seq > member.lastReadSeq) {
     member.lastReadSeq = seq
   }
+}
+
+/** Последний seq чата в REST-моке; 0, если чата нет. */
+export function historyLastSeq(chatId: string): number {
+  return chats.get(chatId)?.lastSeq ?? 0
 }
 
 /** Возвращает внутренний read cursor участника; используется для проверки state в тестах. */

@@ -1,0 +1,25 @@
+meta {
+  name: HISTORY-EMPTY
+  type: http
+  seq: 86
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/messages?after_seq=205
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("HISTORY-EMPTY", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("HISTORY-EMPTY", bru, req, res, test, expect);
+}

@@ -1,0 +1,33 @@
+meta {
+  name: LATER-TIME-245
+  type: http
+  seq: 246
+}
+
+patch {
+  url: {{baseUrl}}/later/{{laterID}}
+  body: json
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"due_at":"0000-01-01T00:00:00Z"}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-TIME-245", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-TIME-245", bru, req, res, test, expect);
+}

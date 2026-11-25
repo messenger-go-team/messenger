@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 	historyv1 "github.com/messenger-go-team/messenger/api/gen/history/v1"
 	"github.com/messenger-go-team/messenger/pkg/jwtauth"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const wsProtocol = "messenger.v1"
@@ -25,26 +27,46 @@ type wsEndpoint struct {
 	timing   wsTiming
 	stopping chan struct{}
 
+	fanoutCtx    context.Context
+	cancelFanout context.CancelFunc
+
 	hub            *connectionHub
 	broker         Broker
+	typing         typingTracker
 	history        historyv1.HistoryServiceClient
 	historyTimeout time.Duration
+	sendLimiter    *sendLimiter
+	sendRejections prometheus.Counter
+	logger         *slog.Logger
 
 	mu     sync.Mutex
 	active sync.WaitGroup
 }
 
-func newWSEndpoint(cfg config, ready *atomic.Bool, timing wsTiming, history historyv1.HistoryServiceClient) *wsEndpoint {
+func newWSEndpoint(cfg config, ready *atomic.Bool, timing wsTiming,
+	history historyv1.HistoryServiceClient, logger *slog.Logger,
+) *wsEndpoint {
 	hub := newConnectionHub()
+	fanoutCtx, cancelFanout := context.WithCancel(context.Background())
 	return &wsEndpoint{
+		logger:         logger,
 		ready:          ready,
 		verifier:       cfg.JWTVerifier,
 		timing:         timing,
 		stopping:       make(chan struct{}),
+		fanoutCtx:      fanoutCtx,
+		cancelFanout:   cancelFanout,
 		hub:            hub,
 		broker:         memoryBroker{hub: hub},
+		typing:         typingTracker{byUser: make(map[string]map[string]*typingGroup)},
 		history:        history,
 		historyTimeout: cfg.HistoryRPCTimeout,
+		sendLimiter:    newSendLimiter(cfg.SendInterval, cfg.SendBurst, time.Now),
+		sendRejections: prometheus.NewCounter(prometheus.CounterOpts{
+			Name:        "chat_ws_message_send_rejected_total",
+			Help:        "Number of valid message.send commands rejected by Chat before calling History.",
+			ConstLabels: prometheus.Labels{"reason": wsRateLimited},
+		}),
 		upgrader: websocket.Upgrader{
 			HandshakeTimeout: timing.writeTimeout,
 			CheckOrigin: func(r *http.Request) bool {
@@ -163,6 +185,7 @@ func (ws *wsEndpoint) stopAccepting() {
 	defer ws.mu.Unlock()
 	ws.ready.Store(false)
 	close(ws.stopping)
+	ws.cancelFanout()
 }
 
 func (ws *wsEndpoint) wait(ctx context.Context) error {

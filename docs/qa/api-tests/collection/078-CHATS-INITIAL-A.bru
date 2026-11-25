@@ -1,0 +1,25 @@
+meta {
+  name: CHATS-INITIAL-A
+  type: http
+  seq: 78
+}
+
+get {
+  url: {{baseUrl}}/chats
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("CHATS-INITIAL-A", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("CHATS-INITIAL-A", bru, req, res, test, expect);
+}

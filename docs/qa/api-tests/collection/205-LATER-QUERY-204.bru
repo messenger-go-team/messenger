@@ -1,0 +1,33 @@
+meta {
+  name: LATER-QUERY-204
+  type: http
+  seq: 205
+}
+
+patch {
+  url: {{baseUrl}}/later/{{laterID}}?due_at=%zz
+  body: json
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"due_at":"2099-01-01T00:00:00Z"}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("LATER-QUERY-204", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("LATER-QUERY-204", bru, req, res, test, expect);
+}

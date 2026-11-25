@@ -49,5 +49,12 @@ jobs:
       - name: Run tests
         run: npm run test
 
-      - name: Build frontend
-        run: npm run build
+      - name: Build frontend for staging
+        run: npm run build:staging
+
+      - name: Upload staging web build
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: web-dist-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: web/dist/
+          if-no-files-found: error
