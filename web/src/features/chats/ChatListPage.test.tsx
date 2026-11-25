@@ -44,8 +44,11 @@ async function authValue(): Promise<AuthContextValue> {
   }
 }
 
-function renderChats(auth: AuthContextValue, initialPath = '/') {
-  const mockWs = new MockWebSocketServer({ senderId: auth.user?.id ?? ALICE.id })
+function renderChats(
+  auth: AuthContextValue,
+  initialPath = '/',
+  mockWs = new MockWebSocketServer({ senderId: auth.user?.id ?? ALICE.id }),
+) {
   return render(
     <AuthContext.Provider value={auth}>
       <WsProvider webSocketFactory={mockWs.webSocketFactory} disableApiMockSocket>
@@ -117,6 +120,57 @@ describe('ChatListPage', () => {
     expect(rows[1]).toHaveAccessibleName(/bob_2/i)
     expect(within(rows[0]).queryByText(/^\d+$/)).not.toBeInTheDocument()
     expect(within(rows[1]).getByText('2')).toBeInTheDocument()
+  })
+
+  it('refreshes the server unread count after catching up with a missed message', async () => {
+    const incoming = {
+      id: '20000000-0000-4000-8000-000000000042',
+      chat_id: INITIAL_CHAT_ID,
+      seq: 1,
+      sender_id: BOB_ID,
+      body: 'Получено во время разрыва',
+      created_at: '2026-11-25T10:00:00Z',
+    }
+    let missedMessage = false
+    let historyReads = 0
+    server.use(
+      http.get('/chats', () =>
+        HttpResponse.json({
+          chats: [
+            {
+              id: INITIAL_CHAT_ID,
+              type: 'personal',
+              created_at: '2026-11-07T11:00:00Z',
+              members: [ALICE, { id: BOB_ID, username: 'bob_2' }],
+              last_message: missedMessage ? incoming : null,
+              unread_count: missedMessage ? 1 : 0,
+            },
+          ],
+        }),
+      ),
+      http.get(`/chats/${INITIAL_CHAT_ID}/messages`, ({ request }) => {
+        expect(new URL(request.url).searchParams.get('after_seq')).toBe('0')
+        historyReads += 1
+        return HttpResponse.json({
+          messages: missedMessage ? [incoming] : [],
+          next_after_seq: missedMessage ? incoming.seq : null,
+          has_more_after: false,
+        })
+      }),
+    )
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    renderChats(await authValue(), '/', mockWs)
+    const row = await screen.findByRole('link', { name: /bob_2/i })
+    expect(within(row).queryByText('1')).not.toBeInTheDocument()
+    await waitFor(() => expect(historyReads).toBe(1))
+
+    act(() => {
+      mockWs.disconnectAll()
+      missedMessage = true
+    })
+
+    expect(await within(row).findByText(incoming.body)).toBeInTheDocument()
+    expect(within(row).getByText('1')).toBeInTheDocument()
   })
 
   it('shows empty state when there are no chats', async () => {

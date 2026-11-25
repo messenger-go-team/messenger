@@ -24,6 +24,7 @@ import {
   normalizeUserSearchInput,
   USER_SEARCH_HINT,
 } from '@/features/chats/userSearchPrefix'
+import { useWs } from '@/features/ws/useWs'
 import { cn } from '@/lib/utils'
 
 const SEARCH_DEBOUNCE_MS = 300
@@ -47,6 +48,8 @@ function peerStateFrom(state: unknown): { peerUsername: string } | null {
 /** Главный экран списка чатов и поиска пользователей (#43). */
 export function ChatListPage() {
   const { user, accessToken, logout } = useAuth()
+  const { snapshot } = useWs()
+  const messageCount = snapshot.messages.length
   const { chatId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -115,14 +118,17 @@ export function ChatListPage() {
     if (!accessToken) return
 
     const timer = window.setTimeout(() => {
-      void fetchChats(accessToken, listReloadKey === 0 ? 'initial' : 'refresh')
+      // Live events and History catch-up both add messages. The list's unread counts
+      // and previews still come from the authoritative GET /chats response.
+      const mode = listReloadKey === 0 && messageCount === 0 ? 'initial' : 'refresh'
+      void fetchChats(accessToken, mode)
     }, 0)
 
     return () => {
       window.clearTimeout(timer)
       listRequestRef.current += 1
     }
-  }, [accessToken, fetchChats, listReloadKey])
+  }, [accessToken, fetchChats, listReloadKey, messageCount])
 
   const searchPrefix = normalizeUserSearchInput(query)
   const searching = searchPrefix.length > 0
