@@ -1,0 +1,25 @@
+meta {
+  name: RECEIPTS-ADVANCED-A
+  type: http
+  seq: 290
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/receipts
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("RECEIPTS-ADVANCED-A", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("RECEIPTS-ADVANCED-A", bru, req, res, test, expect);
+}

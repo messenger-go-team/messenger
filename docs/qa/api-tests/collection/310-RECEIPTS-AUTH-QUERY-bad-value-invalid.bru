@@ -1,0 +1,25 @@
+meta {
+  name: RECEIPTS-AUTH-QUERY-bad-value-invalid
+  type: http
+  seq: 310
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/receipts?unexpected=%zz
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("RECEIPTS-AUTH-QUERY-bad-value-invalid", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("RECEIPTS-AUTH-QUERY-bad-value-invalid", bru, req, res, test, expect);
+}

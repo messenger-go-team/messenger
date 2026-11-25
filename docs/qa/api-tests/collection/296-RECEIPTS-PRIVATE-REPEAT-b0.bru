@@ -1,0 +1,33 @@
+meta {
+  name: RECEIPTS-PRIVATE-REPEAT-b0
+  type: http
+  seq: 296
+}
+
+post {
+  url: {{baseUrl}}/chats/{{chatAB}}/read
+  body: json
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"seq":0}
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("RECEIPTS-PRIVATE-REPEAT-b0", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("RECEIPTS-PRIVATE-REPEAT-b0", bru, req, res, test, expect);
+}

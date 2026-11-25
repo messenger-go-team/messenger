@@ -102,7 +102,7 @@ async function logoutControl() {
       path.join(tmp, "environments/control.bru"),
       `vars {\n  baseUrl: ${baseUrl}\n}\n`,
     );
-    for (const file of ["plan.cjs", "invariants.cjs"])
+    for (const file of ["plan.cjs", "invariants.cjs", "receipts.cjs"])
       fs.copyFileSync(
         path.join(__dirname, "collection", file),
         path.join(tmp, file),

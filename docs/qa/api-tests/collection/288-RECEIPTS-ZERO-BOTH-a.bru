@@ -1,0 +1,25 @@
+meta {
+  name: RECEIPTS-ZERO-BOTH-a
+  type: http
+  seq: 288
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/receipts
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("RECEIPTS-ZERO-BOTH-a", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("RECEIPTS-ZERO-BOTH-a", bru, req, res, test, expect);
+}

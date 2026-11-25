@@ -1,0 +1,25 @@
+meta {
+  name: RECEIPTS-AUTH-BAD-PATH-none
+  type: http
+  seq: 320
+}
+
+get {
+  url: {{baseUrl}}/chats/bad-uuid/receipts?%
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("RECEIPTS-AUTH-BAD-PATH-none", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("RECEIPTS-AUTH-BAD-PATH-none", bru, req, res, test, expect);
+}

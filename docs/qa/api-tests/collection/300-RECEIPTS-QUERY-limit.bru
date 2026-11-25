@@ -1,0 +1,25 @@
+meta {
+  name: RECEIPTS-QUERY-limit
+  type: http
+  seq: 300
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/receipts?limit=1
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("RECEIPTS-QUERY-limit", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("RECEIPTS-QUERY-limit", bru, req, res, test, expect);
+}

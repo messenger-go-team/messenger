@@ -1,0 +1,25 @@
+meta {
+  name: RECEIPTS-QUERY-bad-key
+  type: http
+  seq: 312
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/receipts?%zz=1
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("RECEIPTS-QUERY-bad-key", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("RECEIPTS-QUERY-bad-key", bru, req, res, test, expect);
+}
