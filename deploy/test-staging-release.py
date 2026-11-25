@@ -5,7 +5,9 @@ and a temporary database. Run from the repository root.
 """
 import base64
 import concurrent.futures
+import hashlib
 import json
+import re
 import os
 from pathlib import Path
 import secrets
@@ -17,6 +19,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from zipfile import ZipFile
 
 REPO = Path.cwd()
 SERVICES = ("auth", "chat", "history")
@@ -77,6 +80,40 @@ def main():
             for job in jobs:
                 job.result()
 
+        web = work / "staging-web"
+        baseline_web = web / "releases" / HISTORY_V2_SHA
+
+        def web_files(sha, variant=""):
+            js = "broken.js" if sha == C else f"app-{sha[:8]}{variant}.js"
+            css = f"app-{sha[:8]}{variant}.css"
+            return {
+                "index.html": f'<title>{sha}{variant}</title><script type="module" src="/app/assets/{js}"></script>'
+                              f'<link rel="stylesheet" href="/app/assets/{css}">',
+                f"assets/{js}": f'console.log("{sha}{variant}");',
+                f"assets/{css}": f"/* {sha}{variant} */ body {{ color: black; }}",
+            }
+
+        def bundle(path, sha, variant=""):
+            archive = path / "web.zip"
+            with ZipFile(archive, "w") as zipped:
+                for name, content in web_files(sha, variant).items():
+                    zipped.writestr(name, content)
+            (path / "web.digest").write_text(hashlib.sha256(archive.read_bytes()).hexdigest())
+
+        for name, content in web_files(HISTORY_V2_SHA).items():
+            dest = baseline_web / "app" / name
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(content)
+        (baseline_web / "REVISION").write_text(HISTORY_V2_SHA)
+        (web / "current").symlink_to(f"releases/{HISTORY_V2_SHA}")
+        for folder in (web, web / "releases", baseline_web, baseline_web / "app", baseline_web / "app/assets"):
+            folder.chmod(0o755)
+        for file in (baseline_web / "app").rglob("*"):
+            if file.is_file():
+                file.chmod(0o644)
+
+        run("python3", str(REPO / "deploy/staging-web.py"), "seed", str(web), f"releases/{HISTORY_V2_SHA}")
+
         def release(sha, snippet):
             path = work / f"release-{sha[0]}"
             for folder in ("services/auth/migrations", "services/history/migrations"):
@@ -86,6 +123,7 @@ def main():
             dest.write_text(snippet)
             (path / "REVISION").write_text(sha + "\n")
             shutil.copy2(work / "migrate", path / "migrate")
+            bundle(path, sha)
             return path
 
         original = (snippets / "public-locations.conf").read_text()
@@ -164,19 +202,29 @@ def main():
                 "-keyout", str(key), "-out", str(cert), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             proxy = (REPO / "deploy/staging-rootless/outer-location.conf.example").read_text()
             proxy = proxy.replace("http://127.0.0.1:18080", f"http://{edge}:8080")
+            spa = (REPO / "deploy/staging-rootless/outer-web-app.conf.example").read_text()
             (work / "outer.conf").write_text(f"""events {{}}
 http {{
+    include /etc/nginx/mime.types;
     map $http_upgrade $connection_upgrade {{ default upgrade; '' close; }}
     server {{
         listen 443 ssl;
+        absolute_redirect off;
         ssl_certificate /lab/cert.pem;
         ssl_certificate_key /lab/key.pem;
         {proxy}
+        {spa}
+        location = /app/assets/broken.js {{
+            types {{}}
+            default_type text/plain;
+            return 200 'console.log("{C}");';
+        }}
     }}
 }}
 """)
             run("docker", "run", "-d", "--name", outer, "--network", network, "-p", f"127.0.0.1:{port}:443",
                 "-v", f"{work/'outer.conf'}:/etc/nginx/nginx.conf:ro",
+                "-v", f"{web}:/var/www/acme/staging-web:ro",
                 "-v", f"{cert}:/lab/cert.pem:ro", "-v", f"{key}:/lab/key.pem:ro", "nginx:alpine")
 
             credentials = {"username": "staging_probe", "password": secrets.token_urlsafe(24)}
@@ -197,18 +245,37 @@ http {{
                     time.sleep(.3)
 
             env = dict(os.environ, STAGING_ROOT=str(work), STAGING_PROJECT=project, STAGING_INGRESS=edge,
-                       STAGING_SNIPPETS=str(snippets), STAGING_URL=origin,
+                       STAGING_SNIPPETS=str(snippets), STAGING_URL=origin, STAGING_WEB_ROOT=str(web),
                        STAGING_WSS_PROBE=str(work / "staging-wss-probe"),
                        CURL_CA_BUNDLE=str(cert), SSL_CERT_FILE=str(cert))
             script = ("bash", str(REPO / "deploy/staging-release.sh"))
             state = work / ".release-state"
 
-            def deploy(sha, path, expect):
-                result = subprocess.run([*script, "deploy", sha, str(path)], env=env, text=True,
+            def deploy(sha, path, expect, *, probe=None):
+                release_env = env if probe is None else env | {"STAGING_WSS_PROBE": str(probe)}
+                result = subprocess.run([*script, "deploy", sha, str(path)], env=release_env, text=True,
                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 print(result.stdout, end="", flush=True)
                 assert result.returncode == expect, result.stdout
                 return result.stdout
+
+            def assert_web(sha, variant=""):
+                release_path = web / os.readlink(web / "current")
+                assert (release_path / "REVISION").read_text().strip() == sha
+                for path in ("/app/login", "/app/contacts"):
+                    with urllib.request.urlopen(origin + path, context=context, timeout=5) as response:
+                        assert response.read().decode() == web_files(sha, variant)["index.html"]
+                return release_path
+
+            def captured_assets():
+                with urllib.request.urlopen(origin + "/app/", context=context, timeout=5) as response:
+                    paths = re.findall(r'/app/assets/[^"]+', response.read().decode())
+                assert len(paths) == 2
+                return {path: asset(path) for path in paths}
+
+            def asset(path):
+                with urllib.request.urlopen(origin + path, context=context, timeout=5) as response:
+                    return response.headers.get_content_type(), response.read()
 
             def running_revisions():
                 return [
@@ -231,6 +298,8 @@ http {{
             a_log = deploy(A, a, 0)
             a_activation = (state / "current").read_text().strip()
             assert a_log.splitlines()[-1] == f"STAGING_RESULT deployed {A} {a_activation}"
+            assert f"web SHA {A} passed HTTPS smoke" in a_log
+            assert_web(A)
             assert (state / a_activation).parent.joinpath("previous/receipts.status").read_text() == "404\n"
             assert "applying migrations before switching services (1:false,2:false)" in a_log
             assert "saved DB dump" in a_log
@@ -296,6 +365,7 @@ http {{
 
             run(*script, "rollback", env=env)
             assert running_revisions() == [HISTORY_V2_SHA] * len(SERVICES)
+            assert_web(HISTORY_V2_SHA)
             assert (snippets / "public-locations.conf").read_text() == baseline_snippet
             run("docker", "exec", edge, "wget", "-qO", "/dev/null", "http://history:8080/readyz")
             try:
@@ -309,28 +379,119 @@ http {{
 
             deploy(A, a, 0)
             assert_receipts(public_cursors)
+            assets_a = captured_assets()
+            previous_activation = (state / "current").read_text()
+            previous_web = os.readlink(web / "current")
+            verified = web / "verified"
+            chmod_probe = work / "deny-verified-after-smoke"
+            chmod_probe.write_text(f"""#!/usr/bin/env python3
+from pathlib import Path
+import os
+import subprocess
+import sys
+web = Path({str(web)!r})
+subprocess.run([{str(work / "staging-wss-probe")!r}, *sys.argv[1:]], check=True)
+if (web / "current/REVISION").read_text().strip() == {B!r}:
+    (web / "verified").chmod(0)
+    try:
+        os.listdir(web / "verified")
+    except PermissionError:
+        print("fixture: verified is unreadable", flush=True)
+    else:
+        sys.exit("test must run without a permission bypass")
+""")
+            chmod_probe.chmod(0o700)
+            try:
+                failed = deploy(B, b, 1, probe=chmod_probe)
+                smoke = failed.index(f"web SHA {B} passed HTTPS smoke")
+                denied = failed.index("fixture: verified is unreadable", smoke)
+                assert "Permission denied" in failed[denied:]
+                assert f"web SHA {A} passed HTTPS smoke" in failed[denied:]
+                assert "staging WSS: HTTP 101" in failed[failed.index(f"web SHA {A} passed HTTPS smoke", denied):]
+                assert (state / "current").read_text() == previous_activation
+                assert os.readlink(web / "current") == previous_web
+                assert not (state / "pending").exists()
+                assert running_revisions() == [A] * len(SERVICES)
+                assert_web(A)
+            finally:
+                verified.chmod(0o700)
+            print("PASS: automatic rollback survives unreadable verified after candidate smoke")
+
             b_log = deploy(B, b, 0)
+            assert {path: asset(path) for path in assets_a} == assets_a
             b_pointer = (state / "current").read_text()
             b_activation = b_pointer.strip()
             assert b_activation != a_activation
             assert b_log.splitlines()[-1] == f"STAGING_RESULT deployed {B} {b_activation}"
+            b_web = assert_web(B)
+            assets_b = captured_assets()
             b_container = out(*compose, "ps", "-q", "history")
             assert deploy(B, b, 0).splitlines()[-1] == f"STAGING_RESULT already_active {B} {b_activation}"
             assert out(*compose, "ps", "-q", "history") == b_container
             assert (state / "current").read_text() == b_pointer
+            assert assert_web(B) == b_web
             assert "invalid_staging_test_directive" in deploy(C, c, 1)
             assert (state / "current").read_text() == b_pointer
+            assert assert_web(B) == b_web
+            (c / "deploy/nginx/snippets/public-locations.conf").write_text(original)
+            assert "unexpected asset at /app/assets/broken.js" in deploy(C, c, 1)
+            assert (state / "current").read_text() == b_pointer
+            assert assert_web(B) == b_web
             assert "public WSS returned HTTP 404" in deploy(D, d, 1)
             assert (state / "current").read_text() == b_pointer
+            assert assert_web(B) == b_web
             assert not (state / "pending").exists()
             assert deploy(B, b, 0).splitlines()[-1] == f"STAGING_RESULT already_active {B} {b_activation}"
-            run(*script, "rollback", env=env)
+
+            # A repeat must repair the verified copy even when the live files still work.
+            verified = web / "verified"
+            pointer = verified / (b_web.name + ".current")
+            before_repair = out(*compose, "ps", "-q", "history")
+            old_backup = pointer.read_text().strip()
+            (verified / old_backup / "release/app/assets/app-bbbbbbbb.js").unlink()
+            assert deploy(B, b, 0).splitlines()[-1] == f"STAGING_RESULT already_active {B} {b_activation}"
+            assert out(*compose, "ps", "-q", "history") == before_repair
+            assert (state / "current").read_text() == b_pointer
+            assert pointer.read_text().strip() != old_backup
+            restored_b = run("python3", str(REPO / "deploy/staging-web.py"), "restore", str(web),
+                             str(b_web.relative_to(web)), capture_output=True).stdout.strip()
+            assert (web / restored_b / "app/assets/app-bbbbbbbb.js").read_bytes() == (
+                b_web / "app/assets/app-bbbbbbbb.js"
+            ).read_bytes()
+
+            # The previous live directory can be damaged while its verified copy stays healthy.
+            rollback_ref = (state / b_activation).parent.joinpath("previous/web.release").read_text().strip()
+            (web / rollback_ref / "app/index.html").unlink()
+            result = run(*script, "rollback", env=env, capture_output=True)
+            assert "prepared rollback from verified web snapshot" in result.stdout
             assert running_revisions() == [A] * len(SERVICES)
+            print("PASS: manual rollback repaired previous HTML, already_active repaired verified JS")
+            assert_web(A)
+            assert {path: asset(path) for path in assets_b} == assets_b
             assert (snippets / "public-locations.conf").read_text() == original
             assert sql("SELECT count(*) FROM history.chats") == "1"
             assert_v3_data()
             assert_receipts(public_cursors)
-            print("PASS: v2→v3, authenticated HTTPS receipts, A → B → duplicate B → failed C and broken WSS → B → manual rollback A")
+            # A damaged live copy must not count as a healthy rollback target.
+            (assert_web(A) / "app/assets/app-aaaaaaaa.js").unlink()
+            assert "rollback will use confirmed snapshot" in deploy(C, c, 1)
+            restored = assert_web(A)
+            assert (restored / "app/assets/app-aaaaaaaa.js").is_file()
+            (web / "app/assets/app-aaaaaaaa.js").write_text("damaged shared asset")
+            assert "rollback will use confirmed snapshot" in deploy(B, b, 0)
+            assert_web(B)
+
+            bundle(b, B, "-retry")
+            replaced = deploy(B, b, 0)
+            assert "staging web replacement" in replaced and "STAGING_RESULT deployed" in replaced
+            assert_web(B, "-retry")
+            activation = (state / "current").read_text()
+            assert "STAGING_RESULT already_active" in deploy(B, b, 0)
+            assert (state / "current").read_text() == activation
+            run(*script, "rollback", env=env)
+            assert_web(B)
+            print("PASS: old assets across deploy/rollback, broken baseline recovery, and changed ZIP at same SHA")
+            print("PASS: v2→v3, authenticated HTTPS receipts, A → B → duplicate B → failed Nginx, JS MIME and WSS → B → manual rollback A")
         finally:
             subprocess.run(["docker", "rm", "-f", outer], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             subprocess.run([*compose, "down", "-v"], check=False, stdout=subprocess.DEVNULL)
