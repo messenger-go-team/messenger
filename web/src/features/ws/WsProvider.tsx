@@ -77,8 +77,10 @@ export function WsProvider({
 
   const historyAdapter = useMemo<HistoryAdapter>(
     () => ({
-      async listChats(token, initial) {
-        const response = await chatList.load(token, initial)
+      async listChats(token, mode) {
+        // A request started before reconnect may contain stale unread counts.
+        if (mode === 'reconnect') chatList.invalidate()
+        const response = await chatList.load(token, mode === 'initial')
         return response.chats.map((chat) => ({ id: chat.id }))
       },
       async getMessages(chatId, token, options) {

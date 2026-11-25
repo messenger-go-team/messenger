@@ -74,7 +74,7 @@ export interface HistoryPage {
 }
 
 export interface HistoryAdapter {
-  listChats(accessToken: string, initial?: boolean): Promise<readonly { id: string }[]>
+  listChats(accessToken: string, mode?: 'initial' | 'reconnect'): Promise<readonly { id: string }[]>
   getMessages(
     chatId: string,
     accessToken: string,

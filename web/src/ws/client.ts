@@ -698,9 +698,13 @@ export class MessengerWebSocketClient {
     this.setHistoryState('syncing')
     const stagedCursors = new Map(this.syncedCursors)
     try {
-      const initial = this.initialHistoryRequest && !this.recoveringHistory
+      const mode = this.recoveringHistory
+        ? 'reconnect'
+        : this.initialHistoryRequest
+          ? 'initial'
+          : undefined
       this.initialHistoryRequest = false
-      const chats = await this.history.listChats(this.accessToken, initial)
+      const chats = await this.history.listChats(this.accessToken, mode)
       if (syncGeneration !== this.historyGeneration || this.stopped) return
       for (const chat of chats) {
         const chatId = chat.id.toLowerCase()

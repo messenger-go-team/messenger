@@ -243,6 +243,71 @@ describe('ChatListPage', () => {
     },
   )
 
+  it('refreshes after an empty reconnect even with an older list request for the same token', async () => {
+    const first = savedMessage(1, 'До разрыва')
+    let unread = 1
+    const listTokens: Array<string | null> = []
+    const afterSequences: Array<string | null> = []
+    let releaseOldList!: () => void
+    const oldListGate = new Promise<void>((resolve) => {
+      releaseOldList = resolve
+    })
+    server.use(
+      http.get('/chats', async ({ request }) => {
+        const unreadAtRequest = unread
+        listTokens.push(request.headers.get('authorization'))
+        if (listTokens.length === 2) await oldListGate
+        return chatListResponse(first, unreadAtRequest)
+      }),
+      http.get(`/chats/${INITIAL_CHAT_ID}/messages`, ({ request }) => {
+        const after = new URL(request.url).searchParams.get('after_seq')
+        afterSequences.push(after)
+        return HttpResponse.json({
+          messages: after === '0' ? [first] : [],
+          next_after_seq: after === '0' ? first.seq : null,
+          has_more_after: false,
+        })
+      }),
+    )
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    const auth = await authValue()
+    renderChats(auth, '/', mockWs)
+    const row = await screen.findByRole('link', { name: /bob_2/i })
+    expect(within(row).getByText('1')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByTestId('history-sync-state')).toHaveTextContent('ready'))
+    expect(listTokens).toHaveLength(1)
+
+    try {
+      act(() =>
+        deliverMessage(mockWs, { ...savedMessage(1, 'Другой чат'), chat_id: LATER_CHAT_ID }),
+      )
+      await waitFor(() => expect(listTokens).toHaveLength(2))
+
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      try {
+        await act(async () => {
+          mockWs.disconnectAll()
+          unread = 0 // History reflects a read from a different tab while this socket is offline.
+          await vi.advanceTimersByTimeAsync(2_000)
+        })
+      } finally {
+        vi.useRealTimers()
+      }
+
+      expect(screen.getByTestId('history-sync-state')).toHaveTextContent('syncing')
+      expect(listTokens).toHaveLength(2)
+      expect(afterSequences).toEqual(['0'])
+
+      await act(async () => releaseOldList())
+      await waitFor(() => expect(afterSequences).toEqual(['0', '1']))
+      await waitFor(() => expect(within(row).queryByText('1')).not.toBeInTheDocument())
+      expect(within(row).getByText(first.body)).toBeInTheDocument()
+      expect(listTokens).toEqual(Array(3).fill(`Bearer ${auth.accessToken}`))
+    } finally {
+      releaseOldList()
+    }
+  })
+
   it('shows successful list responses while coalescing a continuing burst of live messages', async () => {
     const messages = Array.from({ length: 7 }, (_, index) =>
       savedMessage(index + 1, `Сообщение ${index + 1}`),
