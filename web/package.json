@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:staging": "npm run build",
+    "build:staging": "npm run typecheck && node scripts/build-staging.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",

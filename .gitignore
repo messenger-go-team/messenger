@@ -38,10 +38,11 @@ web/dist/
 /web-dist-app.tar.gz
 web/coverage/
 
-# Локальные окружения (шаблоны .env.example / .env.production остаются в репозитории)
+# Локальные окружения. Общие настройки сборки хранятся в Git.
 .env.*
 !.env.example
 !.env.production
+!.env.staging
 
 # Сборка и мусор
 /bin/

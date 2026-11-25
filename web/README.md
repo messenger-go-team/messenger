@@ -182,28 +182,32 @@ credentials, если origin отличается. Все запросы отп�
 
 На staging SPA отдаётся под `https://staging.tidingm.ru/app/`. Экраны —
 `/app/login`, `/app/contacts`, `/app/later`; REST и WSS остаются на корне
-домена (`/contacts`, `/later`, `/ws`). Сборка и preview используют один конфиг
-Vite (`base` из `resolveAppBase`):
+домена (`/contacts`, `/later`, `/ws`).
 
 ```bash
-npm run build
-npm run preview
+npm run build:staging
+npm run preview -- --mode staging
 ```
 
-`npm run build:staging` — то же, что `npm run build` (`vite build`, режим
-production). `preview` не задаёт `--base` отдельно: путь берётся из того же
-конфига, что и сборка. Явный `VITE_APP_BASE=/trial/` должен быть и у `build`,
-и у `preview`, иначе ассеты из dist не совпадут с префиксом сервера.
+`build:staging` использует режим Vite `staging`. В `.env.staging`
+заданы `VITE_APP_BASE=/app/`, `VITE_API_MOCK=false` и пустые
+`VITE_API_BASE_URL` и `VITE_WS_ORIGIN`. Vite проверяет итоговые значения
+после чтения файлов окружения и переменных процесса. Если переопределение
+меняет префикс, включает моки или задаёт отдельный адрес API или WS,
+сборка останавливается. `.env.staging` перекрывает `.env.local`.
 
-`.env.production` задаёт `VITE_APP_BASE=/app/`, `VITE_API_MOCK=false` и пустые
-`VITE_API_BASE_URL` и `VITE_WS_ORIGIN`. Пустой `VITE_WS_ORIGIN` перекрывает
-значение из `.env.local`, чтобы в dist не попал локальный `ws://`. Артефакт
-для выкладки — `web/dist` из CI по SHA, не архив в Git. В `index.html` пути
-вида `/app/assets/...`.
+Для выкладки скачайте артефакт `web-dist-<SHA>-attempt-<номер>` из успешного
+запуска **Frontend CI**. SHA в имени соответствует коммиту, который собрал
+workflow: в запуске pull request это merge-коммит GitHub, в запуске из
+`main` это коммит `main`. Извлеките `index.html` и `assets/` и публикуйте
+их под `/app/`. Проверьте SHA сборки и SHA бэкенда в отчёте о выкате.
+Автоматический выкат и откат описаны в [#166](https://github.com/messenger-go-team/messenger/issues/166).
 
-Локальный MSW держите с `VITE_API_MOCK=true` и без некорневого `VITE_APP_BASE`.
-Иначе конфиг Vite останавливается с ошибкой: worker запрашивается как
-`/mockServiceWorker.js`, а файл лежит под base и не перехватывает `/contacts`.
+Обычный `npm run build` использует `.env.production` и допускает другой
+префикс или отдельные адреса API и WS. Для своего префикса, например
+`VITE_APP_BASE=/trial/`, задайте одинаковое значение у `build` и
+`preview`. Обе сборки отклоняют `VITE_API_MOCK=true`. Для локального MSW
+используйте `npm run dev` и корневой base: worker перехватывает API на корне.
 
 Публичные пользователи исключительно для локального MSW: `alice_1` и `bob_2`,
 пароль обоих — `correct-horse-battery`. Между ними подготовлен личный чат с

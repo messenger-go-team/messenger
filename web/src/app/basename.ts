@@ -38,3 +38,24 @@ export function resolveAppBase(mode: string, env: Record<string, string>): strin
   }
   return base
 }
+
+/** Validates the effective Vite environment before packaging static assets. */
+export function assertBuildProfile(mode: string, base: string, env: Record<string, string>): void {
+  if (env.VITE_API_MOCK === 'true') {
+    throw new Error('Сборка с VITE_API_MOCK=true запрещена. Для MSW используйте npm run dev.')
+  }
+
+  if (mode !== 'staging') return
+
+  if (base !== '/app/') {
+    throw new Error('Staging требует VITE_APP_BASE=/app/.')
+  }
+  if (env.VITE_API_MOCK !== 'false') {
+    throw new Error('Staging требует VITE_API_MOCK=false.')
+  }
+  for (const name of ['VITE_API_BASE_URL', 'VITE_WS_ORIGIN']) {
+    if (env[name]) {
+      throw new Error('Staging требует пустую переменную ' + name + ' для работы на том же origin.')
+    }
+  }
+}
