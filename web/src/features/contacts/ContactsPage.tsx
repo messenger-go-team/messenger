@@ -192,7 +192,11 @@ export function ContactsPage() {
 
   return (
     <div className="flex h-svh min-h-0 flex-col overflow-hidden bg-background text-foreground md:flex-row">
-      <AppNav active="contacts" onLogout={() => void logout()} className="order-last md:order-first" />
+      <AppNav
+        active="contacts"
+        onLogout={() => void logout()}
+        className="order-last md:order-first"
+      />
 
       <section className="flex min-w-0 flex-1 flex-col bg-card lg:w-[480px] lg:flex-none lg:border-r lg:border-border">
         <header className="flex items-center gap-3 px-4 pt-5 pb-3">

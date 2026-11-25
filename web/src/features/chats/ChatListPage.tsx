@@ -653,4 +653,3 @@ function InitialAvatar({ username }: { username: string }) {
     </span>
   )
 }
-
