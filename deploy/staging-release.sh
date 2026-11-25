@@ -100,7 +100,7 @@ https_status() {
 }
 
 valid_web_release() {
-    [[ $1 =~ ^releases/([a-f0-9]{40})(-[a-f0-9]{64})?$ ]] || return 1
+    [[ $1 =~ ^releases/([a-f0-9]{40})(-[a-f0-9]{64})?(~[a-zA-Z0-9_]+)?$ ]] || return 1
     local expected=${BASH_REMATCH[1]}
     [[ -s $web_root/$1/app/index.html && -f $web_root/$1/REVISION &&
         $(<"$web_root/$1/REVISION") == "$expected" ]]
@@ -125,6 +125,12 @@ activate_web() {
         rmdir "$incoming"
         return 1
     fi
+}
+
+confirm_web() {
+    local revision=$1
+    [[ -f $revision/web.release ]] || return 0
+    python3 "$tool_root/staging-web.py" confirm "$web_root" "$(<"$revision/web.release")"
 }
 
 runtime_matches() {
@@ -219,7 +225,7 @@ valid_ref() {
 # The current pointer changes only after verification. A crash after that
 # atomic commit needs only marker cleanup, never another switch.
 recover_pending() {
-    local target recovery
+    local target recovery active
     target=$(<"$state/pending")
     valid_ref "$target" || die 'invalid pending switch'
     if [[ -f $state/current && $(<"$state/current") == "$target" ]]; then
@@ -234,6 +240,11 @@ recover_pending() {
     # Restore the web pointer even if the subsequent backend recovery fails.
     activate_web "$state/$recovery" || die "web recovery failed; snapshot retained at $state/$recovery"
     activate "$state/$recovery" || die "recovery failed; snapshot retained at $state/$recovery"
+    if [[ -f $state/current && -f $state/$recovery/web.release ]]; then
+        active=$(<"$state/current")
+        valid_ref "$active" || die 'invalid active release after recovery'
+        atomic_copy "$state/$recovery/web.release" "$state/$active/web.release" 0600
+    fi
     rm -f "$state/pending"
 }
 
@@ -243,7 +254,7 @@ switch_to() {
     pointer=$(mktemp "$state/.switch.XXXXXX")
     printf '%s\n' "$target" > "$pointer"
     mv -fT "$pointer" "$state/pending"
-    if ! activate "$state/$target"; then
+    if ! activate "$state/$target" || ! confirm_web "$state/$target"; then
         log 'switch failed; restoring previous running configuration' >&2
         recover_pending
         return 1
@@ -295,14 +306,32 @@ if [[ -e $release/web.zip || -e $release/web.digest ]]; then
     [[ -s $release/web.zip && -s $release/web.digest ]] || die 'incomplete staging web artifact'
     with_web=true
 fi
+if [[ $with_web == true ]]; then
+    web_digest=$(<"$release/web.digest")
+    [[ $web_digest =~ ^[a-f0-9]{64}$ ]] || die 'invalid web digest'
+    printf '%s  %s\n' "$web_digest" "$release/web.zip" | sha256sum --status -c - || die 'web archive digest mismatch'
+fi
 if [[ -f $state/current ]]; then
     current=$(<"$state/current")
     valid_ref "$current" || die 'invalid current release'
-    if [[ $(<"$state/$current/REVISION") == "$sha" ]] &&
-        { [[ $with_web == false ]] || [[ -f $state/$current/web.release ]]; }; then
-        verify_runtime "$state/$current"
-        printf 'STAGING_RESULT already_active %s %s\n' "$sha" "$current"
-        exit 0
+    if [[ $(<"$state/$current/REVISION") == "$sha" ]]; then
+        if [[ $with_web == false ]]; then
+            verify_runtime "$state/$current"
+            printf 'STAGING_RESULT already_active %s %s\n' "$sha" "$current"
+            exit 0
+        fi
+        if [[ -f $state/$current/web.release ]]; then
+            active_web=$(<"$state/$current/web.release")
+            if valid_web_release "$active_web" && [[ -f $web_root/$active_web/ARTIFACT_SHA256 ]]; then
+                active_digest=$(<"$web_root/$active_web/ARTIFACT_SHA256")
+                if [[ $active_digest == "sha256:$web_digest" ]] && verify_runtime "$state/$current"; then
+                    confirm_web "$state/$current"
+                    printf 'STAGING_RESULT already_active %s %s\n' "$sha" "$current"
+                    exit 0
+                fi
+                log "staging web replacement for $sha: active $active_digest, requested sha256:$web_digest"
+            fi
+        fi
     fi
 fi
 
@@ -325,9 +354,18 @@ run=$(mktemp -d "$state/rel.XXXXXXXX")
 id=${run##*/}
 mkdir "$run/previous" "$run/next"
 if [[ $with_web == true ]]; then
-    previous_web=$(readlink "$web_root/current") || die 'expected an existing staging web baseline'
-    probe_web "$previous_web" || die 'baseline web smoke failed'
-    web_digest=$(<"$release/web.digest")
+    previous_web=$(readlink "$web_root/current") || previous_web=
+    if probe_web "$previous_web"; then
+        python3 "$tool_root/staging-web.py" confirm "$web_root" "$previous_web"
+    else
+        [[ -n ${current:-} && -f $state/$current/web.release ]] || die 'no confirmed web snapshot for recovery'
+        confirmed_web=$(<"$state/$current/web.release")
+        [[ $confirmed_web =~ ^releases/[a-f0-9]{40}(-[a-f0-9]{64})?(~[a-zA-Z0-9_]+)?$ ]] ||
+            die 'invalid confirmed web snapshot reference'
+        previous_web=$(python3 "$tool_root/staging-web.py" restore "$web_root" "$confirmed_web") ||
+            die 'cannot restore confirmed web snapshot'
+        log "web baseline failed smoke; rollback will use confirmed snapshot $previous_web"
+    fi
     next_web=$(python3 "$tool_root/staging-web.py" install "$web_root" "$sha" "$web_digest" "$release/web.zip") \
         || die 'could not install staging web artifact'
     valid_web_release "$next_web" || die 'invalid prepared staging web release'

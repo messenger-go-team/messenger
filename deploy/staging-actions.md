@@ -133,10 +133,15 @@ GitHub Deployments отражает подтверждённые выкаты ч
 3. Во внешнем TLS-сервере staging подключите
    [outer-web-app.conf.example](staging-rootless/outer-web-app.conf.example)
    рядом с [прокси для API и WebSocket](staging-rootless/outer-location.conf.example).
-   Если ручной include #46 уже установлен, сравните его с шаблоном.
+   Перед reload опубликуйте ассеты текущей и резервных рабочих версий
+   в общей папке. От имени messenger-stage вызовите
+   python3 deploy/staging-web.py seed "$web" "$ref" для каждой сохранённой
+   ссылки releases/... . После HTTPS smoke текущего релиза сохраните
+   отдельную копию командой python3 deploy/staging-web.py confirm "$web" "$ref".
+   Файлы общей папки app/assets сохраняются между релизами и откатами.
    Путь `/var/www/acme` внутри контейнера прокси соответствует
    `/var/lib/messenger/acme` на VPS. Выполните `nginx -t` и reload,
-   если конфигурация изменилась.
+   если конфигурация изменилась. Убедитесь, что ассеты обеих версий доступны.
 4. До мержа PR установите обновлённый
    [SSH-приёмник](staging-ssh-receiver.sh) как root-owned файл 0755,
    сохранив предыдущую копию. Старый протокол `deploy <SHA>` обслуживает

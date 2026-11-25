@@ -49,6 +49,59 @@ def index_assets(app):
     return sorted(assets.paths)
 
 
+def publish_assets(root, app, repair=False):
+    entries = app / "assets"
+    for source in sorted(entries.rglob("*")):
+        if not source.is_file():
+            continue
+        target = root / "app/assets" / source.relative_to(entries)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        for folder in (target.parent, *target.parent.parents):
+            if folder == root:
+                break
+            folder.chmod(0o755)
+        if target.exists():
+            if target.read_bytes() == source.read_bytes():
+                continue
+            if not repair:
+                raise ValueError(f"conflicting immutable asset: {target.name}")
+        with tempfile.TemporaryDirectory(dir=target.parent) as scratch:
+            prepared = Path(scratch) / "asset"
+            shutil.copyfile(source, prepared)
+            prepared.chmod(0o644)
+            # Only a confirmed backup can replace bytes at an existing asset URL.
+            if repair:
+                prepared.replace(target)
+            else:
+                target.hardlink_to(prepared)
+
+
+def backup_path(root, ref):
+    return root / "verified" / ref.split("/")[1].split("~")[0]
+
+
+def confirm(root, ref):
+    source = root / ref
+    index_assets(source / "app")
+    target = backup_path(root, ref)
+    if not target.exists():
+        target.parent.mkdir(mode=0o700, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=target.parent) as scratch:
+            shutil.copytree(source, Path(scratch) / "snapshot")
+            (Path(scratch) / "snapshot").rename(target)
+
+
+def restore(root, ref):
+    source = backup_path(root, ref)
+    index_assets(source / "app")
+    with tempfile.TemporaryDirectory(prefix=".restore.", dir=root / "releases") as scratch:
+        target = root / "releases" / (source.name + "~" + Path(scratch).name.rsplit(".", 1)[1])
+        shutil.copytree(source, Path(scratch) / "snapshot")
+        publish_assets(root, Path(scratch) / "snapshot/app", repair=True)
+        (Path(scratch) / "snapshot").rename(target)
+    print(target.relative_to(root))
+
+
 def install(root, sha, digest, archive):
     if not SHA.fullmatch(sha) or not DIGEST.fullmatch(digest):
         raise ValueError("invalid web SHA or digest")
@@ -88,15 +141,17 @@ def install(root, sha, digest, archive):
         for item in incoming.rglob("*"):
             item.chmod(0o755 if item.is_dir() else 0o644)
         incoming.chmod(0o755)
+        publish_assets(root, app)
         if target.exists():
             def files(path):
                 return {p.relative_to(path): p.read_bytes() for p in path.rglob("*") if p.is_file()}
 
             if files(incoming) != files(target):
-                raise ValueError("existing web release differs from its artifact")
+                target = target.with_name(target.name + "~" + Path(scratch).name.rsplit(".", 1)[1])
+                incoming.rename(target)
         else:
             incoming.rename(target)
-    print(ref)
+    print(target.relative_to(root))
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -142,7 +197,9 @@ def probe(root, ref, origin):
                 or response.read(len(expected) + 1) != expected
             ):
                 raise ValueError(f"unexpected asset at {path}")
-    print(f"staging: web SHA {sha} passed HTTPS smoke (/app/, login, contacts, JS, CSS)")
+    metadata = release / "ARTIFACT_SHA256"
+    digest = metadata.read_text(encoding="ascii").strip() if metadata.is_file() else "legacy"
+    print(f"staging: web SHA {sha} passed HTTPS smoke (/app/, login, contacts, JS, CSS); artifact {digest}")
 
 
 if __name__ == "__main__":
@@ -151,9 +208,17 @@ if __name__ == "__main__":
         if command == "install":
             sha, digest, archive = args
             install(Path(root), sha, digest, Path(archive))
+        elif command == "seed":
+            (ref,) = args
+            index_assets(Path(root) / ref / "app")
+            publish_assets(Path(root), Path(root) / ref / "app")
+        elif command == "confirm":
+            confirm(Path(root), *args)
+        elif command == "restore":
+            restore(Path(root), *args)
         elif command == "probe":
             probe(Path(root), *args)
         else:
-            raise ValueError("expected install or probe")
+            raise ValueError("unknown staging web command")
     except (OSError, ValueError, zipfile.BadZipFile) as error:
         sys.exit(f"staging web: {error}")

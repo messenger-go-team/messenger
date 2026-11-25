@@ -7,6 +7,7 @@ import base64
 import concurrent.futures
 import hashlib
 import json
+import re
 import os
 from pathlib import Path
 import secrets
@@ -82,13 +83,22 @@ def main():
         web = work / "staging-web"
         baseline_web = web / "releases" / HISTORY_V2_SHA
 
-        def web_files(sha, js="app.js"):
+        def web_files(sha, variant=""):
+            js = "broken.js" if sha == C else f"app-{sha[:8]}{variant}.js"
+            css = f"app-{sha[:8]}{variant}.css"
             return {
-                "index.html": f'<title>{sha}</title><script type="module" src="/app/assets/{js}"></script>'
-                              '<link rel="stylesheet" href="/app/assets/app.css">',
-                f"assets/{js}": f'console.log("{sha}");',
-                "assets/app.css": "body { color: black; }",
+                "index.html": f'<title>{sha}{variant}</title><script type="module" src="/app/assets/{js}"></script>'
+                              f'<link rel="stylesheet" href="/app/assets/{css}">',
+                f"assets/{js}": f'console.log("{sha}{variant}");',
+                f"assets/{css}": f"/* {sha}{variant} */ body {{ color: black; }}",
             }
+
+        def bundle(path, sha, variant=""):
+            archive = path / "web.zip"
+            with ZipFile(archive, "w") as zipped:
+                for name, content in web_files(sha, variant).items():
+                    zipped.writestr(name, content)
+            (path / "web.digest").write_text(hashlib.sha256(archive.read_bytes()).hexdigest())
 
         for name, content in web_files(HISTORY_V2_SHA).items():
             dest = baseline_web / "app" / name
@@ -102,6 +112,8 @@ def main():
             if file.is_file():
                 file.chmod(0o644)
 
+        run("python3", str(REPO / "deploy/staging-web.py"), "seed", str(web), f"releases/{HISTORY_V2_SHA}")
+
         def release(sha, snippet):
             path = work / f"release-{sha[0]}"
             for folder in ("services/auth/migrations", "services/history/migrations"):
@@ -111,11 +123,7 @@ def main():
             dest.write_text(snippet)
             (path / "REVISION").write_text(sha + "\n")
             shutil.copy2(work / "migrate", path / "migrate")
-            archive = path / "web.zip"
-            with ZipFile(archive, "w") as bundle:
-                for name, content in web_files(sha, "broken.js" if sha == C else "app.js").items():
-                    bundle.writestr(name, content)
-            (path / "web.digest").write_text(hashlib.sha256(archive.read_bytes()).hexdigest())
+            bundle(path, sha)
             return path
 
         original = (snippets / "public-locations.conf").read_text()
@@ -250,13 +258,23 @@ http {{
                 assert result.returncode == expect, result.stdout
                 return result.stdout
 
-            def assert_web(sha):
+            def assert_web(sha, variant=""):
                 release_path = web / os.readlink(web / "current")
                 assert (release_path / "REVISION").read_text().strip() == sha
                 for path in ("/app/login", "/app/contacts"):
                     with urllib.request.urlopen(origin + path, context=context, timeout=5) as response:
-                        assert response.read().decode() == web_files(sha)["index.html"]
+                        assert response.read().decode() == web_files(sha, variant)["index.html"]
                 return release_path
+
+            def captured_assets():
+                with urllib.request.urlopen(origin + "/app/", context=context, timeout=5) as response:
+                    paths = re.findall(r'/app/assets/[^"]+', response.read().decode())
+                assert len(paths) == 2
+                return {path: asset(path) for path in paths}
+
+            def asset(path):
+                with urllib.request.urlopen(origin + path, context=context, timeout=5) as response:
+                    return response.headers.get_content_type(), response.read()
 
             def running_revisions():
                 return [
@@ -360,12 +378,15 @@ http {{
 
             deploy(A, a, 0)
             assert_receipts(public_cursors)
+            assets_a = captured_assets()
             b_log = deploy(B, b, 0)
+            assert {path: asset(path) for path in assets_a} == assets_a
             b_pointer = (state / "current").read_text()
             b_activation = b_pointer.strip()
             assert b_activation != a_activation
             assert b_log.splitlines()[-1] == f"STAGING_RESULT deployed {B} {b_activation}"
             b_web = assert_web(B)
+            assets_b = captured_assets()
             b_container = out(*compose, "ps", "-q", "history")
             assert deploy(B, b, 0).splitlines()[-1] == f"STAGING_RESULT already_active {B} {b_activation}"
             assert out(*compose, "ps", "-q", "history") == b_container
@@ -386,10 +407,30 @@ http {{
             run(*script, "rollback", env=env)
             assert running_revisions() == [A] * len(SERVICES)
             assert_web(A)
+            assert {path: asset(path) for path in assets_b} == assets_b
             assert (snippets / "public-locations.conf").read_text() == original
             assert sql("SELECT count(*) FROM history.chats") == "1"
             assert_v3_data()
             assert_receipts(public_cursors)
+            # A damaged live copy must not count as a healthy rollback target.
+            (assert_web(A) / "app/assets/app-aaaaaaaa.js").unlink()
+            assert "rollback will use confirmed snapshot" in deploy(C, c, 1)
+            restored = assert_web(A)
+            assert (restored / "app/assets/app-aaaaaaaa.js").is_file()
+            (web / "app/assets/app-aaaaaaaa.js").write_text("damaged shared asset")
+            assert "rollback will use confirmed snapshot" in deploy(B, b, 0)
+            assert_web(B)
+
+            bundle(b, B, "-retry")
+            replaced = deploy(B, b, 0)
+            assert "staging web replacement" in replaced and "STAGING_RESULT deployed" in replaced
+            assert_web(B, "-retry")
+            activation = (state / "current").read_text()
+            assert "STAGING_RESULT already_active" in deploy(B, b, 0)
+            assert (state / "current").read_text() == activation
+            run(*script, "rollback", env=env)
+            assert_web(B)
+            print("PASS: old assets across deploy/rollback, broken baseline recovery, and changed ZIP at same SHA")
             print("PASS: v2→v3, authenticated HTTPS receipts, A → B → duplicate B → failed Nginx, JS MIME and WSS → B → manual rollback A")
         finally:
             subprocess.run(["docker", "rm", "-f", outer], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
