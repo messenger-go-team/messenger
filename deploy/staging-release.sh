@@ -240,7 +240,15 @@ valid_ref() {
     [[ $1 =~ ^rel\.[a-zA-Z0-9]+/(previous|next)$ && -d $state/$1 ]]
 }
 
-# A pending switch points at its target. The sibling is the recovery snapshot.
+recovery_ref() {
+    case "$1" in
+        */next) printf '%s/previous\n' "${1%/*}" ;;
+        */previous) printf '%s/next\n' "${1%/*}" ;;
+    esac
+}
+
+# A pending switch points at its target. Its sibling already contains the
+# prepared recovery reference and can be activated without reading verified/.
 # The current pointer changes only after verification. A crash after that
 # atomic commit needs only marker cleanup, never another switch.
 recover_pending() {
@@ -251,12 +259,9 @@ recover_pending() {
         rm -f "$state/pending"
         return
     fi
-    case "$target" in
-        */next) recovery=${target%/*}/previous ;;
-        */previous) recovery=${target%/*}/next ;;
-    esac
+    recovery=$(recovery_ref "$target")
+    valid_ref "$recovery" || die 'invalid recovery snapshot'
     log "restoring $recovery and preserving the current DB schema"
-    prepare_web_rollback "$state/$recovery" || die "cannot prepare recovery snapshot at $state/$recovery"
     # Restore the web pointer even if the subsequent backend recovery fails.
     activate_web "$state/$recovery" || die "web recovery failed; snapshot retained at $state/$recovery"
     activate "$state/$recovery" || die "recovery failed; snapshot retained at $state/$recovery"
@@ -269,8 +274,11 @@ recover_pending() {
 }
 
 switch_to() {
-    local target=$1 pointer
+    local target=$1 pointer recovery
     valid_ref "$target" || die 'invalid switch target'
+    recovery=$(recovery_ref "$target")
+    valid_ref "$recovery" || die 'invalid recovery snapshot'
+    prepare_web_rollback "$state/$recovery" || die "cannot prepare recovery snapshot at $state/$recovery"
     pointer=$(mktemp "$state/.switch.XXXXXX")
     printf '%s\n' "$target" > "$pointer"
     mv -fT "$pointer" "$state/pending"

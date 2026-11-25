@@ -251,8 +251,9 @@ http {{
             script = ("bash", str(REPO / "deploy/staging-release.sh"))
             state = work / ".release-state"
 
-            def deploy(sha, path, expect):
-                result = subprocess.run([*script, "deploy", sha, str(path)], env=env, text=True,
+            def deploy(sha, path, expect, *, probe=None):
+                release_env = env if probe is None else env | {"STAGING_WSS_PROBE": str(probe)}
+                result = subprocess.run([*script, "deploy", sha, str(path)], env=release_env, text=True,
                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 print(result.stdout, end="", flush=True)
                 assert result.returncode == expect, result.stdout
@@ -379,6 +380,43 @@ http {{
             deploy(A, a, 0)
             assert_receipts(public_cursors)
             assets_a = captured_assets()
+            previous_activation = (state / "current").read_text()
+            previous_web = os.readlink(web / "current")
+            verified = web / "verified"
+            chmod_probe = work / "deny-verified-after-smoke"
+            chmod_probe.write_text(f"""#!/usr/bin/env python3
+from pathlib import Path
+import os
+import subprocess
+import sys
+web = Path({str(web)!r})
+subprocess.run([{str(work / "staging-wss-probe")!r}, *sys.argv[1:]], check=True)
+if (web / "current/REVISION").read_text().strip() == {B!r}:
+    (web / "verified").chmod(0)
+    try:
+        os.listdir(web / "verified")
+    except PermissionError:
+        print("fixture: verified is unreadable", flush=True)
+    else:
+        sys.exit("test must run without a permission bypass")
+""")
+            chmod_probe.chmod(0o700)
+            try:
+                failed = deploy(B, b, 1, probe=chmod_probe)
+                smoke = failed.index(f"web SHA {B} passed HTTPS smoke")
+                denied = failed.index("fixture: verified is unreadable", smoke)
+                assert "Permission denied" in failed[denied:]
+                assert f"web SHA {A} passed HTTPS smoke" in failed[denied:]
+                assert "staging WSS: HTTP 101" in failed[failed.index(f"web SHA {A} passed HTTPS smoke", denied):]
+                assert (state / "current").read_text() == previous_activation
+                assert os.readlink(web / "current") == previous_web
+                assert not (state / "pending").exists()
+                assert running_revisions() == [A] * len(SERVICES)
+                assert_web(A)
+            finally:
+                verified.chmod(0o700)
+            print("PASS: automatic rollback survives unreadable verified after candidate smoke")
+
             b_log = deploy(B, b, 0)
             assert {path: asset(path) for path in assets_a} == assets_a
             b_pointer = (state / "current").read_text()
