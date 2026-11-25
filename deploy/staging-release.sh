@@ -29,6 +29,7 @@ services=(auth chat history)
 compose=(docker compose --project-name "$project" --project-directory "$root" --file "$root/compose.yaml")
 overlay="$root/compose.release.yaml"
 state="$root/.release-state"
+web_root=${STAGING_WEB_ROOT:-/var/lib/messenger/acme/staging-web}
 install -d -m 0700 "$state"
 exec 9>"$state/lock"
 flock -n 9 || die 'another deployment or rollback is running'
@@ -98,6 +99,34 @@ https_status() {
     return 1
 }
 
+valid_web_release() {
+    [[ $1 =~ ^releases/([a-f0-9]{40})(-[a-f0-9]{64})?$ ]] || return 1
+    local expected=${BASH_REMATCH[1]}
+    [[ -s $web_root/$1/app/index.html && -f $web_root/$1/REVISION &&
+        $(<"$web_root/$1/REVISION") == "$expected" ]]
+}
+
+probe_web() {
+    valid_web_release "$1" || return 1
+    python3 "$tool_root/staging-web.py" probe "$web_root" "$1" "$url"
+}
+
+activate_web() {
+    local revision=$1 ref incoming
+    [[ -f $revision/web.release ]] || return 0
+    ref=$(<"$revision/web.release") || return 1
+    valid_web_release "$ref" || return 1
+    if [[ $(readlink "$web_root/current") == "$ref" ]]; then return 0; fi
+    incoming=$(mktemp -d "$web_root/.switch.XXXXXXXX") || return 1
+    if ln -s "$ref" "$incoming/current" && mv -fT "$incoming/current" "$web_root/current"; then
+        rmdir "$incoming"
+    else
+        rm -f "$incoming/current"
+        rmdir "$incoming"
+        return 1
+    fi
+}
+
 runtime_matches() {
     local revision=$1 service expected
     for service in "${services[@]}"; do
@@ -107,7 +136,7 @@ runtime_matches() {
 }
 
 verify_runtime() {
-    local revision=$1 expected actual attempt later_status receipts_status=404
+    local revision=$1 expected actual attempt later_status receipts_status=404 web_ref
     runtime_matches "$revision" && cmp -s "$revision/public-locations.conf" "$active_snippet" || return 1
     expected=$(<"$revision/marker") || return 1
     for ((attempt=1; attempt<=10; attempt++)); do
@@ -124,6 +153,10 @@ verify_runtime() {
         receipts_status=$(<"$revision/receipts.status") || return 1
     fi
     https_status /chats/00000000-0000-4000-8000-000000000001/receipts "$receipts_status" || return 1
+    if [[ -f $revision/web.release ]]; then
+        web_ref=$(<"$revision/web.release") || return 1
+        [[ $(readlink "$web_root/current") == "$web_ref" ]] && probe_web "$web_ref" || return 1
+    fi
     "$wss_probe" "$url" "$wss_credentials"
 }
 
@@ -145,6 +178,7 @@ activate() {
         chmod 0644 "$marker" && mv -fT "$marker" "$marker_snippet" || return 1
     docker exec "$ingress" nginx -t || return 1
     docker exec "$ingress" nginx -s reload || return 1
+    activate_web "$revision" || return 1
     verify_runtime "$revision"
 }
 
@@ -197,6 +231,8 @@ recover_pending() {
         */previous) recovery=${target%/*}/next ;;
     esac
     log "restoring $recovery and preserving the current DB schema"
+    # Restore the web pointer even if the subsequent backend recovery fails.
+    activate_web "$state/$recovery" || die "web recovery failed; snapshot retained at $state/$recovery"
     activate "$state/$recovery" || die "recovery failed; snapshot retained at $state/$recovery"
     rm -f "$state/pending"
 }
@@ -226,7 +262,7 @@ rollback() {
     current=$(<"$state/current")
     valid_ref "$current" && [[ $current == */next ]] || die 'no rollback snapshot'
     switch_to "${current%/*}/previous"
-    log 'previous images and Nginx snippet restored'
+    log 'previous images, Nginx snippet and saved web version restored'
 }
 
 docker network inspect "$network" --format '{{index .Labels "com.docker.compose.project"}}' | grep -Fx "$project" >/dev/null \
@@ -254,10 +290,16 @@ release=$(realpath -e "$3")
 [[ -f $release/REVISION && $(<"$release/REVISION") == "$sha" && -x $release/migrate ]] || die 'release SHA or migrator missing'
 candidate="$release/deploy/nginx/snippets/public-locations.conf"
 [[ -s $candidate ]] || die 'release is missing the public Nginx snippet'
+with_web=false
+if [[ -e $release/web.zip || -e $release/web.digest ]]; then
+    [[ -s $release/web.zip && -s $release/web.digest ]] || die 'incomplete staging web artifact'
+    with_web=true
+fi
 if [[ -f $state/current ]]; then
     current=$(<"$state/current")
     valid_ref "$current" || die 'invalid current release'
-    if [[ $(<"$state/$current/REVISION") == "$sha" ]]; then
+    if [[ $(<"$state/$current/REVISION") == "$sha" ]] &&
+        { [[ $with_web == false ]] || [[ -f $state/$current/web.release ]]; }; then
         verify_runtime "$state/$current"
         printf 'STAGING_RESULT already_active %s %s\n' "$sha" "$current"
         exit 0
@@ -282,6 +324,16 @@ docker exec "$ingress" nginx -t
 run=$(mktemp -d "$state/rel.XXXXXXXX")
 id=${run##*/}
 mkdir "$run/previous" "$run/next"
+if [[ $with_web == true ]]; then
+    previous_web=$(readlink "$web_root/current") || die 'expected an existing staging web baseline'
+    probe_web "$previous_web" || die 'baseline web smoke failed'
+    web_digest=$(<"$release/web.digest")
+    next_web=$(python3 "$tool_root/staging-web.py" install "$web_root" "$sha" "$web_digest" "$release/web.zip") \
+        || die 'could not install staging web artifact'
+    valid_web_release "$next_web" || die 'invalid prepared staging web release'
+    printf '%s\n' "$previous_web" > "$run/previous/web.release"
+    printf '%s\n' "$next_web" > "$run/next/web.release"
+fi
 install -m 0600 "$active_snippet" "$run/previous/public-locations.conf"
 install -m 0600 "$candidate" "$run/next/public-locations.conf"
 previous_revision=unknown

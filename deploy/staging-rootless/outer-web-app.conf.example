@@ -1,0 +1,27 @@
+# Add to the staging HTTPS server only after a web build is available.
+location = / {
+    return 302 /app/$is_args$args;
+}
+
+location = /app {
+    return 302 /app/$is_args$args;
+}
+
+location = /app/index.html {
+    root /var/www/acme/staging-web/current;
+    try_files $uri =404;
+    expires -1;
+}
+
+location ^~ /app/assets/ {
+    include /etc/nginx/mime.types;
+    root /var/www/acme/staging-web/current;
+    try_files $uri =404;
+    add_header Cache-Control "public, max-age=31536000, immutable";
+}
+
+location ^~ /app/ {
+    include /etc/nginx/mime.types;
+    root /var/www/acme/staging-web/current;
+    try_files $uri /app/index.html;
+}

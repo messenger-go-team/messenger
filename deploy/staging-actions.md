@@ -8,6 +8,13 @@ Actions проверяет успешность Go CI и Frontend CI для то
 при их успехе. На VPS под файловой блокировкой приёмник проверяет SHA
 и оба CI до и после сборки.
 
+Frontend CI публикует `web-dist-<SHA>-attempt-<номер>` после сборки профиля
+staging. Deploy staging выбирает артефакт успешного push-запуска для текущего
+`main` и передаёт ZIP по stdin команды `deploy-web <SHA>`. VPS сверяет
+размер и SHA-256 с публичными метаданными того же запуска GitHub. Ещё один
+секрет или токен на VPS не требуется. Подробности переключения и восстановления
+есть в [порядке релиза](staging-release.md).
+
 GitHub Deployments отражает подтверждённые выкаты через Actions.
 При временном сбое GitHub API повторите запуск для того же SHA, пока
 он актуален. Ответ `already_active` подтверждает рабочий релиз и даёт
@@ -25,8 +32,9 @@ GitHub Deployments отражает подтверждённые выкаты ч
   не монтируются системный сокет Docker, системные файлы, каталоги
   чужих сервисов, TLS-ключи и данные production.
 - Администратор управляет внешним Nginx и TLS. Внешний Nginx
-  проксирует только домен staging на `127.0.0.1:18080`. На этом порту
-  работает внутренний Nginx rootless-контейнера. Он использует
+  отдаёт веб-сборку staging под `/app/` и проксирует REST и WSS
+  этого домена на `127.0.0.1:18080`. На этом порту работает
+  внутренний Nginx rootless-контейнера. Он использует
   публичные snippets и пересылает запросы в Auth, History и Chat.
 - Производственный Nginx, системный Docker и production Compose
   остаются за пределами доступа `messenger-stage`. Rootless
@@ -100,6 +108,46 @@ GitHub Deployments отражает подтверждённые выкаты ч
    неё верните вход только рабочим ролям выбранной БД, запустите старый
    стек с этой БД и верните маршрут Nginx.
    Сохраните обе исходные копии на случай ошибки восстановления.
+
+## Одноразовая настройка публикации веб-сборки
+
+1. Подготовьте рабочую веб-версию, которую можно вернуть. На действующем
+   стенде она уже лежит в `/var/lib/messenger/acme/staging-web` после #46.
+   На новом стенде разместите под `releases/<SHA>/app/` файлы проверенного
+   staging `dist`, запишите полный SHA в `releases/<SHA>/REVISION` и
+   создайте относительный симлинк `current → releases/<SHA>`. Проверьте
+   `/app/login`, `/app/contacts` и MIME-типы JS/CSS через HTTPS.
+2. Выдайте пользователю `messenger-stage` право писать только в каталоги
+   веб-публикации. Команды администратора для уже работающего staging:
+
+   ```bash
+   web=/var/lib/messenger/acme/staging-web
+   install -d -m 0755 -o messenger-stage -g messenger-stage "$web" "$web/releases"
+   sudo -u messenger-stage test -w "$web/releases"
+   sudo -u messenger-stage test -r "$web/current/app/index.html"
+   ```
+
+   Оставьте родительский ACME-каталог и конфигурацию внешнего Nginx под
+   управлением администратора. Передаваемый архив распаковывается от
+   имени `messenger-stage`. Nginx требуется доступ для чтения.
+3. Во внешнем TLS-сервере staging подключите
+   [outer-web-app.conf.example](staging-rootless/outer-web-app.conf.example)
+   рядом с [прокси для API и WebSocket](staging-rootless/outer-location.conf.example).
+   Если ручной include #46 уже установлен, сравните его с шаблоном.
+   Путь `/var/www/acme` внутри контейнера прокси соответствует
+   `/var/lib/messenger/acme` на VPS. Выполните `nginx -t` и reload,
+   если конфигурация изменилась.
+4. До мержа PR установите обновлённый
+   [SSH-приёмник](staging-ssh-receiver.sh) как root-owned файл 0755,
+   сохранив предыдущую копию. Старый протокол `deploy <SHA>` обслуживает
+   прежние версии приложения в переходный период. Версии с веб-автодеплоем
+   требуют `deploy-web <SHA>` с ZIP. После установки проверьте `probe`.
+5. После мержа откройте `Deploy staging` для текущего `main`. В журнале
+   проверьте имя архива, строку `web SHA … passed HTTPS smoke` и
+   `STAGING_RESULT`. Повторите workflow вручную. Результат
+   `already_active` подтверждает тот же снимок и сохраняет точку отката.
+   Проверьте прямое открытие и обновление `/app/login` и
+   `/app/contacts` в браузере.
 
 ## GitHub и SSH после подтверждения границы
 

@@ -5,6 +5,7 @@ and a temporary database. Run from the repository root.
 """
 import base64
 import concurrent.futures
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from zipfile import ZipFile
 
 REPO = Path.cwd()
 SERVICES = ("auth", "chat", "history")
@@ -77,6 +79,29 @@ def main():
             for job in jobs:
                 job.result()
 
+        web = work / "staging-web"
+        baseline_web = web / "releases" / HISTORY_V2_SHA
+
+        def web_files(sha, js="app.js"):
+            return {
+                "index.html": f'<title>{sha}</title><script type="module" src="/app/assets/{js}"></script>'
+                              '<link rel="stylesheet" href="/app/assets/app.css">',
+                f"assets/{js}": f'console.log("{sha}");',
+                "assets/app.css": "body { color: black; }",
+            }
+
+        for name, content in web_files(HISTORY_V2_SHA).items():
+            dest = baseline_web / "app" / name
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(content)
+        (baseline_web / "REVISION").write_text(HISTORY_V2_SHA)
+        (web / "current").symlink_to(f"releases/{HISTORY_V2_SHA}")
+        for folder in (web, web / "releases", baseline_web, baseline_web / "app", baseline_web / "app/assets"):
+            folder.chmod(0o755)
+        for file in (baseline_web / "app").rglob("*"):
+            if file.is_file():
+                file.chmod(0o644)
+
         def release(sha, snippet):
             path = work / f"release-{sha[0]}"
             for folder in ("services/auth/migrations", "services/history/migrations"):
@@ -86,6 +111,11 @@ def main():
             dest.write_text(snippet)
             (path / "REVISION").write_text(sha + "\n")
             shutil.copy2(work / "migrate", path / "migrate")
+            archive = path / "web.zip"
+            with ZipFile(archive, "w") as bundle:
+                for name, content in web_files(sha, "broken.js" if sha == C else "app.js").items():
+                    bundle.writestr(name, content)
+            (path / "web.digest").write_text(hashlib.sha256(archive.read_bytes()).hexdigest())
             return path
 
         original = (snippets / "public-locations.conf").read_text()
@@ -164,19 +194,29 @@ def main():
                 "-keyout", str(key), "-out", str(cert), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             proxy = (REPO / "deploy/staging-rootless/outer-location.conf.example").read_text()
             proxy = proxy.replace("http://127.0.0.1:18080", f"http://{edge}:8080")
+            spa = (REPO / "deploy/staging-rootless/outer-web-app.conf.example").read_text()
             (work / "outer.conf").write_text(f"""events {{}}
 http {{
+    include /etc/nginx/mime.types;
     map $http_upgrade $connection_upgrade {{ default upgrade; '' close; }}
     server {{
         listen 443 ssl;
+        absolute_redirect off;
         ssl_certificate /lab/cert.pem;
         ssl_certificate_key /lab/key.pem;
         {proxy}
+        {spa}
+        location = /app/assets/broken.js {{
+            types {{}}
+            default_type text/plain;
+            return 200 'console.log("{C}");';
+        }}
     }}
 }}
 """)
             run("docker", "run", "-d", "--name", outer, "--network", network, "-p", f"127.0.0.1:{port}:443",
                 "-v", f"{work/'outer.conf'}:/etc/nginx/nginx.conf:ro",
+                "-v", f"{web}:/var/www/acme/staging-web:ro",
                 "-v", f"{cert}:/lab/cert.pem:ro", "-v", f"{key}:/lab/key.pem:ro", "nginx:alpine")
 
             credentials = {"username": "staging_probe", "password": secrets.token_urlsafe(24)}
@@ -197,7 +237,7 @@ http {{
                     time.sleep(.3)
 
             env = dict(os.environ, STAGING_ROOT=str(work), STAGING_PROJECT=project, STAGING_INGRESS=edge,
-                       STAGING_SNIPPETS=str(snippets), STAGING_URL=origin,
+                       STAGING_SNIPPETS=str(snippets), STAGING_URL=origin, STAGING_WEB_ROOT=str(web),
                        STAGING_WSS_PROBE=str(work / "staging-wss-probe"),
                        CURL_CA_BUNDLE=str(cert), SSL_CERT_FILE=str(cert))
             script = ("bash", str(REPO / "deploy/staging-release.sh"))
@@ -209,6 +249,14 @@ http {{
                 print(result.stdout, end="", flush=True)
                 assert result.returncode == expect, result.stdout
                 return result.stdout
+
+            def assert_web(sha):
+                release_path = web / os.readlink(web / "current")
+                assert (release_path / "REVISION").read_text().strip() == sha
+                for path in ("/app/login", "/app/contacts"):
+                    with urllib.request.urlopen(origin + path, context=context, timeout=5) as response:
+                        assert response.read().decode() == web_files(sha)["index.html"]
+                return release_path
 
             def running_revisions():
                 return [
@@ -231,6 +279,8 @@ http {{
             a_log = deploy(A, a, 0)
             a_activation = (state / "current").read_text().strip()
             assert a_log.splitlines()[-1] == f"STAGING_RESULT deployed {A} {a_activation}"
+            assert f"web SHA {A} passed HTTPS smoke" in a_log
+            assert_web(A)
             assert (state / a_activation).parent.joinpath("previous/receipts.status").read_text() == "404\n"
             assert "applying migrations before switching services (1:false,2:false)" in a_log
             assert "saved DB dump" in a_log
@@ -296,6 +346,7 @@ http {{
 
             run(*script, "rollback", env=env)
             assert running_revisions() == [HISTORY_V2_SHA] * len(SERVICES)
+            assert_web(HISTORY_V2_SHA)
             assert (snippets / "public-locations.conf").read_text() == baseline_snippet
             run("docker", "exec", edge, "wget", "-qO", "/dev/null", "http://history:8080/readyz")
             try:
@@ -314,23 +365,32 @@ http {{
             b_activation = b_pointer.strip()
             assert b_activation != a_activation
             assert b_log.splitlines()[-1] == f"STAGING_RESULT deployed {B} {b_activation}"
+            b_web = assert_web(B)
             b_container = out(*compose, "ps", "-q", "history")
             assert deploy(B, b, 0).splitlines()[-1] == f"STAGING_RESULT already_active {B} {b_activation}"
             assert out(*compose, "ps", "-q", "history") == b_container
             assert (state / "current").read_text() == b_pointer
+            assert assert_web(B) == b_web
             assert "invalid_staging_test_directive" in deploy(C, c, 1)
             assert (state / "current").read_text() == b_pointer
+            assert assert_web(B) == b_web
+            (c / "deploy/nginx/snippets/public-locations.conf").write_text(original)
+            assert "unexpected asset at /app/assets/broken.js" in deploy(C, c, 1)
+            assert (state / "current").read_text() == b_pointer
+            assert assert_web(B) == b_web
             assert "public WSS returned HTTP 404" in deploy(D, d, 1)
             assert (state / "current").read_text() == b_pointer
+            assert assert_web(B) == b_web
             assert not (state / "pending").exists()
             assert deploy(B, b, 0).splitlines()[-1] == f"STAGING_RESULT already_active {B} {b_activation}"
             run(*script, "rollback", env=env)
             assert running_revisions() == [A] * len(SERVICES)
+            assert_web(A)
             assert (snippets / "public-locations.conf").read_text() == original
             assert sql("SELECT count(*) FROM history.chats") == "1"
             assert_v3_data()
             assert_receipts(public_cursors)
-            print("PASS: v2→v3, authenticated HTTPS receipts, A → B → duplicate B → failed C and broken WSS → B → manual rollback A")
+            print("PASS: v2→v3, authenticated HTTPS receipts, A → B → duplicate B → failed Nginx, JS MIME and WSS → B → manual rollback A")
         finally:
             subprocess.run(["docker", "rm", "-f", outer], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             subprocess.run([*compose, "down", "-v"], check=False, stdout=subprocess.DEVNULL)
