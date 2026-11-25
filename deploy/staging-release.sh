@@ -99,8 +99,12 @@ https_status() {
     return 1
 }
 
+valid_web_ref() {
+    [[ $1 =~ ^releases/([a-f0-9]{40})(-[a-f0-9]{64})?(~[a-zA-Z0-9_]+)?$ ]]
+}
+
 valid_web_release() {
-    [[ $1 =~ ^releases/([a-f0-9]{40})(-[a-f0-9]{64})?(~[a-zA-Z0-9_]+)?$ ]] || return 1
+    valid_web_ref "$1" || return 1
     local expected=${BASH_REMATCH[1]}
     [[ -s $web_root/$1/app/index.html && -f $web_root/$1/REVISION &&
         $(<"$web_root/$1/REVISION") == "$expected" ]]
@@ -124,6 +128,21 @@ activate_web() {
         rm -f "$incoming/current"
         rmdir "$incoming"
         return 1
+    fi
+}
+
+prepare_web_rollback() {
+    local revision=$1 ref ready
+    [[ -f $revision/web.release ]] || return 0
+    ref=$(<"$revision/web.release") || return 1
+    valid_web_ref "$ref" || return 1
+    ready=$(python3 "$tool_root/staging-web.py" prepare-rollback "$web_root" "$ref") || return 1
+    valid_web_release "$ready" || return 1
+    if [[ $ready != "$ref" ]]; then
+        local pointer
+        pointer=$(mktemp "$revision/.web.XXXXXXXX") || return 1
+        printf '%s\n' "$ready" > "$pointer" && mv -fT "$pointer" "$revision/web.release" || return 1
+        log "prepared rollback from verified web snapshot $ready"
     fi
 }
 
@@ -237,6 +256,7 @@ recover_pending() {
         */previous) recovery=${target%/*}/next ;;
     esac
     log "restoring $recovery and preserving the current DB schema"
+    prepare_web_rollback "$state/$recovery" || die "cannot prepare recovery snapshot at $state/$recovery"
     # Restore the web pointer even if the subsequent backend recovery fails.
     activate_web "$state/$recovery" || die "web recovery failed; snapshot retained at $state/$recovery"
     activate "$state/$recovery" || die "recovery failed; snapshot retained at $state/$recovery"
@@ -269,10 +289,13 @@ rollback() {
         return
     fi
     [[ -f $state/current ]] || die 'no rollback snapshot'
-    local current
+    local current target
     current=$(<"$state/current")
     valid_ref "$current" && [[ $current == */next ]] || die 'no rollback snapshot'
-    switch_to "${current%/*}/previous"
+    target="${current%/*}/previous"
+    valid_ref "$target" || die 'invalid rollback snapshot'
+    prepare_web_rollback "$state/$target" || die 'cannot prepare web rollback snapshot'
+    switch_to "$target"
     log 'previous images, Nginx snippet and saved web version restored'
 }
 
@@ -360,7 +383,7 @@ if [[ $with_web == true ]]; then
     else
         [[ -n ${current:-} && -f $state/$current/web.release ]] || die 'no confirmed web snapshot for recovery'
         confirmed_web=$(<"$state/$current/web.release")
-        [[ $confirmed_web =~ ^releases/[a-f0-9]{40}(-[a-f0-9]{64})?(~[a-zA-Z0-9_]+)?$ ]] ||
+        valid_web_ref "$confirmed_web" ||
             die 'invalid confirmed web snapshot reference'
         previous_web=$(python3 "$tool_root/staging-web.py" restore "$web_root" "$confirmed_web") ||
             die 'cannot restore confirmed web snapshot'

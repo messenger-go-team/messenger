@@ -404,8 +404,30 @@ http {{
             assert assert_web(B) == b_web
             assert not (state / "pending").exists()
             assert deploy(B, b, 0).splitlines()[-1] == f"STAGING_RESULT already_active {B} {b_activation}"
-            run(*script, "rollback", env=env)
+
+            # A repeat must repair the verified copy even when the live files still work.
+            verified = web / "verified"
+            pointer = verified / (b_web.name + ".current")
+            before_repair = out(*compose, "ps", "-q", "history")
+            old_backup = pointer.read_text().strip()
+            (verified / old_backup / "release/app/assets/app-bbbbbbbb.js").unlink()
+            assert deploy(B, b, 0).splitlines()[-1] == f"STAGING_RESULT already_active {B} {b_activation}"
+            assert out(*compose, "ps", "-q", "history") == before_repair
+            assert (state / "current").read_text() == b_pointer
+            assert pointer.read_text().strip() != old_backup
+            restored_b = run("python3", str(REPO / "deploy/staging-web.py"), "restore", str(web),
+                             str(b_web.relative_to(web)), capture_output=True).stdout.strip()
+            assert (web / restored_b / "app/assets/app-bbbbbbbb.js").read_bytes() == (
+                b_web / "app/assets/app-bbbbbbbb.js"
+            ).read_bytes()
+
+            # The previous live directory can be damaged while its verified copy stays healthy.
+            rollback_ref = (state / b_activation).parent.joinpath("previous/web.release").read_text().strip()
+            (web / rollback_ref / "app/index.html").unlink()
+            result = run(*script, "rollback", env=env, capture_output=True)
+            assert "prepared rollback from verified web snapshot" in result.stdout
             assert running_revisions() == [A] * len(SERVICES)
+            print("PASS: manual rollback repaired previous HTML, already_active repaired verified JS")
             assert_web(A)
             assert {path: asset(path) for path in assets_b} == assets_b
             assert (snippets / "public-locations.conf").read_text() == original

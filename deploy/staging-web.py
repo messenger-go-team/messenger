@@ -1,5 +1,6 @@
 """Install and smoke-test an immutable staging web release."""
 import hashlib
+import json
 from html.parser import HTMLParser
 from pathlib import Path
 import re
@@ -76,30 +77,96 @@ def publish_assets(root, app, repair=False):
                 target.hardlink_to(prepared)
 
 
-def backup_path(root, ref):
-    return root / "verified" / ref.split("/")[1].split("~")[0]
+def manifest(path):
+    result = {}
+    for file in sorted(path.rglob("*")):
+        if file.is_file():
+            with file.open("rb") as source:
+                result[file.relative_to(path).as_posix()] = hashlib.file_digest(source, "sha256").hexdigest()
+    return result
+
+
+def backup_key(ref):
+    return ref.split("/")[1].split("~")[0]
+
+
+def verified_snapshot(root, ref):
+    directory = root / "verified"
+    key = backup_key(ref)
+    pointer = directory / (key + ".current")
+    if not pointer.exists():
+        # Existing staging installations may have an original unversioned backup.
+        snapshot = directory / key
+        if not snapshot.exists():
+            return None
+        index_assets(snapshot / "app")
+        return snapshot
+
+    name = pointer.read_text(encoding="ascii").strip()
+    if not re.fullmatch(r"snapshot\.[A-Za-z0-9_]+", name):
+        raise ValueError("invalid verified web snapshot pointer")
+    record = directory / name
+    snapshot = record / "release"
+    index_assets(snapshot / "app")
+    expected = json.loads((record / "manifest.json").read_text(encoding="utf-8"))
+    if manifest(snapshot) != expected:
+        raise ValueError("verified web snapshot checksum mismatch")
+    return snapshot
 
 
 def confirm(root, ref):
     source = root / ref
     index_assets(source / "app")
-    target = backup_path(root, ref)
-    if not target.exists():
-        target.parent.mkdir(mode=0o700, exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=target.parent) as scratch:
-            shutil.copytree(source, Path(scratch) / "snapshot")
-            (Path(scratch) / "snapshot").rename(target)
+    expected = manifest(source)
+    try:
+        previous = verified_snapshot(root, ref)
+        if previous is not None and (previous.parent / "manifest.json").is_file():
+            if manifest(previous) == expected:
+                return
+    except (OSError, ValueError):
+        pass  # A healthy, smoke-tested source can repair a corrupt backup.
+
+    directory = root / "verified"
+    directory.mkdir(mode=0o700, exist_ok=True)
+    record = Path(tempfile.mkdtemp(prefix="snapshot.", dir=directory))
+    try:
+        snapshot = record / "release"
+        shutil.copytree(source, snapshot)
+        if manifest(snapshot) != expected:
+            raise ValueError("web files changed while preparing their verified copy")
+        (record / "manifest.json").write_text(json.dumps(expected), encoding="utf-8")
+        # Keep the previous backup reachable until the replacement is complete.
+        pointer = record / "pointer"
+        pointer.write_text(record.name + "\n", encoding="ascii")
+        pointer.replace(directory / (backup_key(ref) + ".current"))
+    except (OSError, ValueError):
+        shutil.rmtree(record)
+        raise
 
 
 def restore(root, ref):
-    source = backup_path(root, ref)
-    index_assets(source / "app")
+    source = verified_snapshot(root, ref)
+    if source is None:
+        raise ValueError("no verified web snapshot")
     with tempfile.TemporaryDirectory(prefix=".restore.", dir=root / "releases") as scratch:
-        target = root / "releases" / (source.name + "~" + Path(scratch).name.rsplit(".", 1)[1])
+        target = root / "releases" / (backup_key(ref) + "~" + Path(scratch).name.rsplit(".", 1)[1])
         shutil.copytree(source, Path(scratch) / "snapshot")
         publish_assets(root, Path(scratch) / "snapshot/app", repair=True)
         (Path(scratch) / "snapshot").rename(target)
     print(target.relative_to(root))
+
+
+def prepare_rollback(root, ref):
+    source = verified_snapshot(root, ref)
+    app = root / ref / "app"
+    if source is None:
+        index_assets(app)
+    elif manifest(root / ref) != manifest(source):
+        restore(root, ref)
+        return
+    if source is not None:
+        publish_assets(root, source / "app", repair=True)
+    print(ref)
 
 
 def install(root, sha, digest, archive):
@@ -143,10 +210,7 @@ def install(root, sha, digest, archive):
         incoming.chmod(0o755)
         publish_assets(root, app)
         if target.exists():
-            def files(path):
-                return {p.relative_to(path): p.read_bytes() for p in path.rglob("*") if p.is_file()}
-
-            if files(incoming) != files(target):
+            if manifest(incoming) != manifest(target):
                 target = target.with_name(target.name + "~" + Path(scratch).name.rsplit(".", 1)[1])
                 incoming.rename(target)
         else:
@@ -216,6 +280,8 @@ if __name__ == "__main__":
             confirm(Path(root), *args)
         elif command == "restore":
             restore(Path(root), *args)
+        elif command == "prepare-rollback":
+            prepare_rollback(Path(root), *args)
         elif command == "probe":
             probe(Path(root), *args)
         else:
