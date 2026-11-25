@@ -1,0 +1,993 @@
+{
+  "runID": "t50-ws-4408814b",
+  "origin": "https://staging.tidingm.ru",
+  "wsOrigin": "wss://staging.tidingm.ru/ws",
+  "started": "2026-11-22T19:37:48.794Z",
+  "ended": "2026-11-22T19:38:03.888Z",
+  "durationMs": 15094,
+  "tool": {
+    "bruno": "4.3.0",
+    "ws": "8.21.3",
+    "node": "24.16.0"
+  },
+  "contracts": {
+    "wsSourceRef": "9a0ecf3e04465ad99db0606e0020fe6f9e21ffff",
+    "wsLastChange": "c27de0b05aed2d0d860a611c6742068aa2304b27",
+    "wsSHA256": "235e9ea3fa4902f788c0b83525d7d35f0b531037930dd02f7b902504e2e64886",
+    "authSHA256": "7c9330b2a23c1d6abeed1d2d96648ee85487f66ef1d950f1ade60829fdecaef3",
+    "historySHA256": "d1441e10aa4ec0e93706e7a458bbc3c46a768cf23a1f4511ecf5f91d6212554f"
+  },
+  "summary": {
+    "totalRequests": 32,
+    "passedRequests": 32,
+    "failedRequests": 0,
+    "errorRequests": 0,
+    "skippedRequests": 0,
+    "skippedByBail": 0,
+    "totalAssertions": 0,
+    "passedAssertions": 0,
+    "failedAssertions": 0,
+    "totalTests": 96,
+    "passedTests": 96,
+    "failedTests": 0,
+    "totalPreRequestTests": 0,
+    "passedPreRequestTests": 0,
+    "failedPreRequestTests": 0,
+    "totalPostResponseTests": 0,
+    "passedPostResponseTests": 0,
+    "failedPostResponseTests": 0
+  },
+  "ws": {
+    "started": "2026-11-22T19:37:59.141Z",
+    "ended": "2026-11-22T19:38:01.012Z",
+    "checks": [
+      {
+        "id": "UPGRADE-a",
+        "status": "pass"
+      },
+      {
+        "id": "UPGRADE-b",
+        "status": "pass"
+      },
+      {
+        "id": "UPGRADE-c",
+        "status": "pass"
+      },
+      {
+        "id": "ACK-CORRELATION-a",
+        "status": "pass"
+      },
+      {
+        "id": "NEW-CONTENT-a-a",
+        "status": "pass"
+      },
+      {
+        "id": "NEW-CONTENT-a-b",
+        "status": "pass"
+      },
+      {
+        "id": "ACK-CORRELATION-b",
+        "status": "pass"
+      },
+      {
+        "id": "NEW-CONTENT-b-a",
+        "status": "pass"
+      },
+      {
+        "id": "NEW-CONTENT-b-b",
+        "status": "pass"
+      },
+      {
+        "id": "REPEAT-SAME-MESSAGE",
+        "status": "pass"
+      },
+      {
+        "id": "REPEAT-NEW-ATTEMPT-ID",
+        "status": "pass"
+      },
+      {
+        "id": "FOREIGN-FORBIDDEN",
+        "status": "pass"
+      },
+      {
+        "id": "C-NO-ACK-OR-NEW",
+        "status": "pass"
+      },
+      {
+        "id": "FOREIGN-NO-NEW-TO-MEMBERS",
+        "status": "pass"
+      },
+      {
+        "id": "VALID-TEXT-EVENTS",
+        "status": "pass"
+      },
+      {
+        "id": "SOCKETS-OPEN-DURING-OBSERVATION",
+        "status": "pass"
+      }
+    ],
+    "handshakes": [
+      {
+        "user": "a",
+        "status": 101,
+        "protocol": "messenger.v1"
+      },
+      {
+        "user": "b",
+        "status": 101,
+        "protocol": "messenger.v1"
+      },
+      {
+        "user": "c",
+        "status": 101,
+        "protocol": "messenger.v1"
+      }
+    ],
+    "negativeObservationStart": "2026-11-22T19:37:59.589Z",
+    "negativeObservationEnd": "2026-11-22T19:38:00.794Z",
+    "manifest": {
+      "a": {
+        "id": "178fce6d-b6ae-4c20-810a-4c7fb2f6171f"
+      },
+      "b": {
+        "id": "b057c22d-a7b4-498e-bc14-1d56322560bc"
+      },
+      "c": {
+        "id": "fe1f334d-5fcd-4d31-93a8-43ba80684f7d"
+      },
+      "chatID": "9977e288-a04b-40fe-b0fc-bd0bec4855e9",
+      "commands": {
+        "m1": {
+          "type": "message.send",
+          "id": "b2d06c4c-4550-4c16-bd7a-419c7d11e845",
+          "ts": "2026-11-22T19:37:59.143Z",
+          "payload": {
+            "chat_id": "9977e288-a04b-40fe-b0fc-bd0bec4855e9",
+            "client_msg_id": "ef7e800b-16f0-4e37-9f13-fce0dd6513cb",
+            "body": "T50 4408814b M1 A to B"
+          }
+        },
+        "m2": {
+          "type": "message.send",
+          "id": "e81a7d62-dcb0-4aee-84db-a9a43032768f",
+          "ts": "2026-11-22T19:37:59.143Z",
+          "payload": {
+            "chat_id": "9977e288-a04b-40fe-b0fc-bd0bec4855e9",
+            "client_msg_id": "4998a114-c9e5-4d37-a220-9cfa19894d23",
+            "body": "T50 4408814b M2 B to A"
+          }
+        },
+        "foreign": {
+          "type": "message.send",
+          "id": "34d87d8c-14ad-47ff-8086-fe83c0f500e9",
+          "ts": "2026-11-22T19:37:59.143Z",
+          "payload": {
+            "chat_id": "9977e288-a04b-40fe-b0fc-bd0bec4855e9",
+            "client_msg_id": "f0e61b54-c096-4104-a583-0cf173e95287",
+            "body": "T50 forbidden C message"
+          }
+        },
+        "repeat": {
+          "type": "message.send",
+          "id": "4fb4196b-e280-4a23-a081-6310237710af",
+          "ts": "2026-11-22T19:37:59.534Z",
+          "payload": {
+            "chat_id": "9977e288-a04b-40fe-b0fc-bd0bec4855e9",
+            "client_msg_id": "ef7e800b-16f0-4e37-9f13-fce0dd6513cb",
+            "body": "T50 4408814b M1 A to B"
+          }
+        }
+      },
+      "m1": {
+        "id": "39d2b68e-7220-41cb-b8fd-a5de298d1b4a",
+        "seq": 1
+      },
+      "m2": {
+        "id": "29c85b91-857e-4177-a82a-18d8e4d03879",
+        "seq": 2
+      }
+    },
+    "events": {
+      "a": [
+        {
+          "received": "2026-11-22T19:37:59.427Z",
+          "binary": false,
+          "type": "message.ack",
+          "id": "b2d06c4c-4550-4c16-bd7a-419c7d11e845",
+          "ts": "2026-11-22T19:37:59.000994655Z",
+          "payload": {
+            "chat_id": "9977e288-a04b-40fe-b0fc-bd0bec4855e9",
+            "client_msg_id": "ef7e800b-16f0-4e37-9f13-fce0dd6513cb",
+            "message_id": "39d2b68e-7220-41cb-b8fd-a5de298d1b4a",
+            "seq": 1,
+            "created_at": "2026-11-22T19:37:58.99925Z"
+          }
+        },
+        {
+          "received": "2026-11-22T19:37:59.429Z",
+          "binary": false,
+          "type": "message.new",
+          "id": "f2ff67e3-a17d-49bf-97bf-716f6ca9729e",
+          "ts": "2026-11-22T19:37:59.001101738Z",
+          "payload": {
+            "chat_id": "9977e288-a04b-40fe-b0fc-bd0bec4855e9",
+            "client_msg_id": "ef7e800b-16f0-4e37-9f13-fce0dd6513cb",
+            "message_id": "39d2b68e-7220-41cb-b8fd-a5de298d1b4a",
+            "seq": 1,
+            "created_at": "2026-11-22T19:37:58.99925Z",
+            "sender_id": "178fce6d-b6ae-4c20-810a-4c7fb2f6171f",
+            "body": "T50 4408814b M1 A to B"
+          }
+        },
+        {
+          "received": "2026-11-22T19:37:59.500Z",
+          "binary": false,
+          "type": "message.new",
+          "id": "5f4394e7-586b-48f9-ad93-3397d1270962",
+          "ts": "2026-11-22T19:37:59.075111246Z",
+          "payload": {
+            "chat_id": "9977e288-a04b-40fe-b0fc-bd0bec4855e9",
+            "client_msg_id": "4998a114-c9e5-4d37-a220-9cfa19894d23",
+            "message_id": "29c85b91-857e-4177-a82a-18d8e4d03879",
+            "seq": 2,
+            "created_at": "2026-11-22T19:37:59.073285Z",
+            "sender_id": "b057c22d-a7b4-498e-bc14-1d56322560bc",
+            "body": "T50 4408814b M2 B to A"
+          }
+        },
+        {
+          "received": "2026-11-22T19:37:59.555Z",
+          "binary": false,
+          "type": "message.ack",
+          "id": "4fb4196b-e280-4a23-a081-6310237710af",
+          "ts": "2026-11-22T19:37:59.132061473Z",
+          "payload": {
+            "chat_id": "9977e288-a04b-40fe-b0fc-bd0bec4855e9",
+            "client_msg_id": "ef7e800b-16f0-4e37-9f13-fce0dd6513cb",
+            "message_id": "39d2b68e-7220-41cb-b8fd-a5de298d1b4a",
+            "seq": 1,
+            "created_at": "2026-11-22T19:37:58.99925Z"
+          }
+        }
+      ],
+      "b": [
+        {
+          "received": "2026-11-22T19:37:59.430Z",
+          "binary": false,
+          "type": "message.new",
+          "id": "f2ff67e3-a17d-49bf-97bf-716f6ca9729e",
+          "ts": "2026-11-22T19:37:59.001101738Z",
+          "payload": {
+            "chat_id": "9977e288-a04b-40fe-b0fc-bd0bec4855e9",
+            "client_msg_id": "ef7e800b-16f0-4e37-9f13-fce0dd6513cb",
+            "message_id": "39d2b68e-7220-41cb-b8fd-a5de298d1b4a",
+            "seq": 1,
+            "created_at": "2026-11-22T19:37:58.99925Z",
+            "sender_id": "178fce6d-b6ae-4c20-810a-4c7fb2f6171f",
+            "body": "T50 4408814b M1 A to B"
+          }
+        },
+        {
+          "received": "2026-11-22T19:37:59.497Z",
+          "binary": false,
+          "type": "message.ack",
+          "id": "e81a7d62-dcb0-4aee-84db-a9a43032768f",
+          "ts": "2026-11-22T19:37:59.075046284Z",
+          "payload": {
+            "chat_id": "9977e288-a04b-40fe-b0fc-bd0bec4855e9",
+            "client_msg_id": "4998a114-c9e5-4d37-a220-9cfa19894d23",
+            "message_id": "29c85b91-857e-4177-a82a-18d8e4d03879",
+            "seq": 2,
+            "created_at": "2026-11-22T19:37:59.073285Z"
+          }
+        },
+        {
+          "received": "2026-11-22T19:37:59.499Z",
+          "binary": false,
+          "type": "message.new",
+          "id": "5f4394e7-586b-48f9-ad93-3397d1270962",
+          "ts": "2026-11-22T19:37:59.075111246Z",
+          "payload": {
+            "chat_id": "9977e288-a04b-40fe-b0fc-bd0bec4855e9",
+            "client_msg_id": "4998a114-c9e5-4d37-a220-9cfa19894d23",
+            "message_id": "29c85b91-857e-4177-a82a-18d8e4d03879",
+            "seq": 2,
+            "created_at": "2026-11-22T19:37:59.073285Z",
+            "sender_id": "b057c22d-a7b4-498e-bc14-1d56322560bc",
+            "body": "T50 4408814b M2 B to A"
+          }
+        }
+      ],
+      "c": [
+        {
+          "received": "2026-11-22T19:37:59.587Z",
+          "binary": false,
+          "type": "error",
+          "id": "34d87d8c-14ad-47ff-8086-fe83c0f500e9",
+          "ts": "2026-11-22T19:37:59.162736761Z",
+          "payload": {
+            "client_msg_id": "f0e61b54-c096-4104-a583-0cf173e95287",
+            "code": "forbidden",
+            "message": "Нет доступа к чату.",
+            "retryable": false,
+            "request_type": "message.send"
+          }
+        }
+      ]
+    }
+  },
+  "requests": [
+    {
+      "id": "REGISTER-a",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/auth/register",
+      "httpStatus": 201,
+      "tests": [
+        {
+          "name": "REGISTER-a HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "REGISTER-a OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "REGISTER-a semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LOGIN-a",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/auth/login",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "LOGIN-a HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LOGIN-a OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LOGIN-a semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "ME-a",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/me",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "ME-a HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "ME-a OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "ME-a semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "REGISTER-b",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/auth/register",
+      "httpStatus": 201,
+      "tests": [
+        {
+          "name": "REGISTER-b HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "REGISTER-b OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "REGISTER-b semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LOGIN-b",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/auth/login",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "LOGIN-b HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LOGIN-b OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LOGIN-b semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "ME-b",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/me",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "ME-b HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "ME-b OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "ME-b semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "REGISTER-c",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/auth/register",
+      "httpStatus": 201,
+      "tests": [
+        {
+          "name": "REGISTER-c HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "REGISTER-c OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "REGISTER-c semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LOGIN-c",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/auth/login",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "LOGIN-c HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LOGIN-c OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LOGIN-c semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "ME-c",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/me",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "ME-c HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "ME-c OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "ME-c semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "CHAT-CREATE",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/chats/personal",
+      "httpStatus": 201,
+      "tests": [
+        {
+          "name": "CHAT-CREATE HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "CHAT-CREATE OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "CHAT-CREATE semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "B-UNREAD-INITIAL",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "B-UNREAD-INITIAL HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "B-UNREAD-INITIAL OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "B-UNREAD-INITIAL semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "WS-EXCHANGE-AND-HISTORY-A",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats/9977e288-a04b-40fe-b0fc-bd0bec4855e9/messages?after_seq=0",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "WS-EXCHANGE-AND-HISTORY-A HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "WS-EXCHANGE-AND-HISTORY-A OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "WS-EXCHANGE-AND-HISTORY-A semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "B-UNREAD-ONE-INCOMING",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "B-UNREAD-ONE-INCOMING HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "B-UNREAD-ONE-INCOMING OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "B-UNREAD-ONE-INCOMING semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "A-UNREAD-ONE-INCOMING",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "A-UNREAD-ONE-INCOMING HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "A-UNREAD-ONE-INCOMING OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "A-UNREAD-ONE-INCOMING semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "HISTORY-B-NO-MARK",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats/9977e288-a04b-40fe-b0fc-bd0bec4855e9/messages?after_seq=0",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "HISTORY-B-NO-MARK HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "HISTORY-B-NO-MARK OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "HISTORY-B-NO-MARK semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "B-UNREAD-UNCHANGED-AFTER-GET",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "B-UNREAD-UNCHANGED-AFTER-GET HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "B-UNREAD-UNCHANGED-AFTER-GET OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "B-UNREAD-UNCHANGED-AFTER-GET semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "B-READ-M1",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/chats/9977e288-a04b-40fe-b0fc-bd0bec4855e9/read",
+      "httpStatus": 204,
+      "tests": [
+        {
+          "name": "B-READ-M1 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "B-READ-M1 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "B-READ-M1 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "B-UNREAD-ZERO",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "B-UNREAD-ZERO HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "B-UNREAD-ZERO OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "B-UNREAD-ZERO semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "A-CURSOR-ISOLATED",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "A-CURSOR-ISOLATED HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "A-CURSOR-ISOLATED OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "A-CURSOR-ISOLATED semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "A-READ-OWN-M1",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/chats/9977e288-a04b-40fe-b0fc-bd0bec4855e9/read",
+      "httpStatus": 204,
+      "tests": [
+        {
+          "name": "A-READ-OWN-M1 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "A-READ-OWN-M1 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "A-READ-OWN-M1 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "A-M2-STILL-UNREAD",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "A-M2-STILL-UNREAD HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "A-M2-STILL-UNREAD OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "A-M2-STILL-UNREAD semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "A-READ-M2",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/chats/9977e288-a04b-40fe-b0fc-bd0bec4855e9/read",
+      "httpStatus": 204,
+      "tests": [
+        {
+          "name": "A-READ-M2 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "A-READ-M2 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "A-READ-M2 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "A-UNREAD-ZERO",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "A-UNREAD-ZERO HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "A-UNREAD-ZERO OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "A-UNREAD-ZERO semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "HISTORY-PAGE-ONE",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats/9977e288-a04b-40fe-b0fc-bd0bec4855e9/messages?after_seq=0&limit=1",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "HISTORY-PAGE-ONE HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "HISTORY-PAGE-ONE OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "HISTORY-PAGE-ONE semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "HISTORY-PAGE-TWO",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats/9977e288-a04b-40fe-b0fc-bd0bec4855e9/messages?after_seq=1&limit=1",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "HISTORY-PAGE-TWO HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "HISTORY-PAGE-TWO OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "HISTORY-PAGE-TWO semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "HISTORY-BEFORE-M2",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats/9977e288-a04b-40fe-b0fc-bd0bec4855e9/messages?before_seq=2&limit=1",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "HISTORY-BEFORE-M2 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "HISTORY-BEFORE-M2 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "HISTORY-BEFORE-M2 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "HISTORY-C-FORBIDDEN",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats/9977e288-a04b-40fe-b0fc-bd0bec4855e9/messages",
+      "httpStatus": 403,
+      "tests": [
+        {
+          "name": "HISTORY-C-FORBIDDEN HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "HISTORY-C-FORBIDDEN OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "HISTORY-C-FORBIDDEN semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "C-CHAT-LIST-EMPTY",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "C-CHAT-LIST-EMPTY HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "C-CHAT-LIST-EMPTY OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "C-CHAT-LIST-EMPTY semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "HISTORY-NO-DUPLICATE-OR-FOREIGN-WRITE",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats/9977e288-a04b-40fe-b0fc-bd0bec4855e9/messages?after_seq=0",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "HISTORY-NO-DUPLICATE-OR-FOREIGN-WRITE HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "HISTORY-NO-DUPLICATE-OR-FOREIGN-WRITE OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "HISTORY-NO-DUPLICATE-OR-FOREIGN-WRITE semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LOGOUT-a",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/auth/logout",
+      "httpStatus": 204,
+      "tests": [
+        {
+          "name": "LOGOUT-a HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LOGOUT-a OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LOGOUT-a semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LOGOUT-b",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/auth/logout",
+      "httpStatus": 204,
+      "tests": [
+        {
+          "name": "LOGOUT-b HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LOGOUT-b OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LOGOUT-b semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LOGOUT-c",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/auth/logout",
+      "httpStatus": 204,
+      "tests": [
+        {
+          "name": "LOGOUT-c HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LOGOUT-c OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LOGOUT-c semantics",
+          "status": "pass"
+        }
+      ]
+    }
+  ]
+}
