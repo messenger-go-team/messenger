@@ -65,6 +65,35 @@ describe('ContactsPage', () => {
     expect(await screen.findByText('Пока нет контактов')).toBeInTheDocument()
   })
 
+  it('requests GET /contacts on direct open and reload of /app/contacts', async () => {
+    const paths: string[] = []
+    server.use(
+      http.get('/contacts', ({ request }) => {
+        paths.push(new URL(request.url).pathname)
+        return HttpResponse.json({ contacts: [] })
+      }),
+    )
+    const auth = await authValue()
+    const screenAtAppContacts = () =>
+      render(
+        <AuthContext.Provider value={auth}>
+          <MemoryRouter basename="/app" initialEntries={['/app/contacts']}>
+            <Routes>
+              <Route path="/contacts" element={<ContactsPage />} />
+            </Routes>
+          </MemoryRouter>
+        </AuthContext.Provider>,
+      )
+
+    const opened = screenAtAppContacts()
+    expect(await screen.findByText('Пока нет контактов')).toBeInTheDocument()
+    opened.unmount()
+
+    screenAtAppContacts()
+    expect(await screen.findByText('Пока нет контактов')).toBeInTheDocument()
+    expect(paths).toEqual(['/contacts', '/contacts'])
+  })
+
   it('lists contacts and opens a chat', async () => {
     addUser({
       id: CHARLIE_ID,
