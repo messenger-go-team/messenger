@@ -14,6 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 	historyv1 "github.com/messenger-go-team/messenger/api/gen/history/v1"
 	"github.com/messenger-go-team/messenger/pkg/jwtauth"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const wsProtocol = "messenger.v1"
@@ -31,8 +32,11 @@ type wsEndpoint struct {
 
 	hub            *connectionHub
 	broker         Broker
+	typing         typingTracker
 	history        historyv1.HistoryServiceClient
 	historyTimeout time.Duration
+	sendLimiter    *sendLimiter
+	sendRejections prometheus.Counter
 	logger         *slog.Logger
 
 	mu     sync.Mutex
@@ -54,8 +58,15 @@ func newWSEndpoint(cfg config, ready *atomic.Bool, timing wsTiming,
 		cancelFanout:   cancelFanout,
 		hub:            hub,
 		broker:         memoryBroker{hub: hub},
+		typing:         typingTracker{byUser: make(map[string]map[string]*typingGroup)},
 		history:        history,
 		historyTimeout: cfg.HistoryRPCTimeout,
+		sendLimiter:    newSendLimiter(cfg.SendInterval, cfg.SendBurst, time.Now),
+		sendRejections: prometheus.NewCounter(prometheus.CounterOpts{
+			Name:        "chat_ws_message_send_rejected_total",
+			Help:        "Number of valid message.send commands rejected by Chat before calling History.",
+			ConstLabels: prometheus.Labels{"reason": wsRateLimited},
+		}),
 		upgrader: websocket.Upgrader{
 			HandshakeTimeout: timing.writeTimeout,
 			CheckOrigin: func(r *http.Request) bool {

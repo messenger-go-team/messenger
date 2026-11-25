@@ -50,6 +50,7 @@ export interface ErrorPayload {
   retryable: boolean
   request_type: string | null
   client_msg_id: string | null
+  retry_after_ms?: number
 }
 
 export type ErrorEvent = Envelope<'error', ErrorPayload>
@@ -73,7 +74,7 @@ export interface HistoryPage {
 }
 
 export interface HistoryAdapter {
-  listChats(accessToken: string): Promise<readonly { id: string }[]>
+  listChats(accessToken: string, mode?: 'initial' | 'reconnect'): Promise<readonly { id: string }[]>
   getMessages(
     chatId: string,
     accessToken: string,
@@ -137,6 +138,8 @@ export interface WebSocketClientSnapshot {
   authFailure?: AuthFailureReason
   pending: readonly PendingMessage[]
   messages: readonly StoredMessage[]
+  liveMessageVersion: number
+  recoveryVersion: number
 }
 
 export interface ProtocolIssue {

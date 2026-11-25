@@ -7,35 +7,50 @@ import (
 	"net"
 	"net/http"
 	"runtime/debug"
+	"time"
 )
 
 // requestLogging must be outside recovery so the context has a request logger.
-func recoverPanic(next http.Handler) http.Handler {
+func recoverPanic(next http.Handler, observers ...func(string, int, bool, time.Duration)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
 		state, tracked := trackResponse(w)
 		requestID := w.Header().Get("X-Request-ID")
+		aborted := false
+		defer func() {
+			code := state.status
+			if code == 0 && state.hijacked == nil {
+				code = http.StatusOK
+			}
+			for _, observe := range observers {
+				observe(r.Pattern, code, aborted, time.Since(start))
+			}
+		}()
 		defer func() {
 			value := recover()
 			if value == nil {
 				return
 			}
 			if value == http.ErrAbortHandler {
+				aborted = true
 				panic(value)
 			}
 			loggerFromContext(r.Context()).ErrorContext(r.Context(), "panic recovered",
 				"panic", value, "stack", string(debug.Stack()))
 			if state.hijacked != nil {
+				aborted = true
 				// net/http no longer owns a hijacked connection.
 				if err := state.hijacked.Close(); err != nil {
 					loggerFromContext(r.Context()).ErrorContext(r.Context(), "close hijacked connection", "error", err)
 				}
 				panic(http.ErrAbortHandler)
 			}
-			if state.started {
+			if state.status != 0 {
+				aborted = true
 				// Do not turn an already-started response into a successful partial one.
 				panic(http.ErrAbortHandler)
 			}
-			writeInternalError(w, r, requestID)
+			writeInternalError(tracked, r, requestID)
 		}()
 		next.ServeHTTP(tracked, r)
 	})
@@ -58,7 +73,7 @@ func writeInternalError(w http.ResponseWriter, r *http.Request, requestID string
 
 type responseState struct {
 	http.ResponseWriter
-	started  bool
+	status   int
 	hijacked net.Conn
 }
 
@@ -67,22 +82,26 @@ func (w *responseState) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 func (w *responseState) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 	// Informational responses allow a later final status; 101 is an exception.
-	if code >= 200 || code == http.StatusSwitchingProtocols {
-		w.started = true
+	if w.status == 0 && (code >= 200 || code == http.StatusSwitchingProtocols) {
+		w.status = code
 	}
 }
 
 func (w *responseState) Write(body []byte) (int, error) {
-	w.started = true // Write implicitly sends 200 when no final status was sent.
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
 	return w.ResponseWriter.Write(body)
 }
 
 func (w *responseState) FlushError() error {
-	previous := w.started
-	w.started = true
+	previous := w.status
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
 	err := http.NewResponseController(w.ResponseWriter).Flush()
 	if errors.Is(err, http.ErrNotSupported) {
-		w.started = previous
+		w.status = previous
 	}
 	return err
 }

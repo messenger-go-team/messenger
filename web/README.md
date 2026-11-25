@@ -178,6 +178,37 @@ credentials, если origin отличается. Все запросы отп�
 необходимости измените значения; после изменения перезапустите Vite.
 Не помещайте секреты в `VITE_*`: они доступны в клиентской сборке.
 
+### Staging (`/app/`)
+
+На staging SPA отдаётся под `https://staging.tidingm.ru/app/`. Экраны —
+`/app/login`, `/app/contacts`, `/app/later`; REST и WSS остаются на корне
+домена (`/contacts`, `/later`, `/ws`).
+
+```bash
+npm run build:staging
+npm run preview -- --mode staging
+```
+
+`build:staging` использует режим Vite `staging`. В `.env.staging`
+заданы `VITE_APP_BASE=/app/`, `VITE_API_MOCK=false` и пустые
+`VITE_API_BASE_URL` и `VITE_WS_ORIGIN`. Vite проверяет итоговые значения
+после чтения файлов окружения и переменных процесса. Если переопределение
+меняет префикс, включает моки или задаёт отдельный адрес API или WS,
+сборка останавливается. `.env.staging` перекрывает `.env.local`.
+
+Для выкладки скачайте артефакт `web-dist-<SHA>-attempt-<номер>` из успешного
+запуска **Frontend CI**. SHA в имени соответствует коммиту, который собрал
+workflow: в запуске pull request это merge-коммит GitHub, в запуске из
+`main` это коммит `main`. Извлеките `index.html` и `assets/` и публикуйте
+их под `/app/`. Проверьте SHA сборки и SHA бэкенда в отчёте о выкате.
+Автоматический выкат и откат описаны в [#166](https://github.com/messenger-go-team/messenger/issues/166).
+
+Обычный `npm run build` использует `.env.production` и допускает другой
+префикс или отдельные адреса API и WS. Для своего префикса, например
+`VITE_APP_BASE=/trial/`, задайте одинаковое значение у `build` и
+`preview`. Обе сборки отклоняют `VITE_API_MOCK=true`. Для локального MSW
+используйте `npm run dev` и корневой base: worker перехватывает API на корне.
+
 Публичные пользователи исключительно для локального MSW: `alice_1` и `bob_2`,
 пароль обоих — `correct-horse-battery`. Между ними подготовлен личный чат с
 детерминированной историей сообщений. Можно регистрировать других пользователей.

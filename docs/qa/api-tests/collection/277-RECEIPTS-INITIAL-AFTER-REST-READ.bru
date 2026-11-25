@@ -1,0 +1,25 @@
+meta {
+  name: RECEIPTS-INITIAL-AFTER-REST-READ
+  type: http
+  seq: 277
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/receipts
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("RECEIPTS-INITIAL-AFTER-REST-READ", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("RECEIPTS-INITIAL-AFTER-REST-READ", bru, req, res, test, expect);
+}

@@ -102,7 +102,7 @@ func assertMigrationTestInt(t *testing.T, db *sql.DB, query string, want int) {
 
 func migrationTestVersion(service string) int {
 	if service == "history" {
-		return 2
+		return 3
 	}
 	return 1
 }
@@ -119,7 +119,7 @@ func TestMigrationsIntegration(t *testing.T) {
 			t.Helper()
 			steps := 1
 			if service == "history" && direction == directionDown {
-				steps = 2
+				steps = migrationTestVersion(service)
 			}
 			if err := migrateService(service, direction, steps, config); err != nil {
 				t.Fatal(err)
@@ -192,6 +192,9 @@ WHERE c.user_id = '00000000-0000-4000-8000-000000000001'`).Scan(&usernames); err
 			{"delivery above safe integer", `UPDATE history.chat_members SET last_delivered_seq = 9007199254740992`, "23514"},
 			{"read above safe integer", `UPDATE history.chat_members SET last_read_seq = 9007199254740992`, "23514"},
 			{"read exceeds delivered", `UPDATE history.chat_members SET last_read_seq = 1`, "23514"},
+			{"negative public read", `UPDATE history.chat_members SET public_last_read_seq = -1`, "23514"},
+			{"public delivery above safe integer", `UPDATE history.chat_members SET public_last_delivered_seq = 9007199254740992`, "23514"},
+			{"public read exceeds delivery", `UPDATE history.chat_members SET public_last_read_seq = 1`, "23514"},
 			{"empty message", fmt.Sprintf(messageInsert, "2", alice, "gen_random_uuid()", "''"), "23514"},
 			{"4097 code points", fmt.Sprintf(messageInsert, "2", alice, "gen_random_uuid()", "repeat('😀', 4097)"), "23514"},
 		} {
@@ -217,7 +220,7 @@ WHERE c.user_id = '00000000-0000-4000-8000-000000000001'`).Scan(&usernames); err
 
 		apply("auth", directionDown)
 		assertMigrationTestInt(t, db, "SELECT count(*) FROM history.messages", 2)
-		assertMigrationTestInt(t, db, "SELECT count(*) FROM history_schema_migrations WHERE version = 2 AND NOT dirty", 1)
+		assertMigrationTestInt(t, db, "SELECT count(*) FROM history_schema_migrations WHERE version = 3 AND NOT dirty", 1)
 		apply("history", directionDown)
 		assertMigrationTestInt(t, db, "SELECT count(*) FROM information_schema.tables WHERE table_schema IN ('auth', 'history')", 0)
 		for _, service := range services {
@@ -232,7 +235,7 @@ WHERE c.user_id = '00000000-0000-4000-8000-000000000001'`).Scan(&usernames); err
 			t.Fatal(err)
 		}
 		execMigrationTestSQL(t, db, "CREATE TABLE history.unrelated (id integer)")
-		if err := migrateService("history", directionDown, 2, config); err == nil {
+		if err := migrateService("history", directionDown, migrationTestVersion("history"), config); err == nil {
 			t.Fatal("down must fail rather than cascade to an unexpected object")
 		}
 		assertMigrationTestInt(t, db, "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'history'", 5)
@@ -273,7 +276,7 @@ WHERE c.user_id = '00000000-0000-4000-8000-000000000001'`).Scan(&usernames); err
 		}
 		execMigrationTestSQL(t, db, "INSERT INTO auth.users(username, username_normalized, password_hash) VALUES ('alice', 'alice', 'hash')")
 		for _, service := range services {
-			if err := migrateService(service, directionDown, 3, config); err == nil {
+			if err := migrateService(service, directionDown, migrationTestVersion(service)+1, config); err == nil {
 				t.Fatal("too many steps must fail")
 			}
 			assertMigrationTestInt(t, db, fmt.Sprintf("SELECT count(*) FROM public.%s_schema_migrations WHERE version=%d AND NOT dirty", service, migrationTestVersion(service)), 1)
@@ -346,7 +349,7 @@ WHERE c.user_id = '00000000-0000-4000-8000-000000000001'`).Scan(&usernames); err
 			for _, direction := range []string{directionUp, directionVersion, directionDown} {
 				steps := 1
 				if service == "history" && direction == directionDown {
-					steps = 2
+					steps = migrationTestVersion(service)
 				}
 				if err := migrateService(service, direction, steps, config); err != nil {
 					t.Fatal(err)

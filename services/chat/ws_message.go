@@ -14,7 +14,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const wsMaxMessageSeq int64 = 9007199254740991
+const (
+	wsMaxMessageSeq int64 = 9007199254740991
+	wsRateLimited         = "rate_limited"
+)
 
 type wsEnvelope struct {
 	Type    string    `json:"type"`
@@ -38,17 +41,28 @@ type wsNewPayload struct {
 }
 
 type wsErrorPayload struct {
-	Code        string  `json:"code"`
-	Message     string  `json:"message"`
-	Retryable   bool    `json:"retryable"`
-	RequestType *string `json:"request_type"`
-	ClientMsgID *string `json:"client_msg_id"`
+	Code         string  `json:"code"`
+	Message      string  `json:"message"`
+	Retryable    bool    `json:"retryable"`
+	RequestType  *string `json:"request_type"`
+	ClientMsgID  *string `json:"client_msg_id"`
+	RetryAfterMS int64   `json:"retry_after_ms,omitempty"`
 }
 
-func (ws *wsEndpoint) handleWSCommand(ctx context.Context, socket *socketSession, data []byte) {
-	cmd, problem := parseWSCommand(data)
+func (ws *wsEndpoint) handleWSCommand(ctx context.Context, socket *socketSession, inbound wsInboundCommand) {
+	cmd, problem := inbound.command, inbound.problem
 	if problem != "" {
 		ws.replyWSError(socket, cmd, problem)
+		return
+	}
+	if wait := ws.sendLimiter.take(socket.userID); wait > 0 {
+		ws.sendRejections.Inc()
+		// Round up so a sub-millisecond wait never becomes an early retry.
+		retryAfterMS := wait.Milliseconds()
+		if wait%time.Millisecond != 0 {
+			retryAfterMS++
+		}
+		ws.replyWSErrorPayload(socket, cmd, wsErrorPayload{Code: wsRateLimited, RetryAfterMS: retryAfterMS})
 		return
 	}
 	if ws.history == nil {
@@ -105,7 +119,7 @@ func (ws *wsEndpoint) handleWSCommand(ctx context.Context, socket *socketSession
 		SenderID:     socket.userID,
 		Body:         cmd.body,
 	})
-	data, err = json.Marshal(event)
+	data, err := json.Marshal(event)
 	if err != nil {
 		ws.logger.Warn("could not encode message.new")
 		return
@@ -125,7 +139,7 @@ func saveWSErrorCode(code codes.Code) string {
 	case codes.AlreadyExists:
 		return "idempotency_conflict"
 	case codes.ResourceExhausted:
-		return "rate_limited"
+		return wsRateLimited
 	case codes.Canceled, codes.DeadlineExceeded, codes.Unavailable:
 		return "temporarily_unavailable"
 	default:
@@ -134,14 +148,17 @@ func saveWSErrorCode(code codes.Code) string {
 }
 
 func (ws *wsEndpoint) replyWSError(socket *socketSession, cmd wsCommand, code string) {
-	payload := wsErrorPayload{Code: code}
+	ws.replyWSErrorPayload(socket, cmd, wsErrorPayload{Code: code})
+}
+
+func (ws *wsEndpoint) replyWSErrorPayload(socket *socketSession, cmd wsCommand, payload wsErrorPayload) {
 	if cmd.kind != "" {
 		payload.RequestType = &cmd.kind
 	}
 	if cmd.clientMsgID != "" {
 		payload.ClientMsgID = &cmd.clientMsgID
 	}
-	switch code {
+	switch payload.Code {
 	case "invalid_json":
 		payload.Message = "Ожидается один JSON-объект."
 	case "invalid_payload":
@@ -152,11 +169,14 @@ func (ws *wsEndpoint) replyWSError(socket *socketSession, cmd wsCommand, code st
 		payload.Message = "Нет доступа к чату."
 	case "idempotency_conflict":
 		payload.Message = "Этот идентификатор уже использован с другим текстом."
-	case "rate_limited":
+	case wsRateLimited:
 		payload.Message = "Сервис перегружен. Повторите позже."
 		payload.Retryable = true
 	case "temporarily_unavailable":
 		payload.Message = "Не удалось подтвердить сохранение. Повторите позже."
+		if cmd.kind == wsTypingType {
+			payload.Message = "Не удалось проверить доступ к чату."
+		}
 		payload.Retryable = true
 	default:
 		payload.Message = "Внутренняя ошибка. Повторите позже."

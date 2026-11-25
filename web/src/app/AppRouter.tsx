@@ -5,7 +5,9 @@ import { LoginPage } from '@/features/auth/LoginPage'
 import { RegisterPage } from '@/features/auth/RegisterPage'
 import { RequireAuth } from '@/features/auth/RequireAuth'
 import { ChatListPage } from '@/features/chats/ChatListPage'
-import { ContactsPlaceholderPage } from '@/pages/ContactsPlaceholderPage'
+import { ContactsPage } from '@/features/contacts/ContactsPage'
+import { LaterPage } from '@/features/later/LaterPage'
+import { ProfilePage } from '@/features/profile/ProfilePage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
 /** Описывает верхнеуровневые маршруты приложения и fallback для неизвестного URL. */
@@ -18,7 +20,9 @@ export function AppRouter() {
       <Route element={<RequireAuth />}>
         <Route path="/" element={<ChatListPage />} />
         <Route path="/chats/:chatId" element={<ChatListPage />} />
-        <Route path="/contacts" element={<ContactsPlaceholderPage />} />
+        <Route path="/contacts" element={<ContactsPage />} />
+        <Route path="/later" element={<LaterPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
         <Route path="/change-password" element={<ChangePasswordPage />} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />

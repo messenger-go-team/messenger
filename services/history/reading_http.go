@@ -60,6 +60,17 @@ func readingRoutes(mux *http.ServeMux, service *reading.Service, verifier *jwtau
 		writeChatJSON(w, http.StatusOK, window)
 		return nil
 	})
+	handle("GET /chats/{chat_id}/receipts", func(w http.ResponseWriter, r *http.Request, user string) error {
+		if r.URL.RawQuery != "" {
+			return chats.ErrInvalid
+		}
+		snapshot, err := service.Receipts(r.Context(), r.PathValue("chat_id"), user)
+		if err != nil {
+			return err
+		}
+		writeChatJSON(w, http.StatusOK, snapshot)
+		return nil
+	})
 	handle("POST /chats/{chat_id}/read", func(w http.ResponseWriter, r *http.Request, user string) error {
 		var seq int64
 		if err := readChatField(w, r, "seq", &seq); err != nil {
@@ -137,7 +148,7 @@ func readQueryInteger(entries []string) (int64, error) {
 func writeReadingError(w http.ResponseWriter, r *http.Request, err error) {
 	status, key, message := 503, "service_unavailable", "Сервис временно недоступен."
 	switch {
-	case errors.Is(err, chats.ErrInvalid):
+	case errors.Is(err, chats.ErrInvalid), errors.Is(err, reading.ErrReceiptChatType):
 		status, key, message = 422, "validation_error", "Некорректный запрос."
 	case errors.Is(err, chats.ErrIdentity):
 		status, key, message = 401, "unauthorized", "Требуется действующий пользователь."

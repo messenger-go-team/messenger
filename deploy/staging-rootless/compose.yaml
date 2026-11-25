@@ -28,6 +28,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set staging JWT signing key}
       WS_ALLOWED_ORIGINS: https://staging.tidingm.ru
       HISTORY_GRPC_ADDR: history:9090
+      WS_SEND_INTERVAL: ${WS_SEND_INTERVAL:-200ms}
+      WS_SEND_BURST: ${WS_SEND_BURST:-10}
     restart: unless-stopped
 
   history:

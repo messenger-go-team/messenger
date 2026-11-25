@@ -6,10 +6,14 @@
 сохранение сообщений через SaveMessage.
 [#31](https://github.com/messenger-go-team/messenger/issues/31): список чатов,
 курсорная история и приватная отметка прочтения по REST.
+[#130](https://github.com/messenger-go-team/messenger/issues/130): публичные
+курсоры личного чата через внутренний `AdvanceReceipt` и
+`GET /chats/{chat_id}/receipts`.
 Контракты: [History OpenAPI](../../api/openapi/history.yaml),
 [history.proto и правила ошибок](../../api/proto/README.md).
 Базовая схема принадлежит миграции #12; #86 добавляет личные записи миграцией
-`000002_later_entries`, не переписывая уже применённую версию 1.
+`000002_later_entries`. Миграция `000003_public_receipts` сохраняет оба
+приватных курсора и добавляет публичные со значением 0.
 
 ## Запуск
 
@@ -97,10 +101,12 @@ RPC доступны только доверенному Chat во внутре�
 
 ## Состояние, логи и завершение
 
-HTTP сохраняет request_id, panic recovery и /metrics из шаблона.
+HTTP сохраняет request_id и panic recovery. Внутренний `/metrics` отдаёт
+Go/process, HTTP, gRPC и показатели пула БД.
 /healthz проверяет процесс. /readyz проверяет схему четырёх таблиц и SELECT/INSERT,
 UPDATE(last_seq) для chats и UPDATE(last_read_seq, last_delivered_seq)
-для chat_members; без миграции/прав даёт 503.
+для chat_members. Для публичных курсоров нужны миграция v3 и UPDATE двух
+публичных столбцов. Без требуемой схемы или прав readiness даёт 503.
 Готовность восстанавливается после исправления БД без перезапуска.
 Auth вызывается при создании чата; его временный отказ отражается в ответе
 операции 503 и не блокирует чтение членства по gRPC.
@@ -110,6 +116,55 @@ HTTP и gRPC обслуживаются одним процессом. SIGTERM �
 общего срока соединения закрываются принудительно, процесс завершается с
 ошибкой. При штатной остановке код 0. Логи не включают payload, query,
 credentials или SQL-ошибки; gRPC возвращает x-request-id в metadata.
+
+## Метрики History
+
+`history_http_requests_total` и `history_http_request_duration_seconds`
+используют метод и шаблон маршрута в `operation`. Результаты `2xx`,
+`3xx`, `4xx`, `5xx`, `aborted` и `other` образуют ограниченный набор.
+Отказ JWT и валидации учитывается для соответствующей операции.
+`aborted` фиксируется при `http.ErrAbortHandler` или при панике после начала
+ответа либо перехвата соединения. Остальные классы отражают статус ответа
+на стороне обработчика. Обрывы со стороны клиента и ошибки записи тела
+отдельно не измеряются.
+
+В метрики операций не входят служебные health, readiness и scrape, а также
+ответы роутера без шаблона операции, например 404, 405 и редиректы нормализации
+пути. Если прикладной обработчик возвращает 404, метрика учитывает его
+по шаблону маршрута.
+
+Все четыре операции Later различимы:
+
+| `operation` | Назначение |
+| --- | --- |
+| `GET /later` | Чтение списка |
+| `POST /later` | Создание или обновление записи |
+| `PATCH /later/{later_id}` | Перенос срока |
+| `POST /later/{later_id}/done` | Завершение записи |
+
+К примеру, `increase(history_http_requests_total{operation="GET /later",result="5xx"}[5m])`
+показывает рост серверных ошибок списка за пять минут. Метки содержат шаблоны,
+поэтому значение `later_id`, JWT, query и данные записи в scrape не попадают.
+
+`history_grpc_requests_total` и `history_grpc_request_duration_seconds`
+учитывают методы зарегистрированного `HistoryService`. `operation` содержит
+полное имя вроде `/messenger.history.v1.HistoryService/SaveMessage`, `result`
+содержит канонический gRPC-код, например `OK` или `Unavailable`.
+Обработка запроса измеряется до завершения серверных обработчиков.
+gRPC health работает отдельно, HTTP и gRPC счётчики доступны в одном
+реестре History. Серии запросов появляются после первого вызова операции.
+
+`history_db_pool_connections` показывает число открытых (`state="open"`),
+занятых (`state="in_use"`) и свободных (`state="idle"`) соединений.
+`history_db_pool_max_open_connections` показывает предел пула. `history_db_pool_waits_total` и
+`history_db_pool_wait_duration_seconds_total` показывают очередь за
+соединением. Scrape читает `database/sql.DBStats` и не занимает соединение.
+
+Проверка с внутренней сети сервиса:
+
+```bash
+curl -fsS http://127.0.0.1:8080/metrics | grep -E '^history_(http|grpc|db_pool)_'
+```
 
 ## Проверки
 
@@ -215,15 +270,18 @@ DueTime проверяет typed time.Time на UTC-диапазон 0001..9999 
 источников необходим UPDATE хотя бы одного столбца chats/chat_members/messages;
 минимальное дополнение к правам #29: UPDATE(id) для messages. На later_entries
 достаточно SELECT/INSERT и UPDATE(due_at,state,updated_at); DELETE не нужен.
-Сборка сервиса #87 объединяет эту проверку с базовой readiness. Теперь для
-готовности History обязательны миграция v2 и права на Later/source locks.
+Сборка сервиса #87 объединяет эту проверку с базовой readiness. Для Later
+требуются миграция v2 и права на Later/source locks.
 
-Мигратор применяет версию 2 обычным `make migrate-up MIGRATE_SERVICE=history`.
-`make migrate-down MIGRATE_SERVICE=history MIGRATE_STEPS=1` откатывает только
-Later и уничтожает его записи, сохраняя сообщения/участников версии 1. Для полного
-отката History после v2 нужны две ступени; auth по-прежнему имеет одну. Up/down
-проверены через настоящий мигратор на БД с существующими сообщениями; при ошибке
-DDL объекты приложения откатываются, журнал остаётся dirty для явной диагностики.
+`make migrate-up MIGRATE_SERVICE=history` применяет все доступные миграции.
+Перед откатом схемы сверьте её текущую версию через
+`make migrate-version MIGRATE_SERVICE=history` и сохраните резервную копию.
+На схеме **v2** команда `make migrate-down MIGRATE_SERVICE=history MIGRATE_STEPS=1`
+переводит БД на v1 и удаляет записи Later. На схеме **v3** та же команда
+переводит БД на v2 и удаляет оба публичных курсора со всеми значениями.
+Таблица Later и оба приватных курсора при переходе с v3 на v2 сохраняются.
+Для возврата предыдущей сборки на staging используйте
+[откат приложения](../../deploy/staging-release.md#откат) с сохранением схемы и данных.
 
 Интеграционные тесты используют только новые БД по HISTORY_TEST_DATABASE_URL;
 MIGRATE_TEST_DATABASE_URL включает тесты мигратора в отдельной БД. Проверяются

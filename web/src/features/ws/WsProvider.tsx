@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { refresh as refreshRequest } from '@/api/auth'
 import { ApiError } from '@/api/client'
-import { getMessageHistory, listChats } from '@/api/history'
+import { getMessageHistory } from '@/api/history'
 import { useAuth } from '@/features/auth/useAuth'
+import {
+  getSharedRefreshCoordinator,
+  isFinalRefreshFailure,
+  RefreshCancelledError,
+  RefreshTimeoutError,
+} from '@/features/auth/refreshCoordinator'
+import { createChatListReader } from '@/features/ws/chatListReader'
 import { idleSnapshot, WsContext } from '@/features/ws/ws-context'
 import {
   MessengerWebSocketClient,
@@ -12,6 +19,8 @@ import {
   type WebSocketFactory,
 } from '@/ws'
 import { MockWebSocketServer } from '@/ws/mock/server'
+
+const idleChatList = createChatListReader()
 
 interface WsProviderProps {
   children: ReactNode
@@ -35,14 +44,27 @@ export function WsProvider({
   const clientRef = useRef<MessengerWebSocketClient | null>(null)
   const mockServerRef = useRef<MockWebSocketServer | null>(null)
   const [client, setClient] = useState<MessengerWebSocketClient | null>(null)
+  const userId = user?.id
+  const chatList = useMemo(
+    () => (isAuthenticated && userId ? createChatListReader() : idleChatList),
+    [isAuthenticated, userId],
+  )
 
   const authAdapter = useMemo<AuthAdapter>(
     () => ({
       async refreshAccessToken() {
         try {
-          const session = await refreshRequest()
+          const session = await getSharedRefreshCoordinator((signal) =>
+            refreshRequest({ signal }),
+          ).requestRefresh()
           return { kind: 'success', accessToken: session.access_token }
         } catch (error) {
+          if (error instanceof RefreshCancelledError || isFinalRefreshFailure(error)) {
+            return { kind: 'unauthorized' }
+          }
+          if (error instanceof RefreshTimeoutError) {
+            return { kind: 'temporary_failure' }
+          }
           if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
             return { kind: 'unauthorized' }
           }
@@ -55,8 +77,10 @@ export function WsProvider({
 
   const historyAdapter = useMemo<HistoryAdapter>(
     () => ({
-      async listChats(token) {
-        const response = await listChats(token)
+      async listChats(token, mode) {
+        // A request started before reconnect may contain stale unread counts.
+        if (mode === 'reconnect') chatList.invalidate()
+        const response = await chatList.load(token, mode === 'initial')
         return response.chats.map((chat) => ({ id: chat.id }))
       },
       async getMessages(chatId, token, options) {
@@ -75,7 +99,7 @@ export function WsProvider({
         }
       },
     }),
-    [],
+    [chatList],
   )
 
   useEffect(() => {
@@ -138,7 +162,7 @@ export function WsProvider({
     webSocketFactory,
   ])
 
-  const value = useMemo(() => ({ client, snapshot }), [client, snapshot])
+  const value = useMemo(() => ({ client, snapshot, chatList }), [client, snapshot, chatList])
 
   return <WsContext.Provider value={value}>{children}</WsContext.Provider>
 }

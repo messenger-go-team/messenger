@@ -67,6 +67,7 @@ type Repository interface {
 	List(context.Context, string) ([]ChatItem, error)
 	History(context.Context, string, string, Query) (Page, error)
 	MessageContext(ctx context.Context, chat, user, target string, limit int) (MessageContext, error)
+	Receipts(ctx context.Context, chat, user string) ([]MemberReceipt, error)
 	MarkRead(context.Context, string, string, int64) error
 }
 type Service struct {
