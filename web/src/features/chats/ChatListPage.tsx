@@ -12,7 +12,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { Bell, LogOut, MessageCircle, Plus, Search, User, Users } from 'lucide-react'
 import type { UserSummary } from '@/api/auth'
 import { searchUsers } from '@/api/auth'
-import { createPersonalChat, listChats, type ChatListItem } from '@/api/history'
+import { createPersonalChat, type ChatListItem } from '@/api/history'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/features/auth/useAuth'
@@ -24,12 +24,22 @@ import {
   normalizeUserSearchInput,
   USER_SEARCH_HINT,
 } from '@/features/chats/userSearchPrefix'
+import type { createChatListReader } from '@/features/ws/chatListReader'
+import { useWs } from '@/features/ws/useWs'
 import { cn } from '@/lib/utils'
 
 const SEARCH_DEBOUNCE_MS = 300
 
 type ListStatus = 'loading' | 'ready' | 'error'
 type SearchStatus = 'idle' | 'loading' | 'ready' | 'error' | 'invalid'
+
+interface ListLoad {
+  reader: ReturnType<typeof createChatListReader>
+  token: string
+  running: boolean
+  queued: boolean
+  revision: number
+}
 
 /** Сохраняет только peerUsername из state навигации (без одноразового focusMessageId). */
 function peerStateFrom(state: unknown): { peerUsername: string } | null {
@@ -47,6 +57,8 @@ function peerStateFrom(state: unknown): { peerUsername: string } | null {
 /** Главный экран списка чатов и поиска пользователей (#43). */
 export function ChatListPage() {
   const { user, accessToken, logout } = useAuth()
+  const { client, snapshot, chatList } = useWs()
+  const { liveMessageVersion, recoveryVersion } = snapshot
   const { chatId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -57,7 +69,6 @@ export function ChatListPage() {
   const [chats, setChats] = useState<ChatListItem[]>([])
   const [listStatus, setListStatus] = useState<ListStatus>('loading')
   const [listError, setListError] = useState<string | null>(null)
-  const [listReloadKey, setListReloadKey] = useState(0)
 
   const [query, setQuery] = useState('')
   const [searchResults, setSearchResults] = useState<UserSummary[]>([])
@@ -70,7 +81,8 @@ export function ChatListPage() {
   const [openError, setOpenError] = useState<{ target: UserSummary; message: string } | null>(null)
   const searchRequestRef = useRef(0)
   const openRequestRef = useRef(0)
-  const listRequestRef = useRef(0)
+  const listLoadRef = useRef<ListLoad | null>(null)
+  const signalsRef = useRef({ client, liveMessageVersion: 0, recoveryVersion: 0 })
   const locationKeyRef = useRef(location.key)
 
   useLayoutEffect(() => {
@@ -83,46 +95,82 @@ export function ChatListPage() {
       mountedRef.current = false
       openRequestRef.current += 1
       searchRequestRef.current += 1
-      listRequestRef.current += 1
     }
   }, [])
 
-  const reloadChats = useCallback(() => {
-    setListReloadKey((value) => value + 1)
-  }, [])
+  const refreshChats = useCallback(
+    async (reuse = false, afterMutation = false) => {
+      const load = listLoadRef.current
+      if (!load || load.reader !== chatList) return
+      if (afterMutation) {
+        // An earlier GET may contain data from before POST /read or chat creation.
+        load.revision += 1
+        chatList.invalidate()
+      }
+      if (load.running) {
+        load.queued = true
+        return
+      }
 
-  /** Единая загрузка списка: применяется только ответ с актуальным request id. */
-  const fetchChats = useCallback(async (token: string, mode: 'initial' | 'refresh') => {
-    const requestId = ++listRequestRef.current
-    if (mode === 'initial') {
-      setListStatus('loading')
-      setListError(null)
-    }
-    try {
-      const response = await listChats(token)
-      if (requestId !== listRequestRef.current || !mountedRef.current) return
-      setChats(response.chats)
-      setListStatus('ready')
-      setListError(null)
-    } catch {
-      if (requestId !== listRequestRef.current || !mountedRef.current) return
-      setListError('Не удалось загрузить чаты. Повторите попытку.')
-      setListStatus((status) => (status === 'ready' ? 'ready' : 'error'))
-    }
-  }, [])
+      load.running = true
+      let reuseResponse = reuse
+      do {
+        load.queued = false
+        const revision = load.revision
+        try {
+          const response = await chatList.load(load.token, reuseResponse)
+          if (listLoadRef.current !== load) return
+          // Live events queue a refresh while this successful result is still useful.
+          if (load.revision === revision) {
+            setChats(response.chats)
+            setListStatus('ready')
+            setListError(null)
+          }
+        } catch {
+          if (listLoadRef.current !== load) return
+          if (load.revision === revision) {
+            setListError('Не удалось загрузить чаты. Повторите попытку.')
+            setListStatus((status) => (status === 'ready' ? 'ready' : 'error'))
+          }
+        }
+        reuseResponse = false
+      } while (load.queued)
+      load.running = false
+    },
+    [chatList],
+  )
+
+  const reloadChats = useCallback(() => void refreshChats(), [refreshChats])
+  const reloadAfterMutation = useCallback(() => void refreshChats(false, true), [refreshChats])
 
   useEffect(() => {
     if (!accessToken) return
-
-    const timer = window.setTimeout(() => {
-      void fetchChats(accessToken, listReloadKey === 0 ? 'initial' : 'refresh')
-    }, 0)
-
+    listLoadRef.current = {
+      reader: chatList,
+      token: accessToken,
+      running: false,
+      queued: false,
+      revision: 0,
+    }
+    const timer = window.setTimeout(() => void refreshChats(), 0)
     return () => {
       window.clearTimeout(timer)
-      listRequestRef.current += 1
+      listLoadRef.current = null
     }
-  }, [accessToken, fetchChats, listReloadKey])
+  }, [accessToken, chatList, refreshChats])
+
+  useEffect(() => {
+    const previous = signalsRef.current
+    signalsRef.current = { client, liveMessageVersion, recoveryVersion }
+    if (!client) return
+    const sameClient = previous.client === client
+    const receivedLive = liveMessageVersion > (sameClient ? previous.liveMessageVersion : 0)
+    const recovered = recoveryVersion > (sameClient ? previous.recoveryVersion : 0)
+    if (receivedLive || recovered) {
+      // Reuse the list fetched by successful History catch-up, even if its message page was empty.
+      void refreshChats(!receivedLive)
+    }
+  }, [client, liveMessageVersion, recoveryVersion, refreshChats])
 
   const searchPrefix = normalizeUserSearchInput(query)
   const searching = searchPrefix.length > 0
@@ -182,8 +230,7 @@ export function ChatListPage() {
     try {
       const chat = await createPersonalChat(target.id, accessToken)
       if (requestId !== openRequestRef.current || !mountedRef.current) return
-      // Список обновляем только через fetchChats — без stub last_message/unread.
-      void fetchChats(accessToken, 'refresh')
+      reloadAfterMutation()
       if (locationKeyRef.current !== startedAtLocationKey) return
       setQuery('')
       navigate(`/chats/${chat.id}`, { state: { peerUsername: target.username } })
@@ -376,7 +423,7 @@ export function ChatListPage() {
             key={chatId}
             chatId={chatId}
             peerUsername={selectedPeer}
-            onReadCommitted={reloadChats}
+            onReadCommitted={reloadAfterMutation}
             focusMessageId={focusMessageId}
             onFocusConsumed={consumeFocusMessage}
           />

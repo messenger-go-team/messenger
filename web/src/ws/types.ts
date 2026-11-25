@@ -74,7 +74,7 @@ export interface HistoryPage {
 }
 
 export interface HistoryAdapter {
-  listChats(accessToken: string): Promise<readonly { id: string }[]>
+  listChats(accessToken: string, mode?: 'initial' | 'reconnect'): Promise<readonly { id: string }[]>
   getMessages(
     chatId: string,
     accessToken: string,
@@ -138,6 +138,8 @@ export interface WebSocketClientSnapshot {
   authFailure?: AuthFailureReason
   pending: readonly PendingMessage[]
   messages: readonly StoredMessage[]
+  liveMessageVersion: number
+  recoveryVersion: number
 }
 
 export interface ProtocolIssue {
