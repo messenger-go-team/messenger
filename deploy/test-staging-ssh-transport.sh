@@ -22,13 +22,17 @@ done
 gh api "repos/$repo/actions/artifacts/$id/zip" > "$lab/source.zip" 2>"$lab/download.log" ||
     { echo 'could not download the uploaded Frontend CI ZIP' >&2; exit 1; }
 
+# Shared runner IPs may exhaust the anonymous GitHub API quota. The test
+# receiver uses the runner's read-only token, stored locally and never sent via SSH.
+(umask 077; printf '%s' "$GH_TOKEN" > "$lab/gh.token")
 {
     printf '#!/usr/bin/env bash\nset -Eeuo pipefail\n'
     printf 'repo=%q\nsha=%q\nfrontend_run=%q\nfrontend_attempt=%q\nrelease=%q\n' \
         "$repo" "$sha" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$lab"
     printf 'die() { echo "$*" >&2; exit 1; }\n'
-    # Same HTTPS metadata lookup and byte verifier as the installed receiver.
-    sed -n '/^github() {/,/^}/p; /^receive_web() {/,/^}/p' deploy/staging-ssh-receiver.sh
+    printf '%s\n' 'github() { GH_TOKEN=$(<"$release/gh.token") gh api "repos/$repo/$1"; }'
+    # Execute the exact size and SHA-256 verifier from the installed receiver.
+    sed -n '/^receive_web() {/,/^}/p' deploy/staging-ssh-receiver.sh
     printf '[[ $SSH_ORIGINAL_COMMAND == "deploy-web $sha" ]] || exit 1\nreceive_web\n'
 } > "$lab/receiver"
 chmod 0700 "$lab/receiver"
