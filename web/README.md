@@ -49,7 +49,11 @@ cp .env.example .env.local
 
 Ширины (CSS px): мобилка **375–580**, планшет **580–1080**, десктоп **≥1080**.
 В Tailwind `md:` = от 580px (tablet+), `lg:` = от 1080px (desktop) — см.
-`web/src/index.css` и `web/src/lib/breakpoints.ts`. Mobile: нижние табы;
+`web/src/index.css` и `web/src/lib/breakpoints.ts`. Брейкпоинты в теме заданы
+в px, а не в rem, поэтому границы не сдвигаются при другом размере шрифта
+браузера и совпадают с `layoutBucket`. `sm:` остаётся дефолтным Tailwind (640px).
+Тест `src/lib/breakpoints.test.ts` сверяет `--breakpoint-*` с `BREAKPOINTS`.
+Mobile: нижние табы;
 tablet: левый rail 68px, список или тред на всю ширину с «Назад»;
 desktop (≥1080): rail 48px и split список+тред.
 

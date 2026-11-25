@@ -7,13 +7,18 @@
 
 @theme inline {
   /*
-   * #45 layout breakpoints (CSS px → rem @ 16px):
+   * #45 layout breakpoints, CSS px (см. src/lib/breakpoints.ts):
    * mobile < 580 | tablet ≥ 580 | desktop ≥ 1080
    * Utilities: md:* = tablet+, lg:* = desktop.
+   * sm/xl/2xl — дефолтные значения Tailwind (640/1280/1536), переписаны в px:
+   * Tailwind сортирует брейкпоинты сначала по единице, смешивать rem и px нельзя.
+   * Синхронизация с BREAKPOINTS проверяется в src/lib/breakpoints.test.ts.
    */
-  --breakpoint-sm: 36.25rem;
-  --breakpoint-md: 36.25rem;
-  --breakpoint-lg: 67.5rem;
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 580px;
+  --breakpoint-lg: 1080px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
   --font-heading: var(--font-sans);
   --font-sans: 'Geist Variable', sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
