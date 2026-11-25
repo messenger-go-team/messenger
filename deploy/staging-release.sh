@@ -29,6 +29,7 @@ services=(auth chat history)
 compose=(docker compose --project-name "$project" --project-directory "$root" --file "$root/compose.yaml")
 overlay="$root/compose.release.yaml"
 state="$root/.release-state"
+web_root=${STAGING_WEB_ROOT:-/var/lib/messenger/acme/staging-web}
 install -d -m 0700 "$state"
 exec 9>"$state/lock"
 flock -n 9 || die 'another deployment or rollback is running'
@@ -98,6 +99,59 @@ https_status() {
     return 1
 }
 
+valid_web_ref() {
+    [[ $1 =~ ^releases/([a-f0-9]{40})(-[a-f0-9]{64})?(~[a-zA-Z0-9_]+)?$ ]]
+}
+
+valid_web_release() {
+    valid_web_ref "$1" || return 1
+    local expected=${BASH_REMATCH[1]}
+    [[ -s $web_root/$1/app/index.html && -f $web_root/$1/REVISION &&
+        $(<"$web_root/$1/REVISION") == "$expected" ]]
+}
+
+probe_web() {
+    valid_web_release "$1" || return 1
+    python3 "$tool_root/staging-web.py" probe "$web_root" "$1" "$url"
+}
+
+activate_web() {
+    local revision=$1 ref incoming
+    [[ -f $revision/web.release ]] || return 0
+    ref=$(<"$revision/web.release") || return 1
+    valid_web_release "$ref" || return 1
+    if [[ $(readlink "$web_root/current") == "$ref" ]]; then return 0; fi
+    incoming=$(mktemp -d "$web_root/.switch.XXXXXXXX") || return 1
+    if ln -s "$ref" "$incoming/current" && mv -fT "$incoming/current" "$web_root/current"; then
+        rmdir "$incoming"
+    else
+        rm -f "$incoming/current"
+        rmdir "$incoming"
+        return 1
+    fi
+}
+
+prepare_web_rollback() {
+    local revision=$1 ref ready
+    [[ -f $revision/web.release ]] || return 0
+    ref=$(<"$revision/web.release") || return 1
+    valid_web_ref "$ref" || return 1
+    ready=$(python3 "$tool_root/staging-web.py" prepare-rollback "$web_root" "$ref") || return 1
+    valid_web_release "$ready" || return 1
+    if [[ $ready != "$ref" ]]; then
+        local pointer
+        pointer=$(mktemp "$revision/.web.XXXXXXXX") || return 1
+        printf '%s\n' "$ready" > "$pointer" && mv -fT "$pointer" "$revision/web.release" || return 1
+        log "prepared rollback from verified web snapshot $ready"
+    fi
+}
+
+confirm_web() {
+    local revision=$1
+    [[ -f $revision/web.release ]] || return 0
+    python3 "$tool_root/staging-web.py" confirm "$web_root" "$(<"$revision/web.release")"
+}
+
 runtime_matches() {
     local revision=$1 service expected
     for service in "${services[@]}"; do
@@ -107,7 +161,7 @@ runtime_matches() {
 }
 
 verify_runtime() {
-    local revision=$1 expected actual attempt later_status receipts_status=404
+    local revision=$1 expected actual attempt later_status receipts_status=404 web_ref
     runtime_matches "$revision" && cmp -s "$revision/public-locations.conf" "$active_snippet" || return 1
     expected=$(<"$revision/marker") || return 1
     for ((attempt=1; attempt<=10; attempt++)); do
@@ -124,6 +178,10 @@ verify_runtime() {
         receipts_status=$(<"$revision/receipts.status") || return 1
     fi
     https_status /chats/00000000-0000-4000-8000-000000000001/receipts "$receipts_status" || return 1
+    if [[ -f $revision/web.release ]]; then
+        web_ref=$(<"$revision/web.release") || return 1
+        [[ $(readlink "$web_root/current") == "$web_ref" ]] && probe_web "$web_ref" || return 1
+    fi
     "$wss_probe" "$url" "$wss_credentials"
 }
 
@@ -145,6 +203,7 @@ activate() {
         chmod 0644 "$marker" && mv -fT "$marker" "$marker_snippet" || return 1
     docker exec "$ingress" nginx -t || return 1
     docker exec "$ingress" nginx -s reload || return 1
+    activate_web "$revision" || return 1
     verify_runtime "$revision"
 }
 
@@ -181,33 +240,49 @@ valid_ref() {
     [[ $1 =~ ^rel\.[a-zA-Z0-9]+/(previous|next)$ && -d $state/$1 ]]
 }
 
-# A pending switch points at its target. The sibling is the recovery snapshot.
+recovery_ref() {
+    case "$1" in
+        */next) printf '%s/previous\n' "${1%/*}" ;;
+        */previous) printf '%s/next\n' "${1%/*}" ;;
+    esac
+}
+
+# A pending switch points at its target. Its sibling already contains the
+# prepared recovery reference and can be activated without reading verified/.
 # The current pointer changes only after verification. A crash after that
 # atomic commit needs only marker cleanup, never another switch.
 recover_pending() {
-    local target recovery
+    local target recovery active
     target=$(<"$state/pending")
     valid_ref "$target" || die 'invalid pending switch'
     if [[ -f $state/current && $(<"$state/current") == "$target" ]]; then
         rm -f "$state/pending"
         return
     fi
-    case "$target" in
-        */next) recovery=${target%/*}/previous ;;
-        */previous) recovery=${target%/*}/next ;;
-    esac
+    recovery=$(recovery_ref "$target")
+    valid_ref "$recovery" || die 'invalid recovery snapshot'
     log "restoring $recovery and preserving the current DB schema"
+    # Restore the web pointer even if the subsequent backend recovery fails.
+    activate_web "$state/$recovery" || die "web recovery failed; snapshot retained at $state/$recovery"
     activate "$state/$recovery" || die "recovery failed; snapshot retained at $state/$recovery"
+    if [[ -f $state/current && -f $state/$recovery/web.release ]]; then
+        active=$(<"$state/current")
+        valid_ref "$active" || die 'invalid active release after recovery'
+        atomic_copy "$state/$recovery/web.release" "$state/$active/web.release" 0600
+    fi
     rm -f "$state/pending"
 }
 
 switch_to() {
-    local target=$1 pointer
+    local target=$1 pointer recovery
     valid_ref "$target" || die 'invalid switch target'
+    recovery=$(recovery_ref "$target")
+    valid_ref "$recovery" || die 'invalid recovery snapshot'
+    prepare_web_rollback "$state/$recovery" || die "cannot prepare recovery snapshot at $state/$recovery"
     pointer=$(mktemp "$state/.switch.XXXXXX")
     printf '%s\n' "$target" > "$pointer"
     mv -fT "$pointer" "$state/pending"
-    if ! activate "$state/$target"; then
+    if ! activate "$state/$target" || ! confirm_web "$state/$target"; then
         log 'switch failed; restoring previous running configuration' >&2
         recover_pending
         return 1
@@ -222,11 +297,14 @@ rollback() {
         return
     fi
     [[ -f $state/current ]] || die 'no rollback snapshot'
-    local current
+    local current target
     current=$(<"$state/current")
     valid_ref "$current" && [[ $current == */next ]] || die 'no rollback snapshot'
-    switch_to "${current%/*}/previous"
-    log 'previous images and Nginx snippet restored'
+    target="${current%/*}/previous"
+    valid_ref "$target" || die 'invalid rollback snapshot'
+    prepare_web_rollback "$state/$target" || die 'cannot prepare web rollback snapshot'
+    switch_to "$target"
+    log 'previous images, Nginx snippet and saved web version restored'
 }
 
 docker network inspect "$network" --format '{{index .Labels "com.docker.compose.project"}}' | grep -Fx "$project" >/dev/null \
@@ -254,13 +332,37 @@ release=$(realpath -e "$3")
 [[ -f $release/REVISION && $(<"$release/REVISION") == "$sha" && -x $release/migrate ]] || die 'release SHA or migrator missing'
 candidate="$release/deploy/nginx/snippets/public-locations.conf"
 [[ -s $candidate ]] || die 'release is missing the public Nginx snippet'
+with_web=false
+if [[ -e $release/web.zip || -e $release/web.digest ]]; then
+    [[ -s $release/web.zip && -s $release/web.digest ]] || die 'incomplete staging web artifact'
+    with_web=true
+fi
+if [[ $with_web == true ]]; then
+    web_digest=$(<"$release/web.digest")
+    [[ $web_digest =~ ^[a-f0-9]{64}$ ]] || die 'invalid web digest'
+    printf '%s  %s\n' "$web_digest" "$release/web.zip" | sha256sum --status -c - || die 'web archive digest mismatch'
+fi
 if [[ -f $state/current ]]; then
     current=$(<"$state/current")
     valid_ref "$current" || die 'invalid current release'
     if [[ $(<"$state/$current/REVISION") == "$sha" ]]; then
-        verify_runtime "$state/$current"
-        printf 'STAGING_RESULT already_active %s %s\n' "$sha" "$current"
-        exit 0
+        if [[ $with_web == false ]]; then
+            verify_runtime "$state/$current"
+            printf 'STAGING_RESULT already_active %s %s\n' "$sha" "$current"
+            exit 0
+        fi
+        if [[ -f $state/$current/web.release ]]; then
+            active_web=$(<"$state/$current/web.release")
+            if valid_web_release "$active_web" && [[ -f $web_root/$active_web/ARTIFACT_SHA256 ]]; then
+                active_digest=$(<"$web_root/$active_web/ARTIFACT_SHA256")
+                if [[ $active_digest == "sha256:$web_digest" ]] && verify_runtime "$state/$current"; then
+                    confirm_web "$state/$current"
+                    printf 'STAGING_RESULT already_active %s %s\n' "$sha" "$current"
+                    exit 0
+                fi
+                log "staging web replacement for $sha: active $active_digest, requested sha256:$web_digest"
+            fi
+        fi
     fi
 fi
 
@@ -282,6 +384,25 @@ docker exec "$ingress" nginx -t
 run=$(mktemp -d "$state/rel.XXXXXXXX")
 id=${run##*/}
 mkdir "$run/previous" "$run/next"
+if [[ $with_web == true ]]; then
+    previous_web=$(readlink "$web_root/current") || previous_web=
+    if probe_web "$previous_web"; then
+        python3 "$tool_root/staging-web.py" confirm "$web_root" "$previous_web"
+    else
+        [[ -n ${current:-} && -f $state/$current/web.release ]] || die 'no confirmed web snapshot for recovery'
+        confirmed_web=$(<"$state/$current/web.release")
+        valid_web_ref "$confirmed_web" ||
+            die 'invalid confirmed web snapshot reference'
+        previous_web=$(python3 "$tool_root/staging-web.py" restore "$web_root" "$confirmed_web") ||
+            die 'cannot restore confirmed web snapshot'
+        log "web baseline failed smoke; rollback will use confirmed snapshot $previous_web"
+    fi
+    next_web=$(python3 "$tool_root/staging-web.py" install "$web_root" "$sha" "$web_digest" "$release/web.zip") \
+        || die 'could not install staging web artifact'
+    valid_web_release "$next_web" || die 'invalid prepared staging web release'
+    printf '%s\n' "$previous_web" > "$run/previous/web.release"
+    printf '%s\n' "$next_web" > "$run/next/web.release"
+fi
 install -m 0600 "$active_snippet" "$run/previous/public-locations.conf"
 install -m 0600 "$candidate" "$run/next/public-locations.conf"
 previous_revision=unknown

@@ -7,6 +7,7 @@ on:
     branches: [main]
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -58,3 +59,9 @@ jobs:
           name: web-dist-${{ github.sha }}-attempt-${{ github.run_attempt }}
           path: web/dist/
           if-no-files-found: error
+
+      - name: Verify staging ZIP over isolated SSH
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash deploy/test-staging-ssh-transport.sh
