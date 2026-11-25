@@ -85,9 +85,11 @@ function createChannelHub(options?: { asyncDelivery?: boolean; delayMs?: number 
       const channel: BroadcastChannelLike = {
         onmessage: null,
         postMessage(message) {
+          // Отложенная доставка предназначена только для подписчиков на момент отправки.
+          const recipients = [...subscribers].filter((notify) => notify !== deliver)
           const send = () => {
-            for (const notify of subscribers) {
-              if (notify !== deliver) notify(message)
+            for (const notify of recipients) {
+              if (subscribers.has(notify)) notify(message)
             }
           }
           // Как в спецификации: доставка другим контекстам не синхронна с postMessage.
@@ -175,6 +177,113 @@ describe('createRefreshCoordinator', () => {
       }
     },
   )
+
+  it('refreshes when a peer broadcasts just before the new tab opens its channel', async () => {
+    vi.useFakeTimers()
+    const refresh = vi.fn(async () => session('after-missed-broadcast'))
+    const locks = createSerialLockManager()
+    const hub = createChannelHub({ asyncDelivery: true })
+    const store = createMemoryRefreshStore()
+    const publisher = hub.createChannel('probe')
+    const tab = createRefreshCoordinator({
+      refresh,
+      locks,
+      store,
+      createChannel: (name) => {
+        const opId = store.allocateOpId()
+        const sessionEpoch = store.getEpoch()
+        store.writeMeta({ kind: 'success', sessionEpoch, opId, at: Date.now() })
+        publisher.postMessage({
+          v: 1,
+          type: 'refresh-success',
+          sessionEpoch,
+          opId,
+          ...session('before-channel-opened'),
+        })
+        return hub.createChannel(name)
+      },
+    })
+    const pending = tab.requestRefresh()
+
+    try {
+      await vi.advanceTimersByTimeAsync(0)
+      expect(refresh).toHaveBeenCalledTimes(1)
+      await expect(pending).resolves.toEqual(session('after-missed-broadcast'))
+    } finally {
+      tab.dispose()
+      publisher.close()
+      await pending.catch(() => undefined)
+    }
+  })
+
+  it('waits for a success published while registering the new channel handler', async () => {
+    vi.useFakeTimers()
+    const refresh = vi.fn(async () => session('unexpected-refresh'))
+    const locks = createSerialLockManager()
+    const hub = createChannelHub({ delayMs: 80 })
+    const store = createMemoryRefreshStore()
+    const publisher = hub.createChannel('probe')
+    const tab = createRefreshCoordinator({
+      refresh,
+      locks,
+      store,
+      createChannel: (name) => {
+        const channel = hub.createChannel(name)
+        let handler: BroadcastChannelLike['onmessage'] = null
+        Object.defineProperty(channel, 'onmessage', {
+          get: () => handler,
+          set(next: BroadcastChannelLike['onmessage']) {
+            handler = next
+            if (!next) return
+            const opId = store.allocateOpId()
+            const sessionEpoch = store.getEpoch()
+            store.writeMeta({ kind: 'success', sessionEpoch, opId, at: Date.now() })
+            publisher.postMessage({
+              v: 1,
+              type: 'refresh-success',
+              sessionEpoch,
+              opId,
+              ...session('received-at-startup'),
+            })
+          },
+        })
+        return channel
+      },
+    })
+    const pending = tab.requestRefresh()
+
+    try {
+      await vi.advanceTimersByTimeAsync(80)
+      await expect(pending).resolves.toEqual(session('received-at-startup'))
+      expect(refresh).not.toHaveBeenCalled()
+    } finally {
+      tab.dispose()
+      publisher.close()
+      await pending.catch(() => undefined)
+    }
+  })
+
+  it('waits for a queued broadcast if both tabs were subscribed before the refresh', async () => {
+    vi.useFakeTimers()
+    const refresh = vi.fn(async () => session('shared-success'))
+    const locks = createSerialLockManager()
+    const hub = createChannelHub({ delayMs: 80 })
+    const store = createMemoryRefreshStore()
+    const leader = createTab(refresh, locks, hub, store)
+    const follower = createTab(refresh, locks, hub, store)
+
+    await leader.requestRefresh()
+    const pending = follower.requestRefresh()
+    try {
+      await vi.advanceTimersByTimeAsync(80)
+      await expect(pending).resolves.toEqual(session('shared-success'))
+      expect(refresh).toHaveBeenCalledTimes(1)
+    } finally {
+      follower.dispose()
+      leader.dispose()
+      await pending.catch(() => undefined)
+    }
+  })
 
   it('still runs a single refresh when BroadcastChannel delivery is async', async () => {
     let releaseRefresh!: (value: AccessTokenResponse) => void

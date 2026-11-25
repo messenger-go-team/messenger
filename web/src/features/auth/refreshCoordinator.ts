@@ -286,14 +286,16 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
   const invalidatedListeners = new Set<RefreshInvalidatedListener>()
   const finalFailureListeners = new Set<RefreshFinalFailureListener>()
 
-  // BroadcastChannel не повторяет сообщения, отправленные до открытия канала.
-  const outcomeBeforeChannel = store.readMeta()
   let channel: BroadcastChannelLike | null = null
   try {
     channel = createChannel(CHANNEL_NAME)
   } catch {
     channel = null
   }
+
+  // После открытия канала новые сообщения уже ставятся в очередь.
+  // Success из стартовой meta мог быть отправлен до открытия канала.
+  const outcomeAtChannelOpen = store.readMeta()
 
   const settleFlight = async (pending: Promise<AccessTokenResponse> | null) => {
     if (!pending) return
@@ -534,7 +536,7 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
   const leaderSuccessMeta = (epoch: number) => {
     const meta = store.readMeta()
     if (!meta || meta.kind !== 'success' || meta.sessionEpoch !== epoch) return null
-    if (outcomeBeforeChannel?.sessionEpoch === epoch && outcomeBeforeChannel.opId === meta.opId) {
+    if (outcomeAtChannelOpen?.sessionEpoch === epoch && outcomeAtChannelOpen.opId === meta.opId) {
       return null
     }
     return meta
