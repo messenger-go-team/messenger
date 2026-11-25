@@ -49,8 +49,8 @@ type wsErrorPayload struct {
 	RetryAfterMS int64   `json:"retry_after_ms,omitempty"`
 }
 
-func (ws *wsEndpoint) handleWSCommand(ctx context.Context, socket *socketSession, data []byte) {
-	cmd, problem := parseWSCommand(data)
+func (ws *wsEndpoint) handleWSCommand(ctx context.Context, socket *socketSession, inbound wsInboundCommand) {
+	cmd, problem := inbound.command, inbound.problem
 	if problem != "" {
 		ws.replyWSError(socket, cmd, problem)
 		return
@@ -119,7 +119,7 @@ func (ws *wsEndpoint) handleWSCommand(ctx context.Context, socket *socketSession
 		SenderID:     socket.userID,
 		Body:         cmd.body,
 	})
-	data, err = json.Marshal(event)
+	data, err := json.Marshal(event)
 	if err != nil {
 		ws.logger.Warn("could not encode message.new")
 		return
@@ -174,6 +174,9 @@ func (ws *wsEndpoint) replyWSErrorPayload(socket *socketSession, cmd wsCommand, 
 		payload.Retryable = true
 	case "temporarily_unavailable":
 		payload.Message = "Не удалось подтвердить сохранение. Повторите позже."
+		if cmd.kind == wsTypingType {
+			payload.Message = "Не удалось проверить доступ к чату."
+		}
 		payload.Retryable = true
 	default:
 		payload.Message = "Внутренняя ошибка. Повторите позже."

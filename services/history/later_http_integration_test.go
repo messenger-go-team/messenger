@@ -240,6 +240,30 @@ func TestLaterRESTOutageAndReadiness(t *testing.T) {
 		}
 	}
 	assertLaterReadiness(t, f, 503)
+	response, err := f.web.Client().Get(f.web.URL + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	scrape, err := io.ReadAll(response.Body)
+	if err != nil || response.StatusCode != http.StatusOK {
+		t.Fatalf("metrics during storage outage: status %d, err %v", response.StatusCode, err)
+	}
+	for _, operation := range []string{"GET /later", "POST /later", "PATCH /later/{later_id}", "POST /later/{later_id}/done"} {
+		for result, count := range map[string]int{"5xx": 1, "4xx": 2} {
+			labels := fmt.Sprintf("{operation=%q,result=%q} %d\n", operation, result, count)
+			for _, family := range []string{"history_http_requests_total", "history_http_request_duration_seconds_count"} {
+				if !strings.Contains(string(scrape), family+labels) {
+					t.Errorf("missing metric %s%s", family, labels)
+				}
+			}
+		}
+	}
+	for _, private := range []string{chat, message, entry.ID, userB, "original private source", "unavailable_later", "due_at=%zz"} {
+		if strings.Contains(string(scrape), private) {
+			t.Errorf("unexpected metric value %q", private)
+		}
+	}
 	if _, err := f.db.Exec(`ALTER TABLE history.unavailable_later RENAME TO later_entries`); err != nil {
 		t.Fatal(err)
 	}

@@ -32,6 +32,7 @@ type wsEndpoint struct {
 
 	hub            *connectionHub
 	broker         Broker
+	typing         typingTracker
 	history        historyv1.HistoryServiceClient
 	historyTimeout time.Duration
 	sendLimiter    *sendLimiter
@@ -57,6 +58,7 @@ func newWSEndpoint(cfg config, ready *atomic.Bool, timing wsTiming,
 		cancelFanout:   cancelFanout,
 		hub:            hub,
 		broker:         memoryBroker{hub: hub},
+		typing:         typingTracker{byUser: make(map[string]map[string]*typingGroup)},
 		history:        history,
 		historyTimeout: cfg.HistoryRPCTimeout,
 		sendLimiter:    newSendLimiter(cfg.SendInterval, cfg.SendBurst, time.Now),

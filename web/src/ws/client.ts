@@ -151,6 +151,9 @@ export class MessengerWebSocketClient {
   private flushingPending = false
   private readonly messagesById = new Map<string, StoredMessage>()
   private readonly messageIdBySequence = new Map<string, string>()
+  private liveMessageVersion = 0
+  private recoveryVersion = 0
+  private initialHistoryRequest = true
   private readonly syncedCursors = new Map<string, number>()
   private socket: WebSocketLike | null = null
   private transport: TransportState = 'idle'
@@ -251,6 +254,8 @@ export class MessengerWebSocketClient {
     return {
       transport: this.transport,
       history: this.historyState,
+      liveMessageVersion: this.liveMessageVersion,
+      recoveryVersion: this.recoveryVersion,
       authFailure: this.authFailure,
       pending: Array.from(this.pending.values(), clonePending),
       messages: Array.from(this.messagesById.values()).sort(
@@ -524,6 +529,7 @@ export class MessengerWebSocketClient {
     if (this.bufferingMessages) this.bufferedMessages.push(event)
     else {
       this.mergeNew(event)
+      this.liveMessageVersion += 1
       this.emit()
     }
   }
@@ -692,7 +698,13 @@ export class MessengerWebSocketClient {
     this.setHistoryState('syncing')
     const stagedCursors = new Map(this.syncedCursors)
     try {
-      const chats = await this.history.listChats(this.accessToken)
+      const mode = this.recoveringHistory
+        ? 'reconnect'
+        : this.initialHistoryRequest
+          ? 'initial'
+          : undefined
+      this.initialHistoryRequest = false
+      const chats = await this.history.listChats(this.accessToken, mode)
       if (syncGeneration !== this.historyGeneration || this.stopped) return
       for (const chat of chats) {
         const chatId = chat.id.toLowerCase()
@@ -719,6 +731,7 @@ export class MessengerWebSocketClient {
       this.commitBufferedMessages()
       this.syncedCursors.clear()
       for (const [chatId, cursor] of stagedCursors) this.syncedCursors.set(chatId, cursor)
+      if (this.recoveringHistory) this.recoveryVersion += 1
       this.recoveringHistory = false
       this.setHistoryState('ready')
       this.historyRetryBackoff.reset()
@@ -791,6 +804,7 @@ export class MessengerWebSocketClient {
     this.bufferedMessages = []
     this.bufferingMessages = false
     for (const event of messages) this.mergeNew(event)
+    if (messages.length > 0) this.liveMessageVersion += 1
     this.emit()
   }
 
