@@ -1,5 +1,6 @@
 """Exercise the deployed workflow's shell steps with stubbed GitHub and SSH."""
 from pathlib import Path
+import hashlib
 import json
 import os
 import subprocess
@@ -31,6 +32,8 @@ def main():
     )
     sha = "a" * 40
     newer = "b" * 40
+    archive = "test staging artifact\n"
+    digest = "sha256:" + hashlib.sha256(archive.encode()).hexdigest()
     activation = "rel.ABC123/next"
     newer_activation = "rel.DEF456/next"
     assert 'workflows: ["Go CI", "Frontend CI"]' in workflow
@@ -54,7 +57,21 @@ if url.path.endswith("/git/ref/heads/main"):
     sys.exit()
 if url.path.endswith("/ci.yml/runs") or url.path.endswith("/frontend-ci.yml/runs"):
     gate = "TEST_FRONTEND" if "frontend-ci" in url.path else "TEST_GO"
-    print(os.environ[gate])
+    result = os.environ[gate]
+    if "run_attempt" in args[-1]:
+        if result == "success":
+            sha = os.environ.get("TEST_ARTIFACT_SHA") or parse_qs(url.query)["head_sha"][0]
+            print(f"{sha}\t200\t2")
+    else:
+        print(result)
+    sys.exit()
+if url.path.endswith("/actions/runs/200/artifacts"):
+    assert parse_qs(url.query)["name"] == [f"web-dist-{os.environ['RELEASE_SHA']}-attempt-2"]
+    if os.environ["TEST_ARTIFACT"] == "present":
+        print("300\t" + os.environ["TEST_DIGEST"])
+    sys.exit()
+if url.path.endswith("/actions/artifacts/300/zip"):
+    sys.stdout.write(os.environ["TEST_ARCHIVE"])
     sys.exit()
 if "/deployments" not in url.path:
     sys.exit(42)
@@ -97,6 +114,8 @@ else:
 """)
         ssh = root / "ssh"
         ssh.write_text("""#!/usr/bin/env bash
+[[ ${!#} == "deploy-web $RELEASE_SHA" ]] || exit 43
+[[ $(cat) == "$(printf '%s' "$TEST_ARCHIVE")" ]] || exit 44
 printf 'SSH called\\n' >> "$TEST_SSH_LOG"
 printf '%s\\n' "$TEST_REMOTE_RESULT"
 exit "$TEST_REMOTE_EXIT"
@@ -106,15 +125,23 @@ exit "$TEST_REMOTE_EXIT"
         curl = root / "curl"
         curl.write_text("""#!/usr/bin/env python3
 import json, os, sys
-target = sys.argv[-1].split("?", 1)[0]
+from urllib.parse import parse_qs, urlsplit
+url = urlsplit(sys.argv[-1])
+target = url.path
 if target.endswith("git/ref/heads/main"):
     print(json.dumps({"object": {"sha": os.environ["TEST_MAIN"]}}))
+elif target.endswith("/actions/runs/200/artifacts"):
+    name = parse_qs(url.query)["name"][0]
+    assert name == f"web-dist-{os.environ['RELEASE_SHA']}-attempt-2"
+    items = [{"name": name, "expired": False, "digest": os.environ["TEST_DIGEST"],
+              "size_in_bytes": len(os.environ["TEST_ARCHIVE"].encode())}]
+    print(json.dumps({"artifacts": items if os.environ["TEST_ARTIFACT"] == "present" else []}))
 else:
     result = os.environ["TEST_FRONTEND" if target.endswith("frontend-ci.yml/runs") else "TEST_GO"]
     print(json.dumps({"workflow_runs": [{
         "head_sha": os.environ["TEST_CI_SHA"], "head_branch": "main", "event": "push",
         "status": "in_progress" if result == "pending" else "completed",
-        "conclusion": result,
+        "conclusion": result, "id": 200, "run_attempt": 2,
     }]}))
 """)
         curl.chmod(0o700)
@@ -129,13 +156,15 @@ else:
                         STAGING_KNOWN_HOSTS="test-only", STAGING_SSH_HOST="test.invalid",
                         TEST_REMOTE_EXIT="0", TEST_SSH_LOG=str(ssh_log), TEST_CI_SHA=sha,
                         ACTIVATION=activation, TEST_DEPLOYMENTS=str(deployments),
-                        GITHUB_SERVER_URL="https://github.com", GITHUB_RUN_ID="123")
+                        GITHUB_SERVER_URL="https://github.com", GITHUB_RUN_ID="123",
+                        TEST_ARCHIVE=archive, TEST_DIGEST=digest, TEST_ARTIFACT="present",
+                        TEST_RECEIVER_RELEASE=tmp)
 
-        def check(body, wanted, status=0, ssh_calls="", stdout="", **overrides):
+        def check(body, wanted, status=0, ssh_calls="", stdout="", stdin=None, **overrides):
             output.write_text("")
             ssh_log.write_text("")
             res = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", body],
-                                 env=defaults | overrides, text=True, capture_output=True)
+                                 env=defaults | overrides, text=True, capture_output=True, input=stdin)
             assert res.returncode == status, (res.stdout, res.stderr)
             assert output.read_text() == wanted, res.stdout
             assert ssh_log.read_text() == ssh_calls, res.stdout
@@ -149,6 +178,9 @@ else:
         check(preflight, "", TEST_MAIN=newer)
         check(deploy, "", TEST_MAIN=newer, TEST_FRONTEND="pending")
         check(deploy, "", TEST_MAIN=newer, TEST_GO="failure")
+        check(deploy, "", 1, TEST_ARTIFACT_SHA=newer)
+        check(deploy, "", 1, TEST_ARTIFACT="missing")
+        check(deploy, "", 1, TEST_DIGEST="sha256:" + "0" * 64)
         check(deploy, "", ssh_calls="SSH called\n", TEST_REMOTE_RESULT=f"STAGING_RESULT skipped {sha}")
         for receipt in (f"deployed {newer} {activation}", f"deployed {sha}",
                         f"deployed {sha} rel.ABC123/other"):
@@ -163,6 +195,13 @@ else:
         check(receiver_gate, "", 1, TEST_GO="pending")
         check(receiver_gate, "", 1, TEST_CI_SHA=newer)
         check(receiver_gate, "")
+        receiver_upload = receiver_gate + '\nrelease=$TEST_RECEIVER_RELEASE\nreceive_web\n'
+        check(receiver_upload, "", stdin=archive)
+        assert (root / "web.zip").read_text() == archive
+        assert (root / "web.digest").read_text().strip() == digest.removeprefix("sha256:")
+        check(receiver_upload, "", 1, stdin=archive + "x")
+        check(receiver_upload, "", 1, stdin=archive.replace("test", "fake"))
+        check(receiver_upload, "", 1, stdin=archive, TEST_ARTIFACT="missing")
 
         def history():
             return [d["statuses"] for d in json.loads(deployments.read_text())]
