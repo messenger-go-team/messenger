@@ -12,6 +12,9 @@ import {
   type RefreshSharedStore,
 } from '@/features/auth/refreshCoordinator'
 
+const REFRESH_LOCK = 'messenger:auth-refresh'
+const CHANNEL_LOCK = 'messenger:auth-refresh-channel'
+
 function session(token: string): AccessTokenResponse {
   return { token_type: 'Bearer', access_token: token, expires_in: 900 }
 }
@@ -20,8 +23,9 @@ function session(token: string): AccessTokenResponse {
 function createSerialLockManager(lockOptions?: {
   /** Задержка перед запуском callback после получения lock (по порядковому номеру grant). */
   delayGrantedCallbackMs?: (grantIndex: number) => number
-}): Pick<LockManager, 'request'> {
-  let tail: Promise<void> = Promise.resolve()
+}) {
+  const tails = new Map<string, Promise<void>>()
+  const held = new Set<string>()
   let grantIndex = 0
   const abortedError = () => new DOMException('Aborted', 'AbortError')
 
@@ -48,29 +52,36 @@ function createSerialLockManager(lockOptions?: {
 
       const run = async () => {
         if (cancelled || signal?.aborted) return
-        const delayMs = lockOptions?.delayGrantedCallbackMs?.(grantIndex++) ?? 0
+        const delayMs =
+          name === REFRESH_LOCK ? (lockOptions?.delayGrantedCallbackMs?.(grantIndex++) ?? 0) : 0
         if (delayMs > 0) {
           await new Promise<void>((r) => {
             window.setTimeout(r, delayMs)
           })
           if (cancelled || signal?.aborted) return
         }
+        held.add(name)
         try {
           resolve(await callback({ name } as Lock))
         } catch (error) {
           reject(error)
         } finally {
+          held.delete(name)
           signal?.removeEventListener('abort', onAbort)
         }
       }
 
-      tail = tail.then(run, run).then(
-        () => undefined,
-        () => undefined,
+      const tail = (tails.get(name) ?? Promise.resolve()).then(run, run)
+      tails.set(
+        name,
+        tail.then(
+          () => undefined,
+          () => undefined,
+        ),
       )
     })
   }) as LockManager['request']
-  return { request }
+  return { request, isHeld: (name: string) => held.has(name) }
 }
 
 function createChannelHub(options?: { asyncDelivery?: boolean; delayMs?: number }) {
@@ -212,6 +223,155 @@ describe('createRefreshCoordinator', () => {
     } finally {
       tab.dispose()
       publisher.close()
+      await pending.catch(() => undefined)
+    }
+  })
+
+  it('shares the leader result when publication races with opening a new channel', async () => {
+    vi.useFakeTimers()
+    const refresh = vi.fn(async () => session('unexpected-second-post'))
+    const locks = createSerialLockManager()
+    const hub = createChannelHub({ delayMs: 80 })
+    const store = createMemoryRefreshStore()
+    const publisher = hub.createChannel('probe')
+    let finishLeader!: () => void
+    const leaderLock = locks.request(
+      REFRESH_LOCK,
+      () =>
+        new Promise<void>((resolve) => {
+          finishLeader = resolve
+        }),
+    )
+    await vi.advanceTimersByTimeAsync(0)
+    const opId = store.allocateOpId()
+    const sessionEpoch = store.getEpoch()
+    const publish = () => {
+      store.writeMeta({ kind: 'success', sessionEpoch, opId, at: Date.now() })
+      publisher.postMessage({
+        v: 1,
+        type: 'refresh-success',
+        sessionEpoch,
+        opId,
+        ...session('leader-result'),
+      })
+      finishLeader()
+    }
+
+    const tab = createRefreshCoordinator({
+      refresh,
+      locks,
+      store,
+      createChannel: (name) => {
+        const channel = hub.createChannel(name)
+        // Другая вкладка может начать публикацию сразу, если блокировка свободна.
+        if (locks.isHeld(CHANNEL_LOCK)) void locks.request(CHANNEL_LOCK, publish)
+        else publish()
+        return channel
+      },
+    })
+    const pending = tab.requestRefresh()
+    void pending.catch(() => undefined)
+
+    try {
+      await vi.advanceTimersByTimeAsync(80)
+      await expect(pending).resolves.toEqual(session('leader-result'))
+      expect(refresh).not.toHaveBeenCalled()
+    } finally {
+      finishLeader()
+      await leaderLock
+      tab.dispose()
+      publisher.close()
+      await pending.catch(() => undefined)
+    }
+  })
+
+  it('keeps the result unpublished while another tab is setting up its channel', async () => {
+    vi.useFakeTimers()
+    let resolveHttp!: (value: AccessTokenResponse) => void
+    const refresh = vi.fn(
+      () =>
+        new Promise<AccessTokenResponse>((resolve) => {
+          resolveHttp = resolve
+        }),
+    )
+    const locks = createSerialLockManager()
+    const hub = createChannelHub()
+    const store = createMemoryRefreshStore()
+    const leader = createTab(refresh, locks, hub, store)
+    const pending = leader.requestRefresh()
+    let finishSetup!: () => void
+
+    try {
+      await vi.advanceTimersByTimeAsync(0)
+      expect(refresh).toHaveBeenCalledTimes(1)
+      const setup = locks.request(
+        CHANNEL_LOCK,
+        () =>
+          new Promise<void>((resolve) => {
+            finishSetup = resolve
+          }),
+      )
+      await vi.advanceTimersByTimeAsync(0)
+      resolveHttp(session('leader-result'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(store.readMeta()).toBeNull()
+
+      finishSetup()
+      await setup
+      await expect(pending).resolves.toEqual(session('leader-result'))
+      expect(store.readMeta()?.kind).toBe('success')
+    } finally {
+      finishSetup?.()
+      leader.dispose()
+      await pending.catch(() => undefined)
+    }
+  })
+
+  it('cancels publication of a completed HTTP response when logout wins', async () => {
+    vi.useFakeTimers()
+    let resolveHttp!: (value: AccessTokenResponse) => void
+    const refresh = vi.fn(
+      () =>
+        new Promise<AccessTokenResponse>((resolve) => {
+          resolveHttp = resolve
+        }),
+    )
+    const locks = createSerialLockManager()
+    const hub = createChannelHub()
+    const store = createMemoryRefreshStore()
+    const leader = createTab(refresh, locks, hub, store)
+    const heard = vi.fn()
+    leader.subscribeSuccess(heard)
+    const pending = leader.requestRefresh()
+    const cancelled = expect(pending).rejects.toBeInstanceOf(RefreshCancelledError)
+    let finishSetup!: () => void
+
+    try {
+      await vi.advanceTimersByTimeAsync(0)
+      expect(refresh).toHaveBeenCalledTimes(1)
+      const setup = locks.request(
+        CHANNEL_LOCK,
+        () =>
+          new Promise<void>((resolve) => {
+            finishSetup = resolve
+          }),
+      )
+      await vi.advanceTimersByTimeAsync(0)
+      resolveHttp(session('obsolete-result'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(store.readMeta()).toBeNull()
+
+      await leader.withSessionChange('logout', async () => undefined)
+      await cancelled
+      finishSetup()
+      await setup
+      await vi.advanceTimersByTimeAsync(0)
+      expect(store.getEpoch()).toBe(1)
+      expect(store.readMeta()).toBeNull()
+      expect(heard).not.toHaveBeenCalled()
+    } finally {
+      finishSetup?.()
+      leader.dispose()
       await pending.catch(() => undefined)
     }
   })
@@ -708,7 +868,7 @@ describe('createRefreshCoordinator', () => {
     let lockRequests = 0
     const locks: Pick<LockManager, 'request'> = {
       request: ((...args: Parameters<LockManager['request']>) => {
-        lockRequests += 1
+        if (args[0] === REFRESH_LOCK) lockRequests += 1
         return (
           baseLocks.request as (...a: Parameters<LockManager['request']>) => Promise<unknown>
         )(...args)
@@ -776,13 +936,13 @@ describe('createRefreshCoordinator', () => {
     const tabB = createTab(refresh, locks, hub, store)
     const invalidated = vi.fn()
     tabB.subscribeInvalidated(invalidated)
+    await vi.advanceTimersByTimeAsync(0)
 
     await tabA.withSessionChange('account_switch', async () => undefined)
     expect(store.getEpoch()).toBe(1)
 
     const pendingB = tabB.requestRefresh()
-    await Promise.resolve()
-    await Promise.resolve()
+    await vi.advanceTimersByTimeAsync(0)
     expect(refresh).toHaveBeenCalledTimes(1)
     expect(tabB.getSessionEpoch()).toBe(1)
 
@@ -866,8 +1026,7 @@ describe('createRefreshCoordinator', () => {
 
     const pendingA = tabA.requestRefresh()
     const pendingB = tabB.requestRefresh()
-    await Promise.resolve()
-    await Promise.resolve()
+    await vi.advanceTimersByTimeAsync(0)
     expect(refresh).toHaveBeenCalledTimes(1)
     releaseRefresh(session('leader-after-ttl'))
 
@@ -898,7 +1057,7 @@ describe('createRefreshCoordinator', () => {
     let grantIndex = 0
     const locks: Pick<LockManager, 'request'> = {
       request: ((...args: Parameters<LockManager['request']>) => {
-        const idx = grantIndex++
+        const idx = args[0] === REFRESH_LOCK ? grantIndex++ : -1
         if (idx !== 1) {
           return (
             baseLocks.request as (...a: Parameters<LockManager['request']>) => Promise<unknown>
@@ -954,7 +1113,7 @@ describe('createRefreshCoordinator', () => {
     let grantIndex = 0
     const locks: Pick<LockManager, 'request'> = {
       request: ((...args: Parameters<LockManager['request']>) => {
-        const idx = grantIndex++
+        const idx = args[0] === REFRESH_LOCK ? grantIndex++ : -1
         if (idx !== 1) {
           return (
             baseLocks.request as (...a: Parameters<LockManager['request']>) => Promise<unknown>
@@ -1027,8 +1186,7 @@ describe('createRefreshCoordinator', () => {
 
     const pendingA = tabA.requestRefresh()
     const pendingB = tabB.requestRefresh()
-    await Promise.resolve()
-    await Promise.resolve()
+    await vi.advanceTimersByTimeAsync(0)
     expect(refresh).toHaveBeenCalledTimes(1)
     releaseRefresh(session('leader-gone'))
 
