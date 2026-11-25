@@ -23,6 +23,7 @@ function session(token: string): AccessTokenResponse {
 function createSerialLockManager(lockOptions?: {
   /** Задержка перед запуском callback после получения lock (по порядковому номеру grant). */
   delayGrantedCallbackMs?: (grantIndex: number) => number
+  rejectRequest?: (name: string, hasSignal: boolean) => boolean
 }) {
   const tails = new Map<string, Promise<void>>()
   const held = new Set<string>()
@@ -40,6 +41,9 @@ function createSerialLockManager(lockOptions?: {
 
     if (signal?.aborted) {
       return Promise.reject(abortedError())
+    }
+    if (lockOptions?.rejectRequest?.(name, signal != null)) {
+      return Promise.reject(new DOMException('Unavailable'))
     }
 
     return new Promise<unknown>((resolve, reject) => {
@@ -326,6 +330,95 @@ describe('createRefreshCoordinator', () => {
       await pending.catch(() => undefined)
     }
   })
+
+  it('keeps refresh and session changes working if channel setup cannot acquire its lock', async () => {
+    vi.useFakeTimers()
+    const locks = createSerialLockManager({ rejectRequest: (name) => name === CHANNEL_LOCK })
+    const refresh = vi.fn(async () => {
+      expect(locks.isHeld(REFRESH_LOCK)).toBe(true)
+      return session('local-result')
+    })
+    const store = createMemoryRefreshStore()
+    const createChannel = vi.fn(createChannelHub().createChannel)
+    const tab = createRefreshCoordinator({ refresh, locks, store, createChannel })
+    store.writeMeta({
+      kind: 'success',
+      sessionEpoch: store.getEpoch(),
+      opId: store.allocateOpId(),
+      at: Date.now(),
+    })
+
+    try {
+      const pending = tab.requestRefresh()
+      void pending.catch(() => undefined)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(refresh).toHaveBeenCalledTimes(1)
+      await expect(pending).resolves.toEqual(session('local-result'))
+      expect(createChannel).not.toHaveBeenCalled()
+
+      const editCookie = vi.fn(async () => {
+        expect(locks.isHeld(REFRESH_LOCK)).toBe(true)
+      })
+      await tab.withSessionChange('logout', editCookie)
+      await tab.withSessionChange('account_switch', editCookie)
+      await tab.cancel()
+      expect(editCookie).toHaveBeenCalledTimes(2)
+      expect(store.getEpoch()).toBe(3)
+      expect(store.readMeta()).toBeNull()
+      await expect(tab.requestRefresh()).resolves.toEqual(session('local-result'))
+      expect(refresh).toHaveBeenCalledTimes(2)
+    } finally {
+      tab.dispose()
+    }
+  })
+
+  it.each(['lock', 'broadcast'])(
+    'returns the successful HTTP refresh locally when %s fails during publication',
+    async (failure) => {
+      vi.useFakeTimers()
+      let failPublication = true
+      const locks = createSerialLockManager({
+        rejectRequest: (name, hasSignal) =>
+          failure === 'lock' && failPublication && name === CHANNEL_LOCK && hasSignal,
+      })
+      const refresh = vi.fn(async () => session('local-result'))
+      const followerRefresh = vi.fn(async () => session('follower-result'))
+      const store = createMemoryRefreshStore()
+      const hub = createChannelHub({ asyncDelivery: true })
+      const createChannel = (name: string) => {
+        const channel = hub.createChannel(name)
+        const postMessage = channel.postMessage.bind(channel)
+        channel.postMessage = (message) => {
+          if (failure === 'broadcast' && message.type === 'refresh-success') {
+            throw new DOMException('Unavailable')
+          }
+          postMessage(message)
+        }
+        return channel
+      }
+      const leader = createRefreshCoordinator({ refresh, locks, store, createChannel })
+      const follower = createTab(followerRefresh, locks, hub, store)
+      const heard = vi.fn()
+      leader.subscribeSuccess(heard)
+
+      try {
+        await expect(leader.requestRefresh()).resolves.toEqual(session('local-result'))
+        expect(refresh).toHaveBeenCalledTimes(1)
+        expect(heard).toHaveBeenCalledWith(session('local-result'), 0)
+        expect(store.readMeta()).toBeNull()
+
+        failPublication = false
+        const pending = follower.requestRefresh()
+        void pending.catch(() => undefined)
+        await vi.advanceTimersByTimeAsync(0)
+        expect(followerRefresh).toHaveBeenCalledTimes(1)
+        await expect(pending).resolves.toEqual(session('follower-result'))
+      } finally {
+        follower.dispose()
+        leader.dispose()
+      }
+    },
+  )
 
   it('cancels publication of a completed HTTP response when logout wins', async () => {
     vi.useFakeTimers()

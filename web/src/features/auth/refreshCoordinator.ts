@@ -367,7 +367,7 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     session: AccessTokenResponse,
     epoch: number,
     opId: number,
-    fromRemote: boolean,
+    publish: boolean,
   ) => {
     syncEpochFromStore()
     if (disposed || epoch !== sessionEpoch) return
@@ -383,10 +383,9 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
 
     const meta: RefreshOutcomeMeta = { kind: 'success', sessionEpoch: epoch, opId, at: now() }
     memoryOutcome = { ...meta, session }
-    // Метаданные фиксирует отправитель в той же операции, что и broadcast.
-    if (!fromRemote) store.writeMeta(meta)
     notifySuccess(session, epoch)
-    if (!fromRemote && channel) {
+    if (!publish || !channel) return
+    try {
       channel.postMessage({
         v: 1,
         type: 'refresh-success',
@@ -396,7 +395,11 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
         access_token: session.access_token,
         expires_in: session.expires_in,
       })
+    } catch {
+      return
     }
+    // Другие вкладки ждут JWT только после успешной отправки.
+    store.writeMeta(meta)
   }
 
   const applyFinalFailure = (
@@ -511,8 +514,22 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     return locks.request(name, fn)
   }
 
+  const tryChannelLock = async (signal: AbortSignal | undefined, fn: () => void) => {
+    let acquired = false
+    try {
+      await withLock(CHANNEL_LOCK, signal, () => {
+        acquired = true
+        fn()
+      })
+    } catch (error) {
+      // Отказ дополнительного lock отключает обмен JWT, сохраняя основной lock.
+      if (acquired || signal?.aborted) throw error
+    }
+    return acquired
+  }
+
   // Публикация success не может вклиниться между открытием канала и чтением meta.
-  const channelReady = withLock(CHANNEL_LOCK, undefined, () => {
+  const channelReady = tryChannelLock(undefined, () => {
     if (disposed) return
     try {
       channel = createChannel(CHANNEL_NAME)
@@ -536,7 +553,7 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
           },
           data.sessionEpoch,
           data.opId,
-          true,
+          false,
         )
         return
       }
@@ -556,6 +573,7 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
   void channelReady.catch(() => undefined)
 
   const leaderSuccessMeta = (epoch: number) => {
+    if (!channel) return null
     const meta = store.readMeta()
     if (!meta || meta.kind !== 'success' || meta.sessionEpoch !== epoch) return null
     if (outcomeAtChannelOpen?.sessionEpoch === epoch && outcomeAtChannelOpen.opId === meta.opId) {
@@ -651,12 +669,15 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     void refreshPromise.catch(() => undefined)
     try {
       const session = await Promise.race([refreshPromise, whenAborted(signal)])
-      // HTTP завершается до захвата короткой блокировки публикации.
-      await withLock(CHANNEL_LOCK, signal, () => {
+      const acceptSuccess = (publish: boolean) => {
         syncEpochFromStore()
         if (signal.aborted || epoch !== sessionEpoch) throw abortError(signal)
-        applySuccess(session, epoch, opId, false)
-      })
+        applySuccess(session, epoch, opId, publish)
+      }
+      // После HTTP отказ блокировки публикации оставляет JWT доступным в этой вкладке.
+      if (!channel || !(await tryChannelLock(signal, () => acceptSuccess(true)))) {
+        acceptSuccess(false)
+      }
       syncEpochFromStore()
       if (signal.aborted || epoch !== sessionEpoch) throw abortError(signal)
       return session
