@@ -148,6 +148,34 @@ describe('createRefreshCoordinator', () => {
     tabB.dispose()
   })
 
+  it.each([1, 2])(
+    'starts one refresh after a completed broadcast with %i new tabs',
+    async (tabCount) => {
+      vi.useFakeTimers()
+      const refresh = vi.fn(async () => session('after-reload'))
+      const locks = createSerialLockManager()
+      const hub = createChannelHub({ asyncDelivery: true })
+      const store = createMemoryRefreshStore()
+      store.writeMeta({
+        kind: 'success',
+        sessionEpoch: store.getEpoch(),
+        opId: store.allocateOpId(),
+        at: Date.now(),
+      })
+
+      const tabs = Array.from({ length: tabCount }, () => createTab(refresh, locks, hub, store))
+      const pending = Promise.all(tabs.map((tab) => tab.requestRefresh()))
+      try {
+        await vi.advanceTimersByTimeAsync(0)
+        expect(refresh).toHaveBeenCalledTimes(1)
+        await expect(pending).resolves.toEqual(tabs.map(() => session('after-reload')))
+      } finally {
+        tabs.forEach((tab) => tab.dispose())
+        await pending.catch(() => undefined)
+      }
+    },
+  )
+
   it('still runs a single refresh when BroadcastChannel delivery is async', async () => {
     let releaseRefresh!: (value: AccessTokenResponse) => void
     const refresh = vi.fn(
