@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router'
-import { ArrowLeft, LogOut, MessageCircle, Search, User, UserPlus, Users } from 'lucide-react'
+import { useNavigate } from 'react-router'
+import { Search, UserPlus, Users } from 'lucide-react'
 import { addContact, getContacts, removeContact, searchUsers, type UserSummary } from '@/api/auth'
 import { createPersonalChat } from '@/api/history'
+import { AppNav } from '@/components/AppNav'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/features/auth/useAuth'
@@ -190,58 +191,11 @@ export function ContactsPage() {
     (!searchMatchesCurrent || globalStatus === 'loading' || globalStatus === 'idle')
 
   return (
-    <div className="flex h-svh min-h-0 overflow-hidden bg-background text-foreground">
-      <nav
-        aria-label="Основная навигация"
-        className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-border bg-muted/40 py-3"
-      >
-        <div className="flex flex-col items-center gap-3">
-          <Link
-            to="/"
-            className="inline-flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent"
-            aria-label="Чаты"
-            title="Чаты"
-          >
-            <MessageCircle className="size-5" />
-          </Link>
-          <span
-            className="inline-flex size-10 items-center justify-center rounded-lg bg-accent text-foreground"
-            aria-label="Контакты"
-            title="Контакты"
-            aria-current="page"
-          >
-            <Users className="size-5" />
-          </span>
-        </div>
-        <div className="flex flex-col items-center gap-2">
-          <Link
-            to="/profile"
-            className="inline-flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent"
-            aria-label="Профиль"
-          >
-            <User className="size-5" />
-          </Link>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Выйти"
-            onClick={() => void logout()}
-          >
-            <LogOut className="size-4" />
-          </Button>
-        </div>
-      </nav>
+    <div className="flex h-svh min-h-0 flex-col overflow-hidden bg-background text-foreground md:flex-row">
+      <AppNav active="contacts" onLogout={() => void logout()} className="order-last md:order-first" />
 
-      <section className="flex min-w-0 flex-1 flex-col bg-card md:max-w-[420px] md:border-r md:border-border">
+      <section className="flex min-w-0 flex-1 flex-col bg-card lg:w-[480px] lg:flex-none lg:border-r lg:border-border">
         <header className="flex items-center gap-3 px-4 pt-5 pb-3">
-          <Link
-            to="/"
-            className="inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent md:hidden"
-            aria-label="К чатам"
-          >
-            <ArrowLeft className="size-5" />
-          </Link>
           <h1 className="text-xl font-semibold tracking-tight">Контакты</h1>
         </header>
 
@@ -255,7 +209,7 @@ export function ContactsPage() {
               id={searchId}
               role="searchbox"
               aria-label="Поиск контактов и людей"
-              placeholder="Поиск по логину"
+              placeholder="найти"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               className="h-10 rounded-full border-transparent bg-muted pl-9"
@@ -395,7 +349,7 @@ export function ContactsPage() {
         </div>
       </section>
 
-      <main className="hidden min-w-0 flex-1 items-center justify-center bg-muted/20 md:flex">
+      <main className="hidden min-w-0 flex-1 items-center justify-center bg-muted/20 lg:flex">
         <p className="max-w-sm px-6 text-center text-sm text-muted-foreground">
           Выберите контакт или найдите человека, чтобы начать переписку
         </p>

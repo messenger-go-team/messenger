@@ -6,7 +6,7 @@ import { useLaterReminders } from '@/features/later/useLaterReminders'
 
 /**
  * Toast напоминания Later (Figma mobile 496:84911, tablet 537:110293).
- * Mobile — на всю ширину внизу; md+ — карточка справа внизу.
+ * Mobile (<580) — на всю ширину внизу; tablet+ (md:) — карточка справа внизу.
  * «Позже» скрывает toast в этой сессии, «Открыть» переходит к сообщению в чате.
  */
 export function LaterReminderToast() {

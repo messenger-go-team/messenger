@@ -6,6 +6,14 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /*
+   * #45 layout breakpoints (CSS px → rem @ 16px):
+   * mobile < 580 | tablet ≥ 580 | desktop ≥ 1080
+   * Utilities: md:* = tablet+, lg:* = desktop.
+   */
+  --breakpoint-sm: 36.25rem;
+  --breakpoint-md: 36.25rem;
+  --breakpoint-lg: 67.5rem;
   --font-heading: var(--font-sans);
   --font-sans: 'Geist Variable', sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);

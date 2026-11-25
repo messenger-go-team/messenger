@@ -1,9 +1,10 @@
 import { useId, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { AlertDialog } from '@base-ui/react/alert-dialog'
-import { ArrowLeft, Bell, ChevronDown, ChevronUp, MessageCircle, User, Users } from 'lucide-react'
+import { Bell, ChevronDown, ChevronUp } from 'lucide-react'
 import { ApiError } from '@/api/client'
 import { completeLater, rescheduleLater, type LaterEntry, type LaterStatus } from '@/api/later'
+import { AppNav } from '@/components/AppNav'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/features/auth/useAuth'
@@ -80,6 +81,7 @@ function LaterList({
   status: LaterRemindersStatus
   loadError: string | null
 }) {
+  const { logout } = useAuth()
   const { refresh, removeEntry, replaceEntry } = useLaterReminders()
   const [actionError, setActionError] = useState<string | null>(null)
   const [completingId, setCompletingId] = useState<string | null>(null)
@@ -170,52 +172,11 @@ function LaterList({
   }
 
   return (
-    <div className="flex h-svh min-h-0 overflow-hidden bg-background text-foreground">
-      <nav
-        aria-label="Основная навигация"
-        className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-border bg-muted/40 py-3"
-      >
-        <div className="flex flex-col items-center gap-3">
-          <span
-            className="inline-flex size-10 items-center justify-center rounded-lg bg-accent text-foreground"
-            aria-current="page"
-            aria-label="Важно"
-          >
-            <Bell className="size-5" />
-          </span>
-          <Link
-            to="/"
-            className="inline-flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent"
-            aria-label="Чаты"
-          >
-            <MessageCircle className="size-5" />
-          </Link>
-          <Link
-            to="/contacts"
-            className="inline-flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent"
-            aria-label="Контакты"
-          >
-            <Users className="size-5" />
-          </Link>
-        </div>
-        <Link
-          to="/profile"
-          className="inline-flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent"
-          aria-label="Профиль"
-        >
-          <User className="size-5" />
-        </Link>
-      </nav>
+    <div className="flex h-svh min-h-0 flex-col overflow-hidden bg-background text-foreground md:flex-row">
+      <AppNav active="later" onLogout={() => void logout()} className="order-last md:order-first" />
 
-      <section className="flex min-w-0 flex-1 flex-col bg-card md:max-w-[420px] md:border-r md:border-border lg:max-w-[480px]">
+      <section className="flex min-w-0 flex-1 flex-col bg-card lg:w-[480px] lg:flex-none lg:border-r lg:border-border">
         <header className="flex items-center gap-3 px-4 pt-5 pb-3">
-          <Link
-            to="/"
-            className="inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent md:hidden"
-            aria-label="К чатам"
-          >
-            <ArrowLeft className="size-5" />
-          </Link>
           <h1 className="text-xl font-semibold tracking-tight">Важно</h1>
         </header>
 
@@ -440,7 +401,7 @@ function LaterList({
         </div>
       </section>
 
-      <main className="hidden min-w-0 flex-1 items-center justify-center bg-muted/20 md:flex">
+      <main className="hidden min-w-0 flex-1 items-center justify-center bg-muted/20 lg:flex">
         <p className="max-w-sm px-6 text-center text-sm text-muted-foreground">
           Выберите напоминание, чтобы открыть сообщение в чате
         </p>

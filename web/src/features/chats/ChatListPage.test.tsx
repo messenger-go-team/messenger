@@ -504,6 +504,18 @@ describe('ChatListPage', () => {
     expect(screen.queryByText('Загрузка чатов…')).not.toBeInTheDocument()
   })
 
+  it('keeps list and thread as separate panes with a back control when a chat is open', async () => {
+    const auth = await authValue()
+    renderChats(auth, `/chats/${INITIAL_CHAT_ID}`)
+
+    expect(await screen.findByRole('link', { name: 'К списку чатов' })).toBeInTheDocument()
+    const chatsHeading = screen.getByRole('heading', { name: 'Чаты' })
+    const listPane = chatsHeading.closest('aside')
+    expect(listPane?.className ?? '').toMatch(/\bhidden\b/)
+    // Split list+thread only at desktop (lg); tablet is list OR thread like Figma.
+    expect(listPane?.className ?? '').toMatch(/\blg:flex\b/)
+  })
+
   it('shows error with retry when list fails', async () => {
     server.use(
       http.get('/chats', () =>

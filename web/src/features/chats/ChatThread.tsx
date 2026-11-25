@@ -510,10 +510,10 @@ export function ChatThread({
       className="flex h-full min-h-0 w-full flex-col bg-background"
       aria-label={`Чат с ${title}`}
     >
-      <header className="flex items-center gap-3 border-b border-border px-3 py-3 md:px-5">
+      <header className="flex items-center gap-3 border-b border-border px-3 py-3 md:px-5 lg:px-6">
         <Link
           to="/"
-          className="inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent md:hidden"
+          className="inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent lg:hidden"
           aria-label="К списку чатов"
         >
           <ArrowLeft className="size-5" />
@@ -554,7 +554,7 @@ export function ChatThread({
 
       <div
         ref={listRef}
-        className="min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-6"
+        className="min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-5 lg:px-6"
         onScroll={onScroll}
         data-testid="chat-thread-scroll"
       >
@@ -708,7 +708,7 @@ export function ChatThread({
 
       <form
         onSubmit={send}
-        className="flex items-end gap-2 border-t border-border bg-card px-3 py-3 md:px-5"
+        className="flex items-end gap-2 border-t border-border bg-card px-3 py-3 md:px-5 lg:px-6"
       >
         <label htmlFor={composerId} className="sr-only">
           Сообщение
@@ -720,7 +720,7 @@ export function ChatThread({
             setDraft(event.target.value)
             setSendError(null)
           }}
-          placeholder="Написать сообщение"
+          placeholder="Сообщение"
           maxLength={MAX_BODY_LENGTH}
           autoComplete="off"
           className="min-h-11 flex-1 rounded-full border-transparent bg-muted px-4"

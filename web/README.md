@@ -45,6 +45,14 @@ cp .env.example .env.local
 По умолчанию включены MSW-моки (`VITE_API_MOCK=true`). Подробности и
 переключение на реальный backend — в разделе [REST API и MSW](#rest-api-и-msw).
 
+### Раскладки (#45)
+
+Ширины (CSS px): мобилка **375–580**, планшет **580–1080**, десктоп **≥1080**.
+В Tailwind `md:` = от 580px (tablet+), `lg:` = от 1080px (desktop) — см.
+`web/src/index.css` и `web/src/lib/breakpoints.ts`. Mobile: нижние табы;
+tablet: левый rail 68px, список или тред на всю ширину с «Назад»;
+desktop (≥1080): rail 48px и split список+тред.
+
 Запустите сервер разработки:
 
 ```bash

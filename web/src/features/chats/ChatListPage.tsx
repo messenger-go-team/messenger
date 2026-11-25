@@ -6,13 +6,13 @@ import {
   useRef,
   useState,
   type FormEvent,
-  type ReactNode,
 } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
-import { Bell, LogOut, MessageCircle, Plus, Search, User, Users } from 'lucide-react'
+import { MessageCircle, Plus, Search } from 'lucide-react'
 import type { UserSummary } from '@/api/auth'
 import { searchUsers } from '@/api/auth'
 import { createPersonalChat, type ChatListItem } from '@/api/history'
+import { AppNav } from '@/components/AppNav'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/features/auth/useAuth'
@@ -63,7 +63,6 @@ export function ChatListPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const searchId = useId()
-  const chatsNavActive = location.pathname === '/' || location.pathname.startsWith('/chats/')
   const mountedRef = useRef(true)
 
   const [chats, setChats] = useState<ChatListItem[]>([])
@@ -308,43 +307,20 @@ export function ChatListPage() {
     : null
 
   return (
-    <div className="flex h-svh min-h-0 overflow-hidden bg-background text-foreground">
-      <nav
-        aria-label="Основная навигация"
-        className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-border bg-muted/40 py-3"
-      >
-        <div className="flex flex-col items-center gap-3">
-          <NavIcon label="Важно" to="/later">
-            <Bell className="size-5" />
-          </NavIcon>
-          <NavIcon label="Чаты" active={chatsNavActive} to="/">
-            <MessageCircle className="size-5" />
-          </NavIcon>
-          <NavIcon label="Контакты" to="/contacts">
-            <Users className="size-5" />
-          </NavIcon>
-        </div>
-        <div className="flex flex-col items-center gap-2">
-          <NavIcon label="Профиль" to="/profile">
-            <User className="size-5" />
-          </NavIcon>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Выйти"
-            title="Выйти"
-            onClick={() => void logout()}
-          >
-            <LogOut className="size-4" />
-          </Button>
-        </div>
-      </nav>
+    <div className="flex h-svh min-h-0 flex-col overflow-hidden bg-background text-foreground md:flex-row">
+      {/* Mobile/tablet: hide nav in thread (Figma full-bleed chat). Desktop keeps rail. */}
+      <AppNav
+        active="chats"
+        onLogout={() => void logout()}
+        className={cn('order-last md:order-first', chatId && 'max-lg:hidden')}
+      />
 
       <aside
         className={cn(
-          'min-w-0 flex-1 max-w-[344px] flex-col border-r border-border bg-card',
-          chatId ? 'hidden md:flex' : 'flex',
+          'min-w-0 flex-1 flex-col bg-card',
+          // Tablet: full width after rail. Desktop: narrow list + split.
+          'lg:max-w-[380px] lg:border-r lg:border-border',
+          chatId ? 'hidden lg:flex' : 'flex',
         )}
       >
         <header className="flex items-center justify-between gap-3 px-4 pt-5 pb-3">
@@ -370,7 +346,7 @@ export function ChatListPage() {
               id={searchId}
               role="searchbox"
               aria-label="Поиск по логину"
-              placeholder="Поиск по логину"
+              placeholder="найти"
               value={query}
               onChange={(event) => {
                 setQuery(event.target.value)
@@ -415,7 +391,8 @@ export function ChatListPage() {
       <main
         className={cn(
           'min-w-0 flex-1 bg-background',
-          chatId ? 'flex' : 'hidden items-center justify-center md:flex',
+          // Empty «Выберите чат» only on desktop split (Figma tablet = list OR thread).
+          chatId ? 'flex' : 'hidden items-center justify-center lg:flex',
         )}
       >
         {chatId ? (
@@ -677,42 +654,3 @@ function InitialAvatar({ username }: { username: string }) {
   )
 }
 
-function NavIcon({
-  children,
-  label,
-  to,
-  active = false,
-  disabled = false,
-}: {
-  children: ReactNode
-  label: string
-  to?: string
-  active?: boolean
-  disabled?: boolean
-}) {
-  const className = cn(
-    'inline-flex size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors',
-    active && 'bg-accent text-foreground',
-    disabled && 'opacity-40',
-  )
-
-  if (disabled || !to) {
-    return (
-      <span className={className} aria-label={label} title={label}>
-        {children}
-      </span>
-    )
-  }
-
-  return (
-    <Link
-      to={to}
-      className={className}
-      aria-label={label}
-      title={label}
-      aria-current={active ? 'page' : undefined}
-    >
-      {children}
-    </Link>
-  )
-}
