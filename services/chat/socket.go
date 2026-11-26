@@ -30,6 +30,12 @@ type socketSession struct {
 	outgoing   chan []byte
 	overloaded chan struct{}
 
+	// Protected by the hub mutex, except for the readiness channel.
+	presenceSince   uint64
+	presenceReady   chan struct{}
+	presenceSent    map[string]presenceView
+	presencePending map[string]presenceSnapshot
+
 	// Protected by the endpoint's typing mutex.
 	nextTypingAt  time.Time
 	pendingTyping *typingRequest
@@ -37,11 +43,12 @@ type socketSession struct {
 
 func newSocketSession(conn *websocket.Conn, identity jwtauth.Identity) *socketSession {
 	return &socketSession{
-		conn:       conn,
-		userID:     identity.UserID,
-		expiresAt:  identity.ExpiresAt,
-		outgoing:   make(chan []byte, wsQueueSize),
-		overloaded: make(chan struct{}),
+		conn:          conn,
+		userID:        identity.UserID,
+		expiresAt:     identity.ExpiresAt,
+		outgoing:      make(chan []byte, wsQueueSize),
+		overloaded:    make(chan struct{}),
+		presenceReady: make(chan struct{}, 1),
 	}
 }
 
@@ -60,9 +67,10 @@ func (s *socketSession) enqueue(event []byte) {
 }
 
 type wsTiming struct {
-	pingInterval time.Duration
-	pongTimeout  time.Duration
-	writeTimeout time.Duration
+	pingInterval    time.Duration
+	pongTimeout     time.Duration
+	writeTimeout    time.Duration
+	presenceRefresh time.Duration
 }
 
 func defaultWSTiming() wsTiming {
@@ -82,8 +90,8 @@ func (ws *wsEndpoint) serveSocket(socket *socketSession) {
 	conn.SetReadLimit(wsMaxMessageBytes)
 	var pending atomic.Pointer[pingProbe]
 	conn.SetPongHandler(func(payload string) error {
-		if ping := pending.Load(); ping != nil && ping.payload == payload {
-			pending.CompareAndSwap(ping, nil)
+		if ping := pending.Load(); ping != nil && ping.payload == payload && pending.CompareAndSwap(ping, nil) {
+			ws.hub.confirmActivity(socket, time.Now())
 		}
 		return nil
 	})
@@ -102,12 +110,16 @@ func (ws *wsEndpoint) serveSocket(socket *socketSession) {
 	}()
 	go func() {
 		defer close(writeDone)
-		defer func() { _ = conn.Close() }()
+		defer func() {
+			ws.hub.unregister(socket)
+			_ = conn.Close()
+		}()
 		defer cancel()
 		ws.writeSocket(socket, &pending, ctx.Done())
 	}()
 	defer func() {
 		cancel()
+		ws.hub.unregister(socket)
 		_ = conn.Close()
 		// A saved message may still be fanning out after the socket closes.
 		ws.clearSocketTyping(socket)
@@ -133,6 +145,9 @@ func (ws *wsEndpoint) serveSocket(socket *socketSession) {
 		}
 
 		command, problem := parseWSCommand(data)
+		if problem == "" {
+			ws.hub.confirmActivity(socket, receivedAt)
+		}
 		if problem == "" && command.kind == wsTypingType {
 			if ctx.Err() == nil && receivedAt.Before(socket.expiresAt) {
 				ws.queueTyping(socket, command, receivedAt, typingWake)
@@ -176,7 +191,13 @@ func (ws *wsEndpoint) writeSocket(socket *socketSession, pending *atomic.Pointer
 	conn := socket.conn
 	pings := time.NewTicker(ws.timing.pingInterval)
 	defer pings.Stop()
-	expiry := time.NewTimer(time.Until(socket.expiresAt))
+	expiryCheck := make(chan struct{}, 1)
+	expiry := time.AfterFunc(time.Until(socket.expiresAt), func() {
+		if !time.Now().Before(socket.expiresAt) {
+			ws.hub.unregister(socket)
+		}
+		expiryCheck <- struct{}{}
+	})
 	defer expiry.Stop()
 	var pongTimer *time.Timer
 	defer func() {
@@ -208,21 +229,20 @@ func (ws *wsEndpoint) writeSocket(socket *socketSession, pending *atomic.Pointer
 		case <-readDone:
 		case <-ws.stopping:
 		case <-socket.overloaded:
-		case <-expiry.C:
+		case <-expiryCheck:
+			// The timer measures elapsed time. Re-arm if the wall clock moved back.
+			if remaining := time.Until(socket.expiresAt); remaining > 0 {
+				expiry.Reset(remaining)
+			}
 		case event := <-socket.outgoing:
-			now := time.Now()
-			if !now.Before(socket.expiresAt) {
-				continue
-			}
-			deadline := now.Add(ws.timing.writeTimeout)
-			if socket.expiresAt.Before(deadline) {
-				deadline = socket.expiresAt
-			}
-			if err := conn.SetWriteDeadline(deadline); err != nil {
+			if err := ws.writeSocketEvent(socket, event); err != nil {
 				return
 			}
-			if err := conn.WriteMessage(websocket.TextMessage, event); err != nil {
-				return
+		case <-socket.presenceReady:
+			if event := ws.takePresenceEvent(socket); event != nil {
+				if err := ws.writeSocketEvent(socket, event); err != nil {
+					return
+				}
 			}
 		case <-pings.C:
 			ping := &pingProbe{payload: rand.Text()}
@@ -232,7 +252,7 @@ func (ws *wsEndpoint) writeSocket(socket *socketSession, pending *atomic.Pointer
 			if pongTimer != nil {
 				pongTimer.Stop()
 			}
-			if err := conn.WriteControl(websocket.PingMessage, []byte(ping.payload), time.Now().Add(ws.timing.writeTimeout)); err != nil {
+			if err := conn.WriteControl(websocket.PingMessage, []byte(ping.payload), ws.socketWriteDeadline(socket, time.Now())); err != nil {
 				return
 			}
 			pongTimer = time.AfterFunc(ws.timing.pongTimeout, func() {
@@ -244,6 +264,25 @@ func (ws *wsEndpoint) writeSocket(socket *socketSession, pending *atomic.Pointer
 			})
 		}
 	}
+}
+
+func (ws *wsEndpoint) writeSocketEvent(socket *socketSession, event []byte) error {
+	now := time.Now()
+	if !now.Before(socket.expiresAt) {
+		return nil
+	}
+	if err := socket.conn.SetWriteDeadline(ws.socketWriteDeadline(socket, now)); err != nil {
+		return err
+	}
+	return socket.conn.WriteMessage(websocket.TextMessage, event)
+}
+
+func (ws *wsEndpoint) socketWriteDeadline(socket *socketSession, now time.Time) time.Time {
+	deadline := now.Add(ws.timing.writeTimeout)
+	if socket.expiresAt.Before(deadline) {
+		return socket.expiresAt
+	}
+	return deadline
 }
 
 func (ws *wsEndpoint) sendClose(conn *websocket.Conn, code int, reason string) {

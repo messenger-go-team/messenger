@@ -2,7 +2,6 @@
 
 Проект [T10 / #10](https://github.com/messenger-go-team/messenger/issues/10)
 для согласования обоими бэкендерами и фронтендом по SPEC §8.
-Это контракт будущей реализации, а не работающий history-сервис.
 Нормативные источники: [SPEC](../../docs/SPEC.md),
 [WebSocket v1](../ws/events.md), [history.proto](history.proto),
 [схема PostgreSQL](../../docs/db/schema.md#historymessages).
@@ -90,8 +89,14 @@ Chat использует список для рассылки во все со�
 Отсутствующий чат - NOT_FOUND. Сбой БД нельзя подменять false.
 Это проверка текущего пользователя chat для typing и других команд;
 не внешний endpoint для проверки произвольных пользователей.
-Оба метода возвращают снимок на момент чтения; кэш не даёт бессрочных прав.
 Изменение состава групп и атомарная рассылка при таком изменении вне MVP.
+
+`ListPresencePeers(requester_id)` возвращает отсортированные уникальные UUID
+собеседников, с которыми у requester_id есть общий личный чат ровно из двух
+актуальных участников. Пустой список допустим. History сверяет членство
+одним SQL-запросом. При ошибке RPC Chat пропускает рассылку presence и повторяет
+сверку по следующему сигналу или таймеру без WS-ошибки для клиента.
+Все три запроса членства возвращают снимок на момент чтения.
 
 ## Ошибки и повторы
 
@@ -103,7 +108,7 @@ stack trace, body, JWT, секреты или чужие данные. При о
 | gRPC code | Когда | Действие chat / WS |
 | --- | --- | --- |
 | INVALID_ARGUMENT | Невалидный UUID, body или обязательное поле | invalid_payload, retryable=false |
-| NOT_FOUND | Чата нет, все методы | forbidden, false; не раскрывать существование чата |
+| NOT_FOUND | Чата нет при обращении по chat_id | forbidden, false; не раскрывать существование чата |
 | PERMISSION_DENIED | Sender/requester не участник, SaveMessage/GetChatMembers | forbidden, false |
 | ALREADY_EXISTS | SaveMessage: ключ уже записан с другим body | idempotency_conflict, false |
 | RESOURCE_EXHAUSTED | Временный лимит нагрузки | rate_limited, true с backoff |

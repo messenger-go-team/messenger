@@ -31,7 +31,7 @@ func TestWSSlowSocketDoesNotDelayAnotherTab(t *testing.T) {
 		}
 		defer func() { _ = conn.Close() }()
 		socket := newSocketSession(conn, jwtauth.Identity{UserID: fanoutAlice, ExpiresAt: time.Now().Add(time.Minute)})
-		if !ws.hub.register(socket) {
+		if _, ok := ws.hub.register(ws.fanoutCtx, socket); !ok {
 			t.Error("slow socket was refused by the hub")
 			return
 		}
@@ -68,7 +68,7 @@ func TestWSDisconnectUnblocksPendingWrite(t *testing.T) {
 	if err := conn.UnderlyingConn().(*net.TCPConn).CloseWrite(); err != nil {
 		t.Fatal(err)
 	}
-	waitForConnections(t, ws, 0) // Removal only happens after the writer has exited.
+	waitForConnections(t, ws, 0)
 }
 
 func TestWSHeartbeatWithPendingWrite(t *testing.T) {

@@ -71,7 +71,7 @@ func run(ctx context.Context, c config, logger *slog.Logger) error {
 		grpc.ChainUnaryInterceptor(rpcMetrics.UnaryServerInterceptor(historyv1.HistoryService_ServiceDesc), rpcLogging(logger)),
 		grpc.MaxRecvMsgSize(1<<20),
 	)
-	historyv1.RegisterHistoryServiceServer(rpc, &historyGRPC{repo: repo, messages: messages.New(repo), receipts: repo})
+	historyv1.RegisterHistoryServiceServer(rpc, &historyGRPC{repo: repo, presence: repo, messages: messages.New(repo), receipts: repo})
 	healthpb.RegisterHealthServer(rpc, &historyHealth{ready: &ready, check: checkReady})
 	return serveHistory(ctx, web, rpc, httpListener, grpcListener, &ready, c.ShutdownTimeout, logger)
 }

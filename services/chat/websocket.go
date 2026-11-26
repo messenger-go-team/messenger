@@ -47,6 +47,9 @@ func newWSEndpoint(cfg config, ready *atomic.Bool, timing wsTiming,
 	history historyv1.HistoryServiceClient, logger *slog.Logger,
 ) *wsEndpoint {
 	hub := newConnectionHub()
+	if timing.presenceRefresh <= 0 {
+		timing.presenceRefresh = defaultPresenceRefresh
+	}
 	fanoutCtx, cancelFanout := context.WithCancel(context.Background())
 	return &wsEndpoint{
 		logger:         logger,
@@ -119,10 +122,16 @@ func (ws *wsEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = conn.Close() }()
 	socket := newSocketSession(conn, identity)
-	if !ws.hub.register(socket) {
+	user, registered := ws.hub.register(ws.fanoutCtx, socket)
+	if !registered {
+		if !time.Now().Before(socket.expiresAt) {
+			ws.sendClose(conn, wsTokenExpired, "access token expired")
+		}
 		return
 	}
-	defer ws.hub.unregister(socket)
+	if user != nil && ws.history != nil {
+		ws.active.Go(func() { ws.runPresence(user) })
+	}
 	ws.serveSocket(socket)
 }
 
