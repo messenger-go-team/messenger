@@ -12,11 +12,17 @@ CAROL = "00000000-0000-0000-0000-000000000003"
 TARGET = "00000000-0000-0000-0000-000000000010"
 CONTROL = "00000000-0000-0000-0000-000000000020"
 TARGET_MESSAGE = "00000000-0000-0000-0000-000000000101"
-MIGRATIONS = (
+MIGRATIONS_V2 = (
     "services/auth/migrations/000001_initial_schema.up.sql",
     "services/history/migrations/000001_initial_schema.up.sql",
     "services/history/migrations/000002_later_entries.up.sql",
 )
+MIGRATIONS_V4 = (
+    *MIGRATIONS_V2,
+    "services/history/migrations/000003_public_receipts.up.sql",
+    "services/history/migrations/000004_presence_delivery.up.sql",
+)
+PRESENCE_TABLE = "history.presence_deliveries"
 TABLES = (
     "auth.users", "history.chats", "history.chat_members",
     "history.personal_chat_pairs", "history.messages", "history.later_entries",
@@ -93,32 +99,42 @@ def seed(sql):
     """)
 
 
-def snapshot(sql):
+def snapshot(sql, tables):
     return {
         table: json.loads(sql(f"""
             SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)), '[]'::jsonb)
             FROM {table} AS t;
         """))
-        for table in TABLES
+        for table in tables
     }
 
 
-def verify_reset(sql, reset):
-    before = snapshot(sql)
+def verify_reset(sql, reset, *, with_presence):
+    tables = TABLES
+    if with_presence:
+        tables = (*tables, PRESENCE_TABLE)
+        # No release or cleanup worker runs here. The DELETE must wait for
+        # the v4 fallback, and the grant for the unrelated chat must survive.
+        sql(f"""
+            INSERT INTO {PRESENCE_TABLE} (chat_id, grant_id) VALUES
+              ('{TARGET}', gen_random_uuid()), ('{CONTROL}', gen_random_uuid());
+        """)
+
+    before = snapshot(sql, tables)
     preview = reset("--preview")
     assert preview.stdout.splitlines()[-1] == "ROLLBACK", preview.stdout
     assert any([column.strip() for column in line.split("|")] == [TARGET, "2", "1"]
                for line in preview.stdout.splitlines()), preview.stdout
-    assert snapshot(sql) == before, "Preview changed database rows"
+    assert snapshot(sql, tables) == before, "Preview changed database rows"
     print("PASS: preview reports target and counts and preserves all rows")
 
     sql(f"INSERT INTO history.later_entries (user_id, message_id)"
         f" VALUES ('{CAROL}', '{TARGET_MESSAGE}');")
-    before_rejection = snapshot(sql)
+    before_rejection = snapshot(sql, tables)
     rejected = reset("--apply", check=False)
     assert rejected.returncode != 0, rejected.stdout
     assert "refusing reset: found a Later entry owned by another user" in rejected.stderr, rejected.stderr
-    assert snapshot(sql) == before_rejection, "Rejected reset changed database rows"
+    assert snapshot(sql, tables) == before_rejection, "Rejected reset changed database rows"
     print("PASS: apply refuses a foreign Later entry and preserves all rows")
 
     sql(f"DELETE FROM history.later_entries WHERE user_id = '{CAROL}'"
@@ -138,11 +154,18 @@ def verify_reset(sql, reset):
             row for row in before["history.later_entries"] if row["message_id"] not in target_messages
         ],
     }
-    assert snapshot(sql) == expected, "Apply must delete only the QA chat and its dependencies"
+    if with_presence:
+        expected[PRESENCE_TABLE] = [
+            row for row in before[PRESENCE_TABLE] if row["chat_id"] != TARGET
+        ]
+    assert snapshot(sql, tables) == expected, "Apply must delete only the QA chat and its dependencies"
     print("PASS: apply removes only the QA chat, messages, membership, pair and Later entry")
+    if with_presence:
+        print("PASS: v4 apply removes only the target presence reservation without a release")
 
 
-def main():
+def test_reset(migrations, *, with_presence):
+    print(f"Testing QA reset on History {'v4' if with_presence else 'v2'}", flush=True)
     container = "messenger-qa-reset-test-" + secrets.token_hex(6)
     subprocess.run([
         "docker", "run", "--rm", "--detach", "--network", "none", "--name", container,
@@ -159,7 +182,7 @@ def main():
                 "-d", "messenger_stage", "-v", "ON_ERROR_STOP=1",
             ], input=source, text=True, check=True, stdout=subprocess.PIPE).stdout.strip()
 
-        for migration in MIGRATIONS:
+        for migration in migrations:
             sql(Path(migration).read_text(encoding="utf-8"))
         seed(sql)
         subprocess.run(["docker", "exec", "-i", container, "sh", "-ec", OPERATOR_SETUP],
@@ -171,15 +194,16 @@ def main():
             result = subprocess.run([
                 "docker", "exec", "--user", "messenger-stage", container,
                 "bash", "/tmp/staging-qa-reset.sh", mode, RUN, ALICE, BOB, TARGET,
-            ], text=True, capture_output=True)
+            ], text=True, capture_output=True, timeout=30)
             if check and result.returncode != 0:
                 raise AssertionError(f"{mode} failed ({result.returncode}):\n{result.stdout}{result.stderr}")
             return result
 
-        verify_reset(sql, reset)
+        verify_reset(sql, reset, with_presence=with_presence)
     finally:
         subprocess.run(["docker", "rm", "-f", container], check=True, stdout=subprocess.DEVNULL)
 
 
 if __name__ == "__main__":
-    main()
+    test_reset(MIGRATIONS_V2, with_presence=False)
+    test_reset(MIGRATIONS_V4, with_presence=True)
