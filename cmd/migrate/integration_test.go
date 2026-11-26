@@ -129,7 +129,7 @@ func TestMigrationsIntegration(t *testing.T) {
 		apply("auth", directionUp)
 		assertMigrationTestInt(t, db, "SELECT count(*) FROM pg_class WHERE relname = 'history_schema_migrations'", 0)
 		apply("history", directionUp)
-		assertMigrationTestInt(t, db, "SELECT count(*) FROM information_schema.tables WHERE table_schema IN ('auth', 'history')", 8)
+		assertMigrationTestInt(t, db, "SELECT count(*) FROM information_schema.tables WHERE table_schema IN ('auth', 'history')", 9)
 		for _, service := range services {
 			assertMigrationTestInt(t, db, fmt.Sprintf("SELECT count(*) FROM %s_schema_migrations WHERE version = %d AND NOT dirty", service, migrationTestVersion(service)), 1)
 		}

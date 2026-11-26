@@ -229,6 +229,7 @@ migrate() {
     db <<'SQL'
 BEGIN;
 GRANT SELECT, INSERT ON history.later_entries TO messenger36_history;
+GRANT SELECT, INSERT, DELETE ON history.presence_deliveries TO messenger36_history;
 GRANT UPDATE (due_at, state, updated_at) ON history.later_entries TO messenger36_history;
 GRANT UPDATE (id) ON history.messages TO messenger36_history;
 GRANT UPDATE (public_last_delivered_seq, public_last_read_seq) ON history.chat_members TO messenger36_history;

@@ -81,7 +81,18 @@ func run(ctx context.Context, c config, logger *slog.Logger) error {
 		grpc.ChainUnaryInterceptor(rpcMetrics.UnaryServerInterceptor(historyv1.HistoryService_ServiceDesc), rpcLogging(logger)),
 		grpc.MaxRecvMsgSize(1<<20),
 	)
-	historyv1.RegisterHistoryServiceServer(rpc, &historyGRPC{repo: repo, presence: &postgres.Repository{DB: presenceDB}, messages: messages.New(repo), receipts: repo})
+	presenceRepo := &postgres.Repository{DB: presenceDB}
+	historyv1.RegisterHistoryServiceServer(rpc, &historyGRPC{repo: repo, presence: presenceRepo, messages: messages.New(repo), receipts: repo})
+	reaperCtx, stopReaper := context.WithCancel(ctx)
+	reaperDone := make(chan struct{})
+	go func() {
+		defer close(reaperDone)
+		reapPresenceGrants(reaperCtx, presenceRepo)
+	}()
+	defer func() {
+		stopReaper()
+		<-reaperDone
+	}()
 	healthpb.RegisterHealthServer(rpc, &historyHealth{ready: &ready, check: checkReady})
 	return serveHistory(ctx, web, rpc, httpListener, grpcListener, &ready, c.ShutdownTimeout, logger)
 }

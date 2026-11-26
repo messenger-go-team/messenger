@@ -706,7 +706,11 @@ func (x *AuthorizePresenceDeliveryRequest) GetUserIds() []string {
 type AuthorizePresenceDeliveryResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Authorized subset of the request. A missing peer may not be sent.
-	UserIds       []string `protobuf:"bytes,1,rep,name=user_ids,json=userIds,proto3" json:"user_ids,omitempty"`
+	UserIds []string `protobuf:"bytes,1,rep,name=user_ids,json=userIds,proto3" json:"user_ids,omitempty"`
+	// Required when user_ids is non-empty. Chat releases the grant after its
+	// final queued or in-progress frame. Writes must take at most 11 seconds
+	// from the start of the RPC, including any queue time.
+	GrantId       string `protobuf:"bytes,2,opt,name=grant_id,json=grantId,proto3" json:"grant_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -747,6 +751,291 @@ func (x *AuthorizePresenceDeliveryResponse) GetUserIds() []string {
 	}
 	return nil
 }
+
+func (x *AuthorizePresenceDeliveryResponse) GetGrantId() string {
+	if x != nil {
+		return x.GrantId
+	}
+	return ""
+}
+
+type BatchPresenceRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// At most 32 operations and 128 completed grants in a single request.
+	Operations       []*PresenceOperation `protobuf:"bytes,1,rep,name=operations,proto3" json:"operations,omitempty"`
+	ReleasedGrantIds []string             `protobuf:"bytes,2,rep,name=released_grant_ids,json=releasedGrantIds,proto3" json:"released_grant_ids,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *BatchPresenceRequest) Reset() {
+	*x = BatchPresenceRequest{}
+	mi := &file_history_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchPresenceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchPresenceRequest) ProtoMessage() {}
+
+func (x *BatchPresenceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_history_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchPresenceRequest.ProtoReflect.Descriptor instead.
+func (*BatchPresenceRequest) Descriptor() ([]byte, []int) {
+	return file_history_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *BatchPresenceRequest) GetOperations() []*PresenceOperation {
+	if x != nil {
+		return x.Operations
+	}
+	return nil
+}
+
+func (x *BatchPresenceRequest) GetReleasedGrantIds() []string {
+	if x != nil {
+		return x.ReleasedGrantIds
+	}
+	return nil
+}
+
+type PresenceOperation struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Request:
+	//
+	//	*PresenceOperation_List
+	//	*PresenceOperation_Authorize
+	Request       isPresenceOperation_Request `protobuf_oneof:"request"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PresenceOperation) Reset() {
+	*x = PresenceOperation{}
+	mi := &file_history_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PresenceOperation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PresenceOperation) ProtoMessage() {}
+
+func (x *PresenceOperation) ProtoReflect() protoreflect.Message {
+	mi := &file_history_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PresenceOperation.ProtoReflect.Descriptor instead.
+func (*PresenceOperation) Descriptor() ([]byte, []int) {
+	return file_history_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *PresenceOperation) GetRequest() isPresenceOperation_Request {
+	if x != nil {
+		return x.Request
+	}
+	return nil
+}
+
+func (x *PresenceOperation) GetList() *ListPresencePeersRequest {
+	if x != nil {
+		if x, ok := x.Request.(*PresenceOperation_List); ok {
+			return x.List
+		}
+	}
+	return nil
+}
+
+func (x *PresenceOperation) GetAuthorize() *AuthorizePresenceDeliveryRequest {
+	if x != nil {
+		if x, ok := x.Request.(*PresenceOperation_Authorize); ok {
+			return x.Authorize
+		}
+	}
+	return nil
+}
+
+type isPresenceOperation_Request interface {
+	isPresenceOperation_Request()
+}
+
+type PresenceOperation_List struct {
+	List *ListPresencePeersRequest `protobuf:"bytes,1,opt,name=list,proto3,oneof"`
+}
+
+type PresenceOperation_Authorize struct {
+	Authorize *AuthorizePresenceDeliveryRequest `protobuf:"bytes,2,opt,name=authorize,proto3,oneof"`
+}
+
+func (*PresenceOperation_List) isPresenceOperation_Request() {}
+
+func (*PresenceOperation_Authorize) isPresenceOperation_Request() {}
+
+type BatchPresenceResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Results       []*PresenceResult      `protobuf:"bytes,1,rep,name=results,proto3" json:"results,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchPresenceResponse) Reset() {
+	*x = BatchPresenceResponse{}
+	mi := &file_history_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchPresenceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchPresenceResponse) ProtoMessage() {}
+
+func (x *BatchPresenceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_history_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchPresenceResponse.ProtoReflect.Descriptor instead.
+func (*BatchPresenceResponse) Descriptor() ([]byte, []int) {
+	return file_history_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *BatchPresenceResponse) GetResults() []*PresenceResult {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
+type PresenceResult struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Response:
+	//
+	//	*PresenceResult_List
+	//	*PresenceResult_Authorize
+	//	*PresenceResult_Failed
+	Response      isPresenceResult_Response `protobuf_oneof:"response"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PresenceResult) Reset() {
+	*x = PresenceResult{}
+	mi := &file_history_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PresenceResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PresenceResult) ProtoMessage() {}
+
+func (x *PresenceResult) ProtoReflect() protoreflect.Message {
+	mi := &file_history_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PresenceResult.ProtoReflect.Descriptor instead.
+func (*PresenceResult) Descriptor() ([]byte, []int) {
+	return file_history_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *PresenceResult) GetResponse() isPresenceResult_Response {
+	if x != nil {
+		return x.Response
+	}
+	return nil
+}
+
+func (x *PresenceResult) GetList() *ListPresencePeersResponse {
+	if x != nil {
+		if x, ok := x.Response.(*PresenceResult_List); ok {
+			return x.List
+		}
+	}
+	return nil
+}
+
+func (x *PresenceResult) GetAuthorize() *AuthorizePresenceDeliveryResponse {
+	if x != nil {
+		if x, ok := x.Response.(*PresenceResult_Authorize); ok {
+			return x.Authorize
+		}
+	}
+	return nil
+}
+
+func (x *PresenceResult) GetFailed() bool {
+	if x != nil {
+		if x, ok := x.Response.(*PresenceResult_Failed); ok {
+			return x.Failed
+		}
+	}
+	return false
+}
+
+type isPresenceResult_Response interface {
+	isPresenceResult_Response()
+}
+
+type PresenceResult_List struct {
+	List *ListPresencePeersResponse `protobuf:"bytes,1,opt,name=list,proto3,oneof"`
+}
+
+type PresenceResult_Authorize struct {
+	Authorize *AuthorizePresenceDeliveryResponse `protobuf:"bytes,2,opt,name=authorize,proto3,oneof"`
+}
+
+type PresenceResult_Failed struct {
+	// An unsuccessful operation is retried by the presence worker.
+	Failed bool `protobuf:"varint,3,opt,name=failed,proto3,oneof"`
+}
+
+func (*PresenceResult_List) isPresenceResult_Response() {}
+
+func (*PresenceResult_Authorize) isPresenceResult_Response() {}
+
+func (*PresenceResult_Failed) isPresenceResult_Response() {}
 
 var File_history_proto protoreflect.FileDescriptor
 
@@ -791,20 +1080,39 @@ const file_history_proto_rawDesc = "" +
 	"\buser_ids\x18\x01 \x03(\tR\auserIds\"`\n" +
 	" AuthorizePresenceDeliveryRequest\x12!\n" +
 	"\frequester_id\x18\x01 \x01(\tR\vrequesterId\x12\x19\n" +
-	"\buser_ids\x18\x02 \x03(\tR\auserIds\">\n" +
+	"\buser_ids\x18\x02 \x03(\tR\auserIds\"Y\n" +
 	"!AuthorizePresenceDeliveryResponse\x12\x19\n" +
-	"\buser_ids\x18\x01 \x03(\tR\auserIds*^\n" +
+	"\buser_ids\x18\x01 \x03(\tR\auserIds\x12\x19\n" +
+	"\bgrant_id\x18\x02 \x01(\tR\agrantId\"\x8d\x01\n" +
+	"\x14BatchPresenceRequest\x12G\n" +
+	"\n" +
+	"operations\x18\x01 \x03(\v2'.messenger.history.v1.PresenceOperationR\n" +
+	"operations\x12,\n" +
+	"\x12released_grant_ids\x18\x02 \x03(\tR\x10releasedGrantIds\"\xbc\x01\n" +
+	"\x11PresenceOperation\x12D\n" +
+	"\x04list\x18\x01 \x01(\v2..messenger.history.v1.ListPresencePeersRequestH\x00R\x04list\x12V\n" +
+	"\tauthorize\x18\x02 \x01(\v26.messenger.history.v1.AuthorizePresenceDeliveryRequestH\x00R\tauthorizeB\t\n" +
+	"\arequest\"W\n" +
+	"\x15BatchPresenceResponse\x12>\n" +
+	"\aresults\x18\x01 \x03(\v2$.messenger.history.v1.PresenceResultR\aresults\"\xd6\x01\n" +
+	"\x0ePresenceResult\x12E\n" +
+	"\x04list\x18\x01 \x01(\v2/.messenger.history.v1.ListPresencePeersResponseH\x00R\x04list\x12W\n" +
+	"\tauthorize\x18\x02 \x01(\v27.messenger.history.v1.AuthorizePresenceDeliveryResponseH\x00R\tauthorize\x12\x18\n" +
+	"\x06failed\x18\x03 \x01(\bH\x00R\x06failedB\n" +
+	"\n" +
+	"\bresponse*^\n" +
 	"\vReceiptKind\x12\x1c\n" +
 	"\x18RECEIPT_KIND_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16RECEIPT_KIND_DELIVERED\x10\x01\x12\x15\n" +
-	"\x11RECEIPT_KIND_READ\x10\x022\xc3\x05\n" +
+	"\x11RECEIPT_KIND_READ\x10\x022\xad\x06\n" +
 	"\x0eHistoryService\x12b\n" +
 	"\vSaveMessage\x12(.messenger.history.v1.SaveMessageRequest\x1a).messenger.history.v1.SaveMessageResponse\x12k\n" +
 	"\x0eGetChatMembers\x12+.messenger.history.v1.GetChatMembersRequest\x1a,.messenger.history.v1.GetChatMembersResponse\x12n\n" +
 	"\x0fCheckMembership\x12,.messenger.history.v1.CheckMembershipRequest\x1a-.messenger.history.v1.CheckMembershipResponse\x12k\n" +
 	"\x0eAdvanceReceipt\x12+.messenger.history.v1.AdvanceReceiptRequest\x1a,.messenger.history.v1.AdvanceReceiptResponse\x12t\n" +
 	"\x11ListPresencePeers\x12..messenger.history.v1.ListPresencePeersRequest\x1a/.messenger.history.v1.ListPresencePeersResponse\x12\x8c\x01\n" +
-	"\x19AuthorizePresenceDelivery\x126.messenger.history.v1.AuthorizePresenceDeliveryRequest\x1a7.messenger.history.v1.AuthorizePresenceDeliveryResponseBEZCgithub.com/messenger-go-team/messenger/api/gen/history/v1;historyv1b\x06proto3"
+	"\x19AuthorizePresenceDelivery\x126.messenger.history.v1.AuthorizePresenceDeliveryRequest\x1a7.messenger.history.v1.AuthorizePresenceDeliveryResponse\x12h\n" +
+	"\rBatchPresence\x12*.messenger.history.v1.BatchPresenceRequest\x1a+.messenger.history.v1.BatchPresenceResponseBEZCgithub.com/messenger-go-team/messenger/api/gen/history/v1;historyv1b\x06proto3"
 
 var (
 	file_history_proto_rawDescOnce sync.Once
@@ -819,7 +1127,7 @@ func file_history_proto_rawDescGZIP() []byte {
 }
 
 var file_history_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_history_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_history_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_history_proto_goTypes = []any{
 	(ReceiptKind)(0),                          // 0: messenger.history.v1.ReceiptKind
 	(*SaveMessageRequest)(nil),                // 1: messenger.history.v1.SaveMessageRequest
@@ -834,28 +1142,40 @@ var file_history_proto_goTypes = []any{
 	(*ListPresencePeersResponse)(nil),         // 10: messenger.history.v1.ListPresencePeersResponse
 	(*AuthorizePresenceDeliveryRequest)(nil),  // 11: messenger.history.v1.AuthorizePresenceDeliveryRequest
 	(*AuthorizePresenceDeliveryResponse)(nil), // 12: messenger.history.v1.AuthorizePresenceDeliveryResponse
-	(*timestamppb.Timestamp)(nil),             // 13: google.protobuf.Timestamp
+	(*BatchPresenceRequest)(nil),              // 13: messenger.history.v1.BatchPresenceRequest
+	(*PresenceOperation)(nil),                 // 14: messenger.history.v1.PresenceOperation
+	(*BatchPresenceResponse)(nil),             // 15: messenger.history.v1.BatchPresenceResponse
+	(*PresenceResult)(nil),                    // 16: messenger.history.v1.PresenceResult
+	(*timestamppb.Timestamp)(nil),             // 17: google.protobuf.Timestamp
 }
 var file_history_proto_depIdxs = []int32{
-	13, // 0: messenger.history.v1.SaveMessageResponse.created_at:type_name -> google.protobuf.Timestamp
+	17, // 0: messenger.history.v1.SaveMessageResponse.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 1: messenger.history.v1.AdvanceReceiptRequest.kind:type_name -> messenger.history.v1.ReceiptKind
-	1,  // 2: messenger.history.v1.HistoryService.SaveMessage:input_type -> messenger.history.v1.SaveMessageRequest
-	3,  // 3: messenger.history.v1.HistoryService.GetChatMembers:input_type -> messenger.history.v1.GetChatMembersRequest
-	5,  // 4: messenger.history.v1.HistoryService.CheckMembership:input_type -> messenger.history.v1.CheckMembershipRequest
-	7,  // 5: messenger.history.v1.HistoryService.AdvanceReceipt:input_type -> messenger.history.v1.AdvanceReceiptRequest
-	9,  // 6: messenger.history.v1.HistoryService.ListPresencePeers:input_type -> messenger.history.v1.ListPresencePeersRequest
-	11, // 7: messenger.history.v1.HistoryService.AuthorizePresenceDelivery:input_type -> messenger.history.v1.AuthorizePresenceDeliveryRequest
-	2,  // 8: messenger.history.v1.HistoryService.SaveMessage:output_type -> messenger.history.v1.SaveMessageResponse
-	4,  // 9: messenger.history.v1.HistoryService.GetChatMembers:output_type -> messenger.history.v1.GetChatMembersResponse
-	6,  // 10: messenger.history.v1.HistoryService.CheckMembership:output_type -> messenger.history.v1.CheckMembershipResponse
-	8,  // 11: messenger.history.v1.HistoryService.AdvanceReceipt:output_type -> messenger.history.v1.AdvanceReceiptResponse
-	10, // 12: messenger.history.v1.HistoryService.ListPresencePeers:output_type -> messenger.history.v1.ListPresencePeersResponse
-	12, // 13: messenger.history.v1.HistoryService.AuthorizePresenceDelivery:output_type -> messenger.history.v1.AuthorizePresenceDeliveryResponse
-	8,  // [8:14] is the sub-list for method output_type
-	2,  // [2:8] is the sub-list for method input_type
-	2,  // [2:2] is the sub-list for extension type_name
-	2,  // [2:2] is the sub-list for extension extendee
-	0,  // [0:2] is the sub-list for field type_name
+	14, // 2: messenger.history.v1.BatchPresenceRequest.operations:type_name -> messenger.history.v1.PresenceOperation
+	9,  // 3: messenger.history.v1.PresenceOperation.list:type_name -> messenger.history.v1.ListPresencePeersRequest
+	11, // 4: messenger.history.v1.PresenceOperation.authorize:type_name -> messenger.history.v1.AuthorizePresenceDeliveryRequest
+	16, // 5: messenger.history.v1.BatchPresenceResponse.results:type_name -> messenger.history.v1.PresenceResult
+	10, // 6: messenger.history.v1.PresenceResult.list:type_name -> messenger.history.v1.ListPresencePeersResponse
+	12, // 7: messenger.history.v1.PresenceResult.authorize:type_name -> messenger.history.v1.AuthorizePresenceDeliveryResponse
+	1,  // 8: messenger.history.v1.HistoryService.SaveMessage:input_type -> messenger.history.v1.SaveMessageRequest
+	3,  // 9: messenger.history.v1.HistoryService.GetChatMembers:input_type -> messenger.history.v1.GetChatMembersRequest
+	5,  // 10: messenger.history.v1.HistoryService.CheckMembership:input_type -> messenger.history.v1.CheckMembershipRequest
+	7,  // 11: messenger.history.v1.HistoryService.AdvanceReceipt:input_type -> messenger.history.v1.AdvanceReceiptRequest
+	9,  // 12: messenger.history.v1.HistoryService.ListPresencePeers:input_type -> messenger.history.v1.ListPresencePeersRequest
+	11, // 13: messenger.history.v1.HistoryService.AuthorizePresenceDelivery:input_type -> messenger.history.v1.AuthorizePresenceDeliveryRequest
+	13, // 14: messenger.history.v1.HistoryService.BatchPresence:input_type -> messenger.history.v1.BatchPresenceRequest
+	2,  // 15: messenger.history.v1.HistoryService.SaveMessage:output_type -> messenger.history.v1.SaveMessageResponse
+	4,  // 16: messenger.history.v1.HistoryService.GetChatMembers:output_type -> messenger.history.v1.GetChatMembersResponse
+	6,  // 17: messenger.history.v1.HistoryService.CheckMembership:output_type -> messenger.history.v1.CheckMembershipResponse
+	8,  // 18: messenger.history.v1.HistoryService.AdvanceReceipt:output_type -> messenger.history.v1.AdvanceReceiptResponse
+	10, // 19: messenger.history.v1.HistoryService.ListPresencePeers:output_type -> messenger.history.v1.ListPresencePeersResponse
+	12, // 20: messenger.history.v1.HistoryService.AuthorizePresenceDelivery:output_type -> messenger.history.v1.AuthorizePresenceDeliveryResponse
+	15, // 21: messenger.history.v1.HistoryService.BatchPresence:output_type -> messenger.history.v1.BatchPresenceResponse
+	15, // [15:22] is the sub-list for method output_type
+	8,  // [8:15] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_history_proto_init() }
@@ -864,13 +1184,22 @@ func file_history_proto_init() {
 		return
 	}
 	file_history_proto_msgTypes[6].OneofWrappers = []any{}
+	file_history_proto_msgTypes[13].OneofWrappers = []any{
+		(*PresenceOperation_List)(nil),
+		(*PresenceOperation_Authorize)(nil),
+	}
+	file_history_proto_msgTypes[15].OneofWrappers = []any{
+		(*PresenceResult_List)(nil),
+		(*PresenceResult_Authorize)(nil),
+		(*PresenceResult_Failed)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_history_proto_rawDesc), len(file_history_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   12,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -280,11 +280,7 @@ func writeSocketText(socket *socketSession, event []byte, deadline time.Time) er
 }
 
 func (ws *wsEndpoint) socketWriteDeadline(socket *socketSession, now time.Time) time.Time {
-	deadline := now.Add(ws.timing.writeTimeout)
-	if socket.expiresAt.Before(deadline) {
-		return socket.expiresAt
-	}
-	return deadline
+	return now.Add(min(ws.timing.writeTimeout, socket.expiresAt.Sub(now)))
 }
 
 func (ws *wsEndpoint) sendClose(conn *websocket.Conn, code int, reason string) {

@@ -103,6 +103,7 @@ func (h *connectionHub) unregister(socket *socketSession) {
 	if _, registered := user.sockets[socket]; !registered {
 		return
 	}
+	socket.clearPendingPresence()
 	delete(user.sockets, socket)
 	h.active--
 	if len(user.sockets) == 0 {

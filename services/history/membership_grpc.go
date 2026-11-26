@@ -85,7 +85,8 @@ func rpcLogging(logger *slog.Logger) grpc.UnaryServerInterceptor {
 			}
 			level := slog.LevelInfo
 			if err == nil && (info.FullMethod == historyv1.HistoryService_ListPresencePeers_FullMethodName ||
-				info.FullMethod == historyv1.HistoryService_AuthorizePresenceDelivery_FullMethodName) {
+				info.FullMethod == historyv1.HistoryService_AuthorizePresenceDelivery_FullMethodName ||
+				info.FullMethod == historyv1.HistoryService_BatchPresence_FullMethodName) {
 				// Healthy polling is visible in RPC metrics without a log per refresh.
 				level = slog.LevelDebug
 			}

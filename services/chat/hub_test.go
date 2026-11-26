@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	historyv1 "github.com/messenger-go-team/messenger/api/gen/history/v1"
 	"github.com/messenger-go-team/messenger/pkg/jwtauth"
 )
 
@@ -145,11 +146,16 @@ func readTestPings(t *testing.T, conn *websocket.Conn) (<-chan string, <-chan st
 
 func startTestBlockedWriteSocket(t *testing.T, timing wsTiming) (*wsEndpoint, *websocket.Conn, blockedWriteListener) {
 	t.Helper()
+	return startTestBlockedWriteSocketWithHistory(t, timing, nil)
+}
+
+func startTestBlockedWriteSocketWithHistory(t *testing.T, timing wsTiming, client historyv1.HistoryServiceClient) (*wsEndpoint, *websocket.Conn, blockedWriteListener) {
+	t.Helper()
 	cfg := testConfig(t)
 	var ready atomic.Bool
 	ready.Store(true)
 	logger := newLogger(io.Discard, "chat", cfg.LogLevel)
-	ws := newWSEndpoint(cfg, &ready, timing, nil, logger)
+	ws := newWSEndpoint(cfg, &ready, timing, client, logger)
 	server := httptest.NewUnstartedServer(newServiceHandler(&ready, logger, ws, nil))
 	transport := blockedWriteListener{
 		Listener:      server.Listener,

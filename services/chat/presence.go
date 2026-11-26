@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"maps"
 	"slices"
@@ -28,9 +27,9 @@ type presenceView struct {
 }
 
 type presenceSnapshot struct {
-	view     presenceView
-	version  uint64
-	deadline time.Time
+	view    presenceView
+	version uint64
+	grant   *presenceGrant
 }
 
 type wsPresencePayload struct {
@@ -48,30 +47,23 @@ func (ws *wsEndpoint) refreshPresence(user *hubUser) bool {
 
 	candidates := ws.hub.preparePresence(user, peers, version)
 	for ids := range slices.Chunk(slices.Sorted(maps.Keys(candidates)), presenceBatchSize) {
-		allowed, deadline, ok := ws.authorizePresence(user, ids)
+		allowed, grant, ok := ws.authorizePresence(user, ids)
 		if !ok {
 			ws.hub.dropPendingPresence(user)
 			return false
 		}
-		ws.hub.queuePresence(user, version, candidates, ids, allowed, deadline)
+		ws.hub.queuePresence(user, version, candidates, ids, allowed, grant)
+		grant.finish()
 	}
 	return true
 }
 
 func (ws *wsEndpoint) discoverPresence(user *hubUser) (map[string]struct{}, uint64, bool) {
-	if !ws.presenceRPC.enter(user.ctx) {
-		return nil, 0, false
-	}
-	defer ws.presenceRPC.leave()
-
-	ws.hub.mu.Lock()
-	version := ws.hub.presenceVersion
-	ws.hub.mu.Unlock()
-
-	ctx, cancel := context.WithTimeout(user.ctx, ws.historyTimeout)
-	defer cancel()
-	response, err := ws.history.ListPresencePeers(ctx, &historyv1.ListPresencePeersRequest{RequesterId: user.id})
-	if err != nil || ctx.Err() != nil {
+	result := ws.callPresence(user.ctx, &historyv1.PresenceOperation{
+		Request: &historyv1.PresenceOperation_List{List: &historyv1.ListPresencePeersRequest{RequesterId: user.id}},
+	})
+	response := result.data.GetList()
+	if response == nil || user.ctx.Err() != nil {
 		return nil, 0, false
 	}
 	peers := make(map[string]struct{}, len(response.GetUserIds()))
@@ -80,39 +72,50 @@ func (ws *wsEndpoint) discoverPresence(user *hubUser) (map[string]struct{}, uint
 			peers[id] = struct{}{}
 		}
 	}
-	return peers, version, true
+	return peers, result.version, true
 }
 
-func (ws *wsEndpoint) authorizePresence(user *hubUser, ids []string) (map[string]struct{}, time.Time, bool) {
-	if !ws.presenceRPC.enter(user.ctx) {
-		return nil, time.Time{}, false
-	}
-	defer ws.presenceRPC.leave()
-
-	// The write window starts before the request. Transport delay, queuing
-	// at the socket, and the write itself all use the same deadline.
-	deadline := time.Now().Add(min(ws.historyTimeout, presenceDeliveryWindow))
-	ctx, cancel := context.WithDeadline(user.ctx, deadline)
-	defer cancel()
-	response, err := ws.history.AuthorizePresenceDelivery(ctx, &historyv1.AuthorizePresenceDeliveryRequest{
-		RequesterId: user.id,
-		UserIds:     ids,
+func (ws *wsEndpoint) authorizePresence(user *hubUser, ids []string) (map[string]struct{}, *presenceGrant, bool) {
+	result := ws.callPresence(user.ctx, &historyv1.PresenceOperation{
+		Request: &historyv1.PresenceOperation_Authorize{Authorize: &historyv1.AuthorizePresenceDeliveryRequest{
+			RequesterId: user.id,
+			UserIds:     ids,
+		}},
 	})
-	if err != nil || ctx.Err() != nil {
-		return nil, time.Time{}, false
+	response := result.data.GetAuthorize()
+	if response == nil {
+		return nil, nil, false
+	}
+	if len(response.GetUserIds()) == 0 && response.GetGrantId() == "" {
+		return nil, nil, true
+	}
+	if !validWSUUID(response.GetGrantId()) || strings.ToLower(response.GetGrantId()) != response.GetGrantId() {
+		return nil, nil, false
+	}
+
+	grant := &presenceGrant{
+		id:      response.GetGrantId(),
+		startBy: result.started.Add(presenceStartWindow),
+		writeBy: result.started.Add(presenceGrantWindow),
+		batcher: ws.presenceRPC,
+	}
+	grant.pending.Store(1)
+	if user.ctx.Err() != nil || !time.Now().Before(grant.startBy) {
+		grant.finish()
+		return nil, nil, false
 	}
 	allowed := make(map[string]struct{}, len(response.GetUserIds()))
 	for _, id := range response.GetUserIds() {
 		allowed[id] = struct{}{}
 	}
-	return allowed, deadline, true
+	return allowed, grant, true
 }
 
 func (h *connectionHub) dropPendingPresence(user *hubUser) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for socket := range user.sockets {
-		socket.presencePending = nil
+		socket.clearPendingPresence()
 	}
 }
 
@@ -134,8 +137,8 @@ func (h *connectionHub) preparePresence(user *hubUser, peers map[string]struct{}
 			}
 		}
 		for id, pending := range socket.presencePending {
-			if _, allowed := peers[id]; !allowed || !now.Before(pending.deadline) {
-				delete(socket.presencePending, id)
+			if _, allowed := peers[id]; !allowed || !now.Before(pending.grant.startBy) {
+				socket.dropPendingPresence(id)
 			}
 		}
 		if socket.presenceSince > version || !now.Before(socket.expiresAt) {
@@ -160,7 +163,7 @@ func (h *connectionHub) preparePresence(user *hubUser, peers map[string]struct{}
 }
 
 func (h *connectionHub) queuePresence(user *hubUser, version uint64, candidates map[string]presenceSnapshot,
-	ids []string, allowed map[string]struct{}, deadline time.Time,
+	ids []string, allowed map[string]struct{}, grant *presenceGrant,
 ) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -175,11 +178,11 @@ func (h *connectionHub) queuePresence(user *hubUser, version uint64, candidates 
 		_, authorized := allowed[id]
 		for socket := range user.sockets {
 			if !authorized {
-				delete(socket.presencePending, id)
+				socket.dropPendingPresence(id)
 				delete(socket.presenceSent, id)
 				continue
 			}
-			if socket.presenceSince > version || !now.Before(socket.expiresAt) || !now.Before(deadline) ||
+			if socket.presenceSince > version || !now.Before(socket.expiresAt) || !now.Before(grant.startBy) ||
 				changed != snapshot.version || current != snapshot.view {
 				continue
 			}
@@ -189,7 +192,9 @@ func (h *connectionHub) queuePresence(user *hubUser, version uint64, candidates 
 			if socket.presencePending == nil {
 				socket.presencePending = make(map[string]presenceSnapshot)
 			}
-			snapshot.deadline = deadline
+			socket.dropPendingPresence(id)
+			grant.pending.Add(1)
+			snapshot.grant = grant
 			socket.presencePending[id] = snapshot
 			socket.wakePresenceWriter()
 		}
@@ -263,6 +268,22 @@ func (socket *socketSession) wakePresenceWriter() {
 	}
 }
 
+// All pending map mutations are serialized by the hub. A popped entry moves
+// its reservation reference to the writer, which finishes it after the write.
+func (socket *socketSession) dropPendingPresence(id string) {
+	if pending, exists := socket.presencePending[id]; exists {
+		delete(socket.presencePending, id)
+		pending.grant.finish()
+	}
+}
+
+func (socket *socketSession) clearPendingPresence() {
+	for id := range socket.presencePending {
+		socket.dropPendingPresence(id)
+	}
+	socket.presencePending = nil
+}
+
 func (h *connectionHub) popPresence(socket *socketSession) (string, presenceSnapshot) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -277,10 +298,12 @@ func (h *connectionHub) popPresence(socket *socketSession) (string, presenceSnap
 	for id, pending := range socket.presencePending {
 		delete(socket.presencePending, id)
 		view, version := h.presenceOfLocked(id, now)
-		if !now.Before(pending.deadline) || version != pending.version || view != pending.view {
+		if !now.Before(pending.grant.startBy) || version != pending.version || view != pending.view {
+			pending.grant.finish()
 			continue
 		}
 		if previous, sent := socket.presenceSent[id]; sent && previous == pending.view {
+			pending.grant.finish()
 			continue
 		}
 		socket.wakePresenceWriter()
@@ -294,7 +317,7 @@ func (h *connectionHub) markPresenceSent(socket *socketSession, id string, snaps
 	defer h.mu.Unlock()
 	// A later authorization round may have removed this peer while the writer
 	// was rescheduled after handing the frame to the socket.
-	if !time.Now().Before(snapshot.deadline) {
+	if !time.Now().Before(snapshot.grant.writeBy) {
 		return
 	}
 	if socket.presenceSent == nil {
@@ -308,6 +331,7 @@ func (ws *wsEndpoint) writePresenceEvent(socket *socketSession) error {
 	if id == "" {
 		return nil
 	}
+	defer snapshot.grant.finish()
 	view := snapshot.view
 	payload := wsPresencePayload{UserID: id, Status: "offline"}
 	if view.online {
@@ -323,10 +347,9 @@ func (ws *wsEndpoint) writePresenceEvent(socket *socketSession) error {
 	}
 	now := time.Now()
 	deadline := ws.socketWriteDeadline(socket, now)
-	if snapshot.deadline.Before(deadline) {
-		deadline = snapshot.deadline
-	}
-	if !now.Before(deadline) {
+	// Skip if there is no full ordinary write budget left. Once Gorilla is
+	// writing, it gets exactly the same deadline as a regular message.
+	if !now.Before(snapshot.grant.startBy) || !now.Before(deadline) || deadline.After(snapshot.grant.writeBy) {
 		return nil
 	}
 	if err := writeSocketText(socket, data, deadline); err != nil {

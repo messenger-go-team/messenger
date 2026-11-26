@@ -10,24 +10,17 @@ import (
 const (
 	presenceRPCConcurrency = 4
 	presenceRPCInterval    = 10 * time.Millisecond
-	presenceDeliveryWindow = 250 * time.Millisecond
 	presenceBatchSize      = 128
 	maxPresenceBackoff     = time.Minute
 )
 
-// One gate serves both discovery and delivery authorization on the replica.
+// All four batch workers share one limit on RPC starts.
 type presenceRPCGate struct {
-	slots chan struct{}
-	mu    sync.Mutex
-	next  time.Time
+	mu   sync.Mutex
+	next time.Time
 }
 
-func (gate *presenceRPCGate) enter(ctx context.Context) bool {
-	select {
-	case gate.slots <- struct{}{}:
-	case <-ctx.Done():
-		return false
-	}
+func (gate *presenceRPCGate) wait(ctx context.Context) bool {
 	for ctx.Err() == nil {
 		gate.mu.Lock()
 		now := time.Now()
@@ -46,12 +39,7 @@ func (gate *presenceRPCGate) enter(ctx context.Context) bool {
 		}
 		timer.Stop()
 	}
-	gate.leave()
 	return false
-}
-
-func (gate *presenceRPCGate) leave() {
-	<-gate.slots
 }
 
 func jitterPresence(delay time.Duration) time.Duration {

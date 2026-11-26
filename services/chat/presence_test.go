@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -24,6 +25,8 @@ type presenceTestHistory struct {
 	historyv1.UnimplementedHistoryServiceServer
 	list      func(context.Context, string) ([]string, error)
 	authorize func(context.Context, string, []string) ([]string, error)
+	batch     func(int)
+	released  func([]string)
 }
 
 func (s presenceTestHistory) ListPresencePeers(ctx context.Context, req *historyv1.ListPresencePeersRequest) (*historyv1.ListPresencePeersResponse, error) {
@@ -43,7 +46,38 @@ func (s presenceTestHistory) AuthorizePresenceDelivery(ctx context.Context, req 
 			return nil, err
 		}
 	}
-	return &historyv1.AuthorizePresenceDeliveryResponse{UserIds: ids}, nil
+	out := &historyv1.AuthorizePresenceDeliveryResponse{UserIds: ids}
+	if len(ids) != 0 {
+		out.GrantId = newWSEventID()
+	}
+	return out, nil
+}
+
+func (s presenceTestHistory) BatchPresence(ctx context.Context, req *historyv1.BatchPresenceRequest) (*historyv1.BatchPresenceResponse, error) {
+	if s.batch != nil {
+		s.batch(len(req.GetOperations()))
+	}
+	if s.released != nil && len(req.GetReleasedGrantIds()) != 0 {
+		s.released(req.GetReleasedGrantIds())
+	}
+	response := &historyv1.BatchPresenceResponse{}
+	for _, op := range req.GetOperations() {
+		var result historyv1.PresenceResult
+		switch r := op.GetRequest().(type) {
+		case *historyv1.PresenceOperation_List:
+			list, err := s.ListPresencePeers(ctx, r.List)
+			if err == nil {
+				result.Response = &historyv1.PresenceResult_List{List: list}
+			}
+		case *historyv1.PresenceOperation_Authorize:
+			auth, err := s.AuthorizePresenceDelivery(ctx, r.Authorize)
+			if err == nil {
+				result.Response = &historyv1.PresenceResult_Authorize{Authorize: auth}
+			}
+		}
+		response.Results = append(response.Results, &result)
+	}
+	return response, nil
 }
 
 func testPresencePair(user string) []string {
@@ -485,7 +519,12 @@ func TestWSPresenceDoesNotRestartWindowOnLateAuthorization(t *testing.T) {
 			return nil, nil
 		},
 		authorize: func(ctx context.Context, _ string, ids []string) ([]string, error) {
-			<-ctx.Done()
+			timer := time.NewTimer(presenceStartWindow + 30*time.Millisecond)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+			case <-timer.C:
+			}
 			close(finished)
 			return ids, nil
 		},
@@ -512,9 +551,7 @@ func TestPresenceWriterDropsExpiredQueuedGrant(t *testing.T) {
 	if !found {
 		t.Fatal("grant is missing")
 	}
-	timer := time.NewTimer(time.Until(snapshot.deadline))
-	defer timer.Stop()
-	<-timer.C
+	snapshot.grant.startBy = time.Now().Add(-time.Millisecond)
 	if id, _ := ws.hub.popPresence(alice); id != "" {
 		t.Fatalf("expired grant still permits sending presence for %s", id)
 	}
@@ -608,7 +645,7 @@ type unavailablePresenceClient struct {
 	calls chan time.Time
 }
 
-func (c unavailablePresenceClient) ListPresencePeers(context.Context, *historyv1.ListPresencePeersRequest, ...grpc.CallOption) (*historyv1.ListPresencePeersResponse, error) {
+func (c unavailablePresenceClient) BatchPresence(context.Context, *historyv1.BatchPresenceRequest, ...grpc.CallOption) (*historyv1.BatchPresenceResponse, error) {
 	c.calls <- time.Now()
 	return nil, status.Error(codes.Unavailable, "history down")
 }
@@ -631,16 +668,197 @@ func TestPresenceBackoffCoalescesWakeups(t *testing.T) {
 		synctest.Wait()
 		user.wakePresence()
 		second := <-calls
-		if elapsed := second.Sub(first); elapsed < 800*time.Millisecond || elapsed > 1200*time.Millisecond {
+		if elapsed := second.Sub(first); elapsed < 800*time.Millisecond || elapsed > 1200*time.Millisecond+presenceBatchDelay {
 			t.Fatalf("first retry after %s, want 0.8–1.2 s", elapsed)
 		}
 		synctest.Wait()
 		user.wakePresence()
 		third := <-calls
-		if elapsed := third.Sub(second); elapsed < 1600*time.Millisecond || elapsed > 2400*time.Millisecond {
+		if elapsed := third.Sub(second); elapsed < 1600*time.Millisecond || elapsed > 2400*time.Millisecond+presenceBatchDelay {
 			t.Fatalf("second retry after %s, want 1.6–2.4 s", elapsed)
 		}
 		ws.cancelFanout()
 		<-done
 	})
+}
+
+func TestWSPresenceSurvivesSlowWriteAndKeepsMessageAck(t *testing.T) {
+	var includePeer atomic.Bool
+	client := startTestHistoryRPC(t, reconnectPresenceHistory{
+		pool: make(chan struct{}, 16),
+		presenceTestHistory: presenceTestHistory{list: func(_ context.Context, _ string) ([]string, error) {
+			if includePeer.Load() {
+				return []string{fanoutBob}, nil
+			}
+			return nil, nil
+		}},
+	})
+	timing := defaultWSTiming()
+	timing.writeTimeout = time.Second
+	ws, socket, transport := startTestBlockedWriteSocketWithHistory(t, timing, client)
+
+	sendAck := func() {
+		t.Helper()
+		requestID := newWSEventID()
+		sendTestMessage(t, socket, requestID, newWSEventID(), "message around slow presence write")
+		var ack wsAckPayload
+		if id := readTestEvent(t, socket, "message.ack", &ack); id != requestID || ack.MessageID != sendTestMessageID {
+			t.Fatalf("unexpected ACK: %s %+v", id, ack)
+		}
+	}
+	sendAck()
+
+	close(transport.blockWrites)
+	includePeer.Store(true)
+	ws.hub.mu.Lock()
+	ws.hub.users[fanoutAlice].wakePresence()
+	ws.hub.mu.Unlock()
+	waitPresenceSignal(t, transport.writeStarted)
+	time.Sleep(300 * time.Millisecond)
+	close(transport.releaseWrites)
+
+	var presence wsPresencePayload
+	readTestEvent(t, socket, "presence", &presence)
+	if presence.UserID != fanoutBob || presence.Status != "offline" {
+		t.Fatalf("unexpected presence after transport resumed: %+v", presence)
+	}
+	sendAck()
+	waitForConnections(t, ws, 1)
+}
+
+func TestWSPresenceReconnectSnapshotsAcrossBatchedUsers(t *testing.T) {
+	const viewers = 300
+	var largest atomic.Int32
+	var batches atomic.Int32
+	client := startTestHistoryRPC(t, presenceTestHistory{
+		list: func(context.Context, string) ([]string, error) { return []string{fanoutOffline}, nil },
+		batch: func(n int) {
+			if n > 0 {
+				batches.Add(1)
+			}
+			for old := largest.Load(); int(old) < n; old = largest.Load() {
+				if largest.CompareAndSwap(old, int32(n)) {
+					break
+				}
+			}
+		},
+	})
+	timing := defaultWSTiming()
+	timing.presenceRefresh = 30 * time.Second
+	ws, url := startTestWSEndpoint(t, timing, client)
+	wsURL := "ws" + strings.TrimPrefix(url, "http") + "/ws"
+
+	tokens := make([]string, viewers)
+	for i := range tokens {
+		tokens[i] = signTestUserToken(t, fmt.Sprintf("71000000-0000-4000-8000-%012x", i), time.Now().Add(time.Minute))
+	}
+
+	connectWave := func() (time.Duration, int32) {
+		t.Helper()
+		batches.Store(0)
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		deadline, _ := ctx.Deadline()
+		sockets := make([]*websocket.Conn, viewers)
+		outcomes := make(chan error, viewers)
+		start := time.Now()
+		var workers sync.WaitGroup
+		for i, token := range tokens {
+			workers.Go(func() {
+				var dialer websocket.Dialer
+				conn, resp, err := dialer.DialContext(ctx, wsURL, testWSHeaders(token))
+				if err != nil {
+					if resp != nil {
+						_ = resp.Body.Close()
+					}
+					outcomes <- err
+					return
+				}
+				sockets[i] = conn
+				if err := conn.SetReadDeadline(deadline); err != nil {
+					outcomes <- err
+					return
+				}
+				var event presenceTestFrame
+				if err := conn.ReadJSON(&event); err != nil {
+					outcomes <- err
+					return
+				}
+				if event.Type != "presence" || event.Payload.UserID != fanoutOffline ||
+					event.Payload.Status != "offline" || string(event.Payload.LastSeen) != "null" {
+					outcomes <- fmt.Errorf("wrong initial snapshot: %+v", event)
+					return
+				}
+				outcomes <- nil
+			})
+		}
+		workers.Wait()
+		elapsed := time.Since(start)
+		for _, conn := range sockets {
+			if conn != nil {
+				_ = conn.Close()
+			}
+		}
+		successes := 0
+		var firstErr error
+		for range viewers {
+			if err := <-outcomes; err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+			} else {
+				successes++
+			}
+		}
+		if successes != viewers {
+			t.Fatalf("%d/%d viewers received a snapshot in %s: %v", successes, viewers, elapsed, firstErr)
+		}
+		waitForConnections(t, ws, 0)
+		return elapsed, batches.Load()
+	}
+
+	connectWave()
+	elapsed, calls := connectWave()
+	if calls >= viewers || largest.Load() < 2 || largest.Load() > presenceOperationsPerRPC {
+		t.Fatalf("rediscovery was not batched: %d calls, largest group %d", calls, largest.Load())
+	}
+	t.Logf("%d reconnects received snapshots in %s using %d discovery/authorization RPCs", viewers, elapsed, calls)
+}
+
+func TestPresenceGrantWaitsForLastTabFrame(t *testing.T) {
+	released := make(chan string, 2)
+	client := startTestHistoryRPC(t, presenceTestHistory{
+		list: func(_ context.Context, user string) ([]string, error) { return testPresencePair(user), nil },
+		released: func(ids []string) {
+			for _, id := range ids {
+				released <- id
+			}
+		},
+	})
+	cfg := testConfig(t)
+	ws := newWSEndpoint(cfg, &atomic.Bool{}, defaultWSTiming(), client, newLogger(io.Discard, "chat", cfg.LogLevel))
+	t.Cleanup(ws.cancelFanout)
+	first, viewer := registerPresenceTestSocket(t, ws, fanoutAlice)
+	second, _ := registerPresenceTestSocket(t, ws, fanoutAlice)
+	if !ws.refreshPresence(viewer) {
+		t.Fatal("initial authorization did not complete")
+	}
+	id, frame := ws.hub.popPresence(first)
+	if id != fanoutBob || second.presencePending[id].grant != frame.grant {
+		t.Fatal("both tab frames should share a reservation")
+	}
+	frame.grant.finish()
+	if refs := frame.grant.pending.Load(); refs != 1 {
+		t.Fatalf("first write left %d references, want one queued tab", refs)
+	}
+
+	ws.hub.unregister(second)
+	select {
+	case got := <-released:
+		if got != frame.grant.id {
+			t.Fatalf("released %s instead of %s", got, frame.grant.id)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("dropping the final tab frame did not release the reservation")
+	}
 }

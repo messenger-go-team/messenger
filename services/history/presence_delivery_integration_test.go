@@ -29,37 +29,40 @@ func TestPresenceDeliveryWaitsForRevocationAndRereadsMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = revocation.Rollback() }()
-	if _, err := revocation.ExecContext(t.Context(), `DELETE FROM history.chat_members WHERE chat_id=$1 AND user_id=$2`, chat, userB); err != nil {
-		t.Fatal(err)
-	}
+	const deletePeer = `DELETE FROM history.chat_members WHERE chat_id=$1 AND user_id=$2`
+	deletion := make(chan error, 1)
+	go func() {
+		_, err := revocation.ExecContext(t.Context(), deletePeer, chat, userB)
+		deletion <- err
+	}()
+	waitPresenceRevocation(t, db, deletePeer)
 
-	// The deletion has not committed. Discovery sees the previous membership.
+	// Discovery still sees the old membership. New grants are denied, and
+	// the previous writer's grant keeps this revocation from committing.
 	old, err := client.ListPresencePeers(t.Context(), &historyv1.ListPresencePeersRequest{RequesterId: userA})
 	if err != nil || !slices.Equal(old.GetUserIds(), []string{userB}) {
 		t.Fatalf("uncommitted deletion changed discovery: %v, %v", old, err)
 	}
-
-	checkCtx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-	check := make(chan error, 1)
-	go func() {
-		current, err := client.AuthorizePresenceDelivery(checkCtx, request)
-		if err != nil {
-			check <- err
-			return
-		}
-		if ids := current.GetUserIds(); len(ids) > 0 {
-			check <- status.Errorf(codes.Internal, "obsolete authorization: %v", ids)
-			return
-		}
-		check <- nil
-	}()
-	waitMessageQuery(t, db, "SELECT history.lock_presence_delivery", true)
+	now, err := client.AuthorizePresenceDelivery(t.Context(), request)
+	if err != nil || len(now.GetUserIds()) != 0 {
+		t.Fatalf("revocation in progress permitted another writer: %v, %v", now, err)
+	}
+	if out.GetGrantId() == "" {
+		t.Fatal("only a persisted grant may authorize a write")
+	}
+	_, err = client.BatchPresence(t.Context(), &historyv1.BatchPresenceRequest{ReleasedGrantIds: []string{out.GetGrantId()}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-deletion; err != nil {
+		t.Fatal(err)
+	}
 	if err := revocation.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	if err := <-check; err != nil {
-		t.Fatal(err)
+	after, err := client.AuthorizePresenceDelivery(t.Context(), request)
+	if err != nil || len(after.GetUserIds()) != 0 {
+		t.Fatalf("committed revocation permitted new writes: %v, %v", after, err)
 	}
 }
 
@@ -80,18 +83,23 @@ func TestPresenceDeliveryRevocationGuardsEveryAuthorizationPath(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			chat := messageChat(t, db, 0, userA, userB)
-			ok, err := repo.AuthorizePresenceDelivery(t.Context(), userA, []string{userB})
-			if err != nil || !slices.Equal(ok, []string{userB}) {
+			ok, grantID, err := repo.AuthorizePresenceDelivery(t.Context(), userA, []string{userB})
+			if err != nil || grantID == "" || !slices.Equal(ok, []string{userB}) {
 				t.Fatalf("authorization before %s = %v, %v", tc.name, ok, err)
 			}
-			begin := time.Now()
-			if _, err := db.ExecContext(t.Context(), tc.mutation, tc.args(chat)...); err != nil {
+			done := make(chan error, 1)
+			go func() {
+				_, err := db.ExecContext(t.Context(), tc.mutation, tc.args(chat)...)
+				done <- err
+			}()
+			waitPresenceRevocation(t, db, tc.mutation)
+			if err := repo.ReleasePresenceDeliveries(t.Context(), []string{grantID}); err != nil {
 				t.Fatal(err)
 			}
-			if elapsed := time.Since(begin); elapsed < 250*time.Millisecond {
-				t.Fatalf("mutation committed within the Chat write window: %s", elapsed)
+			if err := <-done; err != nil {
+				t.Fatal(err)
 			}
-			denied, err := repo.AuthorizePresenceDelivery(t.Context(), userA, []string{userB})
+			denied, _, err := repo.AuthorizePresenceDelivery(t.Context(), userA, []string{userB})
 			if err != nil || len(denied) > 0 {
 				t.Fatalf("authorization after %s = %v, %v", tc.name, denied, err)
 			}
@@ -132,5 +140,48 @@ func TestPresenceDeliveryWithoutGuardMigrationFailsClosed(t *testing.T) {
 	})
 	if reply != nil || status.Code(err) != codes.Unavailable {
 		t.Fatalf("guardless History authorized presence: %v, %v", reply, err)
+	}
+}
+
+func TestPresenceDeliveryWithLostReleaseHasBoundedWait(t *testing.T) {
+	db := historyDatabase(t)
+	applyHistoryMigration(t, db, "000004_presence_delivery")
+	repo := &postgres.Repository{DB: db}
+	chat := messageChat(t, db, 0, userA, userB)
+	_, grantID, err := repo.AuthorizePresenceDelivery(t.Context(), userA, []string{userB})
+	if err != nil || grantID == "" {
+		t.Fatalf("initial grant = %q, %v", grantID, err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 18*time.Second)
+	defer cancel()
+	begin := time.Now()
+	if _, err := db.ExecContext(ctx, `DELETE FROM history.chat_members WHERE chat_id=$1 AND user_id=$2`, chat, userB); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(begin); elapsed < 11*time.Second {
+		t.Fatalf("revocation outpaced a possible writer after %s", elapsed)
+	}
+	if grants, err := repo.ActivePresenceGrants(t.Context()); err != nil || len(grants) != 0 {
+		t.Fatalf("fallback left grants active: %v, %v", grants, err)
+	}
+}
+
+func waitPresenceRevocation(t *testing.T, db *sql.DB, mutation string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	for {
+		var waiting bool
+		if err := db.QueryRowContext(ctx, `
+			SELECT EXISTS (
+			    SELECT 1 FROM pg_stat_activity
+			    WHERE datname = current_database() AND query = $1 AND wait_event = 'PgSleep'
+			)`, mutation).Scan(&waiting); err != nil {
+			t.Fatalf("revocation did not wait for the active reservation: %v", err)
+		}
+		if waiting {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
