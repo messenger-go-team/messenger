@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	historyv1 "github.com/messenger-go-team/messenger/api/gen/history/v1"
 	"github.com/messenger-go-team/messenger/pkg/jwtauth"
 )
 
@@ -31,7 +32,7 @@ func TestWSSlowSocketDoesNotDelayAnotherTab(t *testing.T) {
 		}
 		defer func() { _ = conn.Close() }()
 		socket := newSocketSession(conn, jwtauth.Identity{UserID: fanoutAlice, ExpiresAt: time.Now().Add(time.Minute)})
-		if !ws.hub.register(socket) {
+		if _, ok := ws.hub.register(ws.fanoutCtx, socket); !ok {
 			t.Error("slow socket was refused by the hub")
 			return
 		}
@@ -68,7 +69,7 @@ func TestWSDisconnectUnblocksPendingWrite(t *testing.T) {
 	if err := conn.UnderlyingConn().(*net.TCPConn).CloseWrite(); err != nil {
 		t.Fatal(err)
 	}
-	waitForConnections(t, ws, 0) // Removal only happens after the writer has exited.
+	waitForConnections(t, ws, 0)
 }
 
 func TestWSHeartbeatWithPendingWrite(t *testing.T) {
@@ -145,11 +146,16 @@ func readTestPings(t *testing.T, conn *websocket.Conn) (<-chan string, <-chan st
 
 func startTestBlockedWriteSocket(t *testing.T, timing wsTiming) (*wsEndpoint, *websocket.Conn, blockedWriteListener) {
 	t.Helper()
+	return startTestBlockedWriteSocketWithHistory(t, timing, nil)
+}
+
+func startTestBlockedWriteSocketWithHistory(t *testing.T, timing wsTiming, client historyv1.HistoryServiceClient) (*wsEndpoint, *websocket.Conn, blockedWriteListener) {
+	t.Helper()
 	cfg := testConfig(t)
 	var ready atomic.Bool
 	ready.Store(true)
 	logger := newLogger(io.Discard, "chat", cfg.LogLevel)
-	ws := newWSEndpoint(cfg, &ready, timing, nil, logger)
+	ws := newWSEndpoint(cfg, &ready, timing, client, logger)
 	server := httptest.NewUnstartedServer(newServiceHandler(&ready, logger, ws, nil))
 	transport := blockedWriteListener{
 		Listener:      server.Listener,
