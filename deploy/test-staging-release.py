@@ -304,7 +304,7 @@ http {{
             assert "applying migrations before switching services (1:false,2:false)" in a_log
             assert "saved DB dump" in a_log
             assert "HTTPS /chats/00000000-0000-4000-8000-000000000001/receipts -> 401" in a_log
-            assert sql("SELECT version,dirty FROM public.history_schema_migrations;") == "3|f"
+            assert sql("SELECT version,dirty FROM public.history_schema_migrations;") == "4|f"
             assert sql(f"SELECT last_read_seq,last_delivered_seq FROM history.chat_members WHERE user_id='{probe_user}'") == "3|5"
             login = urllib.request.Request(origin + "/auth/login", json.dumps(credentials).encode(),
                                            {"Content-Type": "application/json"})
@@ -355,9 +355,9 @@ http {{
             public_cursors = {probe_user: (2, 6), peer_id: (1, 4)}
             assert_receipts(public_cursors)
 
-            def assert_v3_data():
+            def assert_migrated_data():
                 assert out(*compose, "ps", "-q", "postgres") == db_container
-                assert sql("SELECT version,dirty FROM public.history_schema_migrations") == "3|f"
+                assert sql("SELECT version,dirty FROM public.history_schema_migrations") == "4|f"
                 assert sql(f"""
                     SELECT last_read_seq,last_delivered_seq,public_last_read_seq,public_last_delivered_seq
                     FROM history.chat_members WHERE chat_id='{chat_id}' ORDER BY user_id='{probe_user}' DESC
@@ -374,8 +374,8 @@ http {{
             except urllib.error.HTTPError as error:
                 with error:
                     assert error.code == 404, error
-            assert_v3_data()
-            print("PASS: rollback to v2 binaries preserves readiness, v3 schema and public cursors", flush=True)
+            assert_migrated_data()
+            print("PASS: rollback to v2 binaries preserves readiness, v4 schema and public cursors", flush=True)
 
             deploy(A, a, 0)
             assert_receipts(public_cursors)
@@ -470,7 +470,7 @@ if (web / "current/REVISION").read_text().strip() == {B!r}:
             assert {path: asset(path) for path in assets_b} == assets_b
             assert (snippets / "public-locations.conf").read_text() == original
             assert sql("SELECT count(*) FROM history.chats") == "1"
-            assert_v3_data()
+            assert_migrated_data()
             assert_receipts(public_cursors)
             # A damaged live copy must not count as a healthy rollback target.
             (assert_web(A) / "app/assets/app-aaaaaaaa.js").unlink()
@@ -491,7 +491,7 @@ if (web / "current/REVISION").read_text().strip() == {B!r}:
             run(*script, "rollback", env=env)
             assert_web(B)
             print("PASS: old assets across deploy/rollback, broken baseline recovery, and changed ZIP at same SHA")
-            print("PASS: v2→v3, authenticated HTTPS receipts, A → B → duplicate B → failed Nginx, JS MIME and WSS → B → manual rollback A")
+            print("PASS: v2→v4, authenticated HTTPS receipts, A → B → duplicate B → failed Nginx, JS MIME and WSS → B → manual rollback A")
         finally:
             subprocess.run(["docker", "rm", "-f", outer], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             subprocess.run([*compose, "down", "-v"], check=False, stdout=subprocess.DEVNULL)

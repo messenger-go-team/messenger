@@ -28,14 +28,14 @@ const (
 	receiptRead      = historyv1.ReceiptKind_RECEIPT_KIND_READ
 )
 
-func receiptClient(t *testing.T, repo *postgres.Repository) historyv1.HistoryServiceClient {
+func startHistoryTestRPC(t *testing.T, repo *postgres.Repository) historyv1.HistoryServiceClient {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	server := grpc.NewServer()
-	historyv1.RegisterHistoryServiceServer(server, &historyGRPC{repo: repo, receipts: repo, messages: messages.New(repo)})
+	historyv1.RegisterHistoryServiceServer(server, &historyGRPC{repo: repo, presence: repo, receipts: repo, messages: messages.New(repo)})
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(server.Stop)
 	conn, err := grpc.NewClient(listener.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -125,7 +125,7 @@ func TestReceiptsPreserveMVPReadAndUnread(t *testing.T) {
 	expectUnread(2)
 	checkReceiptSnapshot(t, f, chat, userB, zero, zero)
 
-	client := receiptClient(t, f.repo)
+	client := startHistoryTestRPC(t, f.repo)
 	advance := func(seq int64, kind historyv1.ReceiptKind, delivered, read int64, advanced bool) {
 		t.Helper()
 		res := receiptCall(t, client, receiptRequest(chat, userA, seq, kind), codes.OK)
@@ -157,7 +157,7 @@ func TestReceiptsAuthorizationBoundsAndFailedWrite(t *testing.T) {
 	f := newReadingFixture(t)
 	applyHistoryMigration(t, f.db, "000002_later_entries")
 	applyHistoryMigration(t, f.db, "000003_public_receipts")
-	client := receiptClient(t, f.repo)
+	client := startHistoryTestRPC(t, f.repo)
 	chat := messageChat(t, f.db, 2, userA, userB)
 	group := messageChat(t, f.db, 2, userA, userB)
 	if _, err := f.db.ExecContext(t.Context(), `UPDATE history.chats SET type='group' WHERE id=$1`, group); err != nil {
@@ -207,7 +207,7 @@ func TestReceiptsConcurrentWithRESTReadAndSave(t *testing.T) {
 	db := laterDatabase(t)
 	applyHistoryMigration(t, db, "000003_public_receipts")
 	repo := &postgres.Repository{DB: db}
-	client := receiptClient(t, repo)
+	client := startHistoryTestRPC(t, repo)
 	chat := messageChat(t, db, 100, userA, userB)
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
