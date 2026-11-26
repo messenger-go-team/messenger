@@ -225,10 +225,11 @@ migrate() {
         --mount "type=bind,source=$release,target=/release,readonly" --workdir /release \
         --entrypoint /release/migrate "$(docker inspect --format '{{.Image}}' "$postgres")" \
         -service=all -direction=up
-    [[ $(schema) == '1:false,3:false' ]] || die 'expected Auth schema 1 and History schema 3, both clean'
+    [[ $(schema) == '1:false,4:false' ]] || die 'expected Auth schema 1 and History schema 4, both clean'
     db <<'SQL'
 BEGIN;
 GRANT SELECT, INSERT ON history.later_entries TO messenger36_history;
+GRANT SELECT, INSERT, DELETE ON history.presence_deliveries TO messenger36_history;
 GRANT UPDATE (due_at, state, updated_at) ON history.later_entries TO messenger36_history;
 GRANT UPDATE (id) ON history.messages TO messenger36_history;
 GRANT UPDATE (public_last_delivered_seq, public_last_read_seq) ON history.chat_members TO messenger36_history;
@@ -370,13 +371,13 @@ fi
 for service in auth history; do
     files=("$release/services/$service/migrations/"*.up.sql)
     case "$service:${#files[@]}:${files[-1]##*/}" in
-        auth:1:000001_initial_schema.up.sql|history:3:000003_public_receipts.up.sql) ;;
+        auth:1:000001_initial_schema.up.sql|history:4:000004_presence_delivery.up.sql) ;;
         *) die "unsupported $service migrations in release" ;;
     esac
 done
 before=$(schema)
 case "$before" in
-    1:false,1:false|1:false,2:false|1:false,3:false) ;;
+    1:false,1:false|1:false,2:false|1:false,3:false|1:false,4:false) ;;
     *) die "unexpected DB schema: $before" ;;
 esac
 docker exec "$ingress" nginx -t
@@ -437,7 +438,7 @@ write_overlay "$id-previous" > "$run/previous/compose.yaml"
 write_overlay "$id-next" > "$run/next/compose.yaml"
 "${compose[@]}" --file "$run/next/compose.yaml" config --quiet
 
-if [[ $before != '1:false,3:false' ]]; then
+if [[ $before != '1:false,4:false' ]]; then
     "${compose[@]}" exec -T --interactive=false postgres sh -ec \
         'exec pg_dump -Fc -U "$POSTGRES_USER" -d messenger_stage' > "$run/before-migration.dump"
     test -s "$run/before-migration.dump"
