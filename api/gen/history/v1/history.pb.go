@@ -649,6 +649,105 @@ func (x *ListPresencePeersResponse) GetUserIds() []string {
 	return nil
 }
 
+type AuthorizePresenceDeliveryRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Required canonical, non-zero UUID from the access JWT verified by Chat.
+	RequesterId string `protobuf:"bytes,1,opt,name=requester_id,json=requesterId,proto3" json:"requester_id,omitempty"`
+	// 1..128 distinct canonical, non-zero peer UUIDs, excluding requester_id.
+	UserIds       []string `protobuf:"bytes,2,rep,name=user_ids,json=userIds,proto3" json:"user_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuthorizePresenceDeliveryRequest) Reset() {
+	*x = AuthorizePresenceDeliveryRequest{}
+	mi := &file_history_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuthorizePresenceDeliveryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuthorizePresenceDeliveryRequest) ProtoMessage() {}
+
+func (x *AuthorizePresenceDeliveryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_history_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuthorizePresenceDeliveryRequest.ProtoReflect.Descriptor instead.
+func (*AuthorizePresenceDeliveryRequest) Descriptor() ([]byte, []int) {
+	return file_history_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *AuthorizePresenceDeliveryRequest) GetRequesterId() string {
+	if x != nil {
+		return x.RequesterId
+	}
+	return ""
+}
+
+func (x *AuthorizePresenceDeliveryRequest) GetUserIds() []string {
+	if x != nil {
+		return x.UserIds
+	}
+	return nil
+}
+
+type AuthorizePresenceDeliveryResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Authorized subset of the request. A missing peer may not be sent.
+	UserIds       []string `protobuf:"bytes,1,rep,name=user_ids,json=userIds,proto3" json:"user_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuthorizePresenceDeliveryResponse) Reset() {
+	*x = AuthorizePresenceDeliveryResponse{}
+	mi := &file_history_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuthorizePresenceDeliveryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuthorizePresenceDeliveryResponse) ProtoMessage() {}
+
+func (x *AuthorizePresenceDeliveryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_history_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuthorizePresenceDeliveryResponse.ProtoReflect.Descriptor instead.
+func (*AuthorizePresenceDeliveryResponse) Descriptor() ([]byte, []int) {
+	return file_history_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *AuthorizePresenceDeliveryResponse) GetUserIds() []string {
+	if x != nil {
+		return x.UserIds
+	}
+	return nil
+}
+
 var File_history_proto protoreflect.FileDescriptor
 
 const file_history_proto_rawDesc = "" +
@@ -689,17 +788,23 @@ const file_history_proto_rawDesc = "" +
 	"\x18ListPresencePeersRequest\x12!\n" +
 	"\frequester_id\x18\x01 \x01(\tR\vrequesterId\"6\n" +
 	"\x19ListPresencePeersResponse\x12\x19\n" +
+	"\buser_ids\x18\x01 \x03(\tR\auserIds\"`\n" +
+	" AuthorizePresenceDeliveryRequest\x12!\n" +
+	"\frequester_id\x18\x01 \x01(\tR\vrequesterId\x12\x19\n" +
+	"\buser_ids\x18\x02 \x03(\tR\auserIds\">\n" +
+	"!AuthorizePresenceDeliveryResponse\x12\x19\n" +
 	"\buser_ids\x18\x01 \x03(\tR\auserIds*^\n" +
 	"\vReceiptKind\x12\x1c\n" +
 	"\x18RECEIPT_KIND_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16RECEIPT_KIND_DELIVERED\x10\x01\x12\x15\n" +
-	"\x11RECEIPT_KIND_READ\x10\x022\xb4\x04\n" +
+	"\x11RECEIPT_KIND_READ\x10\x022\xc3\x05\n" +
 	"\x0eHistoryService\x12b\n" +
 	"\vSaveMessage\x12(.messenger.history.v1.SaveMessageRequest\x1a).messenger.history.v1.SaveMessageResponse\x12k\n" +
 	"\x0eGetChatMembers\x12+.messenger.history.v1.GetChatMembersRequest\x1a,.messenger.history.v1.GetChatMembersResponse\x12n\n" +
 	"\x0fCheckMembership\x12,.messenger.history.v1.CheckMembershipRequest\x1a-.messenger.history.v1.CheckMembershipResponse\x12k\n" +
 	"\x0eAdvanceReceipt\x12+.messenger.history.v1.AdvanceReceiptRequest\x1a,.messenger.history.v1.AdvanceReceiptResponse\x12t\n" +
-	"\x11ListPresencePeers\x12..messenger.history.v1.ListPresencePeersRequest\x1a/.messenger.history.v1.ListPresencePeersResponseBEZCgithub.com/messenger-go-team/messenger/api/gen/history/v1;historyv1b\x06proto3"
+	"\x11ListPresencePeers\x12..messenger.history.v1.ListPresencePeersRequest\x1a/.messenger.history.v1.ListPresencePeersResponse\x12\x8c\x01\n" +
+	"\x19AuthorizePresenceDelivery\x126.messenger.history.v1.AuthorizePresenceDeliveryRequest\x1a7.messenger.history.v1.AuthorizePresenceDeliveryResponseBEZCgithub.com/messenger-go-team/messenger/api/gen/history/v1;historyv1b\x06proto3"
 
 var (
 	file_history_proto_rawDescOnce sync.Once
@@ -714,36 +819,40 @@ func file_history_proto_rawDescGZIP() []byte {
 }
 
 var file_history_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_history_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_history_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_history_proto_goTypes = []any{
-	(ReceiptKind)(0),                  // 0: messenger.history.v1.ReceiptKind
-	(*SaveMessageRequest)(nil),        // 1: messenger.history.v1.SaveMessageRequest
-	(*SaveMessageResponse)(nil),       // 2: messenger.history.v1.SaveMessageResponse
-	(*GetChatMembersRequest)(nil),     // 3: messenger.history.v1.GetChatMembersRequest
-	(*GetChatMembersResponse)(nil),    // 4: messenger.history.v1.GetChatMembersResponse
-	(*CheckMembershipRequest)(nil),    // 5: messenger.history.v1.CheckMembershipRequest
-	(*CheckMembershipResponse)(nil),   // 6: messenger.history.v1.CheckMembershipResponse
-	(*AdvanceReceiptRequest)(nil),     // 7: messenger.history.v1.AdvanceReceiptRequest
-	(*AdvanceReceiptResponse)(nil),    // 8: messenger.history.v1.AdvanceReceiptResponse
-	(*ListPresencePeersRequest)(nil),  // 9: messenger.history.v1.ListPresencePeersRequest
-	(*ListPresencePeersResponse)(nil), // 10: messenger.history.v1.ListPresencePeersResponse
-	(*timestamppb.Timestamp)(nil),     // 11: google.protobuf.Timestamp
+	(ReceiptKind)(0),                          // 0: messenger.history.v1.ReceiptKind
+	(*SaveMessageRequest)(nil),                // 1: messenger.history.v1.SaveMessageRequest
+	(*SaveMessageResponse)(nil),               // 2: messenger.history.v1.SaveMessageResponse
+	(*GetChatMembersRequest)(nil),             // 3: messenger.history.v1.GetChatMembersRequest
+	(*GetChatMembersResponse)(nil),            // 4: messenger.history.v1.GetChatMembersResponse
+	(*CheckMembershipRequest)(nil),            // 5: messenger.history.v1.CheckMembershipRequest
+	(*CheckMembershipResponse)(nil),           // 6: messenger.history.v1.CheckMembershipResponse
+	(*AdvanceReceiptRequest)(nil),             // 7: messenger.history.v1.AdvanceReceiptRequest
+	(*AdvanceReceiptResponse)(nil),            // 8: messenger.history.v1.AdvanceReceiptResponse
+	(*ListPresencePeersRequest)(nil),          // 9: messenger.history.v1.ListPresencePeersRequest
+	(*ListPresencePeersResponse)(nil),         // 10: messenger.history.v1.ListPresencePeersResponse
+	(*AuthorizePresenceDeliveryRequest)(nil),  // 11: messenger.history.v1.AuthorizePresenceDeliveryRequest
+	(*AuthorizePresenceDeliveryResponse)(nil), // 12: messenger.history.v1.AuthorizePresenceDeliveryResponse
+	(*timestamppb.Timestamp)(nil),             // 13: google.protobuf.Timestamp
 }
 var file_history_proto_depIdxs = []int32{
-	11, // 0: messenger.history.v1.SaveMessageResponse.created_at:type_name -> google.protobuf.Timestamp
+	13, // 0: messenger.history.v1.SaveMessageResponse.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 1: messenger.history.v1.AdvanceReceiptRequest.kind:type_name -> messenger.history.v1.ReceiptKind
 	1,  // 2: messenger.history.v1.HistoryService.SaveMessage:input_type -> messenger.history.v1.SaveMessageRequest
 	3,  // 3: messenger.history.v1.HistoryService.GetChatMembers:input_type -> messenger.history.v1.GetChatMembersRequest
 	5,  // 4: messenger.history.v1.HistoryService.CheckMembership:input_type -> messenger.history.v1.CheckMembershipRequest
 	7,  // 5: messenger.history.v1.HistoryService.AdvanceReceipt:input_type -> messenger.history.v1.AdvanceReceiptRequest
 	9,  // 6: messenger.history.v1.HistoryService.ListPresencePeers:input_type -> messenger.history.v1.ListPresencePeersRequest
-	2,  // 7: messenger.history.v1.HistoryService.SaveMessage:output_type -> messenger.history.v1.SaveMessageResponse
-	4,  // 8: messenger.history.v1.HistoryService.GetChatMembers:output_type -> messenger.history.v1.GetChatMembersResponse
-	6,  // 9: messenger.history.v1.HistoryService.CheckMembership:output_type -> messenger.history.v1.CheckMembershipResponse
-	8,  // 10: messenger.history.v1.HistoryService.AdvanceReceipt:output_type -> messenger.history.v1.AdvanceReceiptResponse
-	10, // 11: messenger.history.v1.HistoryService.ListPresencePeers:output_type -> messenger.history.v1.ListPresencePeersResponse
-	7,  // [7:12] is the sub-list for method output_type
-	2,  // [2:7] is the sub-list for method input_type
+	11, // 7: messenger.history.v1.HistoryService.AuthorizePresenceDelivery:input_type -> messenger.history.v1.AuthorizePresenceDeliveryRequest
+	2,  // 8: messenger.history.v1.HistoryService.SaveMessage:output_type -> messenger.history.v1.SaveMessageResponse
+	4,  // 9: messenger.history.v1.HistoryService.GetChatMembers:output_type -> messenger.history.v1.GetChatMembersResponse
+	6,  // 10: messenger.history.v1.HistoryService.CheckMembership:output_type -> messenger.history.v1.CheckMembershipResponse
+	8,  // 11: messenger.history.v1.HistoryService.AdvanceReceipt:output_type -> messenger.history.v1.AdvanceReceiptResponse
+	10, // 12: messenger.history.v1.HistoryService.ListPresencePeers:output_type -> messenger.history.v1.ListPresencePeersResponse
+	12, // 13: messenger.history.v1.HistoryService.AuthorizePresenceDelivery:output_type -> messenger.history.v1.AuthorizePresenceDeliveryResponse
+	8,  // [8:14] is the sub-list for method output_type
+	2,  // [2:8] is the sub-list for method input_type
 	2,  // [2:2] is the sub-list for extension type_name
 	2,  // [2:2] is the sub-list for extension extendee
 	0,  // [0:2] is the sub-list for field type_name
@@ -761,7 +870,7 @@ func file_history_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_history_proto_rawDesc), len(file_history_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   10,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

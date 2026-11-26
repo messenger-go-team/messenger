@@ -19,7 +19,7 @@ import (
 type historyGRPC struct {
 	historyv1.UnimplementedHistoryServiceServer
 	repo     chats.Repository
-	presence presencePeerFinder
+	presence presenceRepository
 	messages messageSaver
 	receipts receiptAdvancer
 }
@@ -84,7 +84,8 @@ func rpcLogging(logger *slog.Logger) grpc.UnaryServerInterceptor {
 				err = status.Error(codes.Internal, "internal error")
 			}
 			level := slog.LevelInfo
-			if err == nil && info.FullMethod == historyv1.HistoryService_ListPresencePeers_FullMethodName {
+			if err == nil && (info.FullMethod == historyv1.HistoryService_ListPresencePeers_FullMethodName ||
+				info.FullMethod == historyv1.HistoryService_AuthorizePresenceDelivery_FullMethodName) {
 				// Healthy polling is visible in RPC metrics without a log per refresh.
 				level = slog.LevelDebug
 			}

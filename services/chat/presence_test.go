@@ -5,20 +5,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/gorilla/websocket"
 	historyv1 "github.com/messenger-go-team/messenger/api/gen/history/v1"
 	"github.com/messenger-go-team/messenger/pkg/jwtauth"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type presenceTestHistory struct {
 	historyv1.UnimplementedHistoryServiceServer
-	list func(context.Context, string) ([]string, error)
+	list      func(context.Context, string) ([]string, error)
+	authorize func(context.Context, string, []string) ([]string, error)
 }
 
 func (s presenceTestHistory) ListPresencePeers(ctx context.Context, req *historyv1.ListPresencePeersRequest) (*historyv1.ListPresencePeersResponse, error) {
@@ -27,6 +32,18 @@ func (s presenceTestHistory) ListPresencePeers(ctx context.Context, req *history
 		return nil, err
 	}
 	return &historyv1.ListPresencePeersResponse{UserIds: ids}, nil
+}
+
+func (s presenceTestHistory) AuthorizePresenceDelivery(ctx context.Context, req *historyv1.AuthorizePresenceDeliveryRequest) (*historyv1.AuthorizePresenceDeliveryResponse, error) {
+	ids := req.GetUserIds()
+	if s.authorize != nil {
+		var err error
+		ids, err = s.authorize(ctx, req.GetRequesterId(), ids)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &historyv1.AuthorizePresenceDeliveryResponse{UserIds: ids}, nil
 }
 
 func testPresencePair(user string) []string {
@@ -247,12 +264,20 @@ func presenceLastSeen(ws *wsEndpoint, id string) time.Time {
 
 func TestWSPresenceLargeSnapshotDoesNotOverflowMessageQueue(t *testing.T) {
 	var ids []string
-	for i := range 3 * wsQueueSize {
+	for i := range 2*presenceBatchSize + 1 {
 		ids = append(ids, fmt.Sprintf("30000000-0000-4000-8000-%012x", i))
 	}
-	client := startTestHistoryRPC(t, presenceTestHistory{list: func(_ context.Context, _ string) ([]string, error) {
-		return ids, nil
-	}})
+	var batches atomic.Int32
+	client := startTestHistoryRPC(t, presenceTestHistory{
+		list: func(_ context.Context, _ string) ([]string, error) { return ids, nil },
+		authorize: func(_ context.Context, _ string, requested []string) ([]string, error) {
+			if len(requested) > presenceBatchSize {
+				t.Errorf("authorization was not batched: %d peers", len(requested))
+			}
+			batches.Add(1)
+			return requested, nil
+		},
+	})
 	_, url := startTestWSEndpoint(t, defaultWSTiming(), client)
 	conn, _ := dialTestUser(t, url, fanoutAlice)
 	if err := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
@@ -272,6 +297,9 @@ func TestWSPresenceLargeSnapshotDoesNotOverflowMessageQueue(t *testing.T) {
 			t.Fatalf("unexpected or duplicate event: %+v", event)
 		}
 		delete(want, event.Payload.UserID)
+	}
+	if got := batches.Load(); got != 3 {
+		t.Fatalf("authorization needed %d batches, want 3", got)
 	}
 }
 
@@ -360,7 +388,7 @@ func TestPresenceDropsQueuedStateOnTransitionAndHistoryFailure(t *testing.T) {
 	}
 	failed.Store(false)
 	ws.refreshPresence(user)
-	if id, view := ws.hub.popPresence(alice); id != fanoutBob || !view.online {
+	if id, view := ws.hub.popPresence(alice); id != fanoutBob || !view.view.online {
 		t.Fatalf("expected a fresh online snapshot after recovery, got %s %+v", id, view)
 	}
 }
@@ -401,4 +429,218 @@ func registerPresenceTestSocket(t *testing.T, ws *wsEndpoint, id string) (*socke
 	}
 	t.Cleanup(func() { ws.hub.unregister(socket) })
 	return socket, user
+}
+
+func TestWSPresenceRejectsMembershipRevokedBeforeDiscoveryReply(t *testing.T) {
+	discovered, releaseList, checked := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(releaseList) })
+	t.Cleanup(unblock)
+	var member atomic.Bool
+	member.Store(true)
+	var started sync.Once
+	authoritative := presenceTestHistory{
+		list: func(ctx context.Context, user string) ([]string, error) {
+			if user != fanoutAlice || !member.Load() {
+				return nil, nil
+			}
+			started.Do(func() { close(discovered) })
+			select {
+			case <-releaseList:
+				return []string{fanoutBob}, nil // The previous membership snapshot.
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		},
+		authorize: func(_ context.Context, requester string, ids []string) ([]string, error) {
+			if requester != fanoutAlice || len(ids) != 1 || ids[0] != fanoutBob {
+				t.Errorf("unexpected final authorization: %s %v", requester, ids)
+			}
+			close(checked)
+			if member.Load() {
+				return ids, nil
+			}
+			return nil, nil
+		},
+	}
+	client := startTestHistoryRPC(t, authoritative)
+	ws, url := startTestWSEndpoint(t, defaultWSTiming(), client)
+	dialTestUser(t, url, fanoutBob)
+	waitForConnections(t, ws, 1) // Bob never changes state during this race.
+	alice, _ := dialTestUser(t, url, fanoutAlice)
+	events := readPresenceFrames(t, alice)
+	waitPresenceSignal(t, discovered)
+	member.Store(false)
+	unblock()
+	waitPresenceSignal(t, checked)
+	expectPresenceSilence(t, events)
+}
+
+func TestWSPresenceDoesNotRestartWindowOnLateAuthorization(t *testing.T) {
+	finished := make(chan struct{})
+	client := startTestHistoryRPC(t, presenceTestHistory{
+		list: func(_ context.Context, user string) ([]string, error) {
+			if user == fanoutAlice {
+				return []string{fanoutBob}, nil
+			}
+			return nil, nil
+		},
+		authorize: func(ctx context.Context, _ string, ids []string) ([]string, error) {
+			<-ctx.Done()
+			close(finished)
+			return ids, nil
+		},
+	})
+	_, url := startTestWSEndpoint(t, defaultWSTiming(), client)
+	alice, _ := dialTestUser(t, url, fanoutAlice)
+	events := readPresenceFrames(t, alice)
+	waitPresenceSignal(t, finished)
+	expectPresenceSilence(t, events)
+}
+
+func TestPresenceWriterDropsExpiredQueuedGrant(t *testing.T) {
+	client := startTestHistoryRPC(t, presenceTestHistory{list: func(_ context.Context, user string) ([]string, error) {
+		return testPresencePair(user), nil
+	}})
+	cfg := testConfig(t)
+	ws := newWSEndpoint(cfg, &atomic.Bool{}, defaultWSTiming(), client, newLogger(io.Discard, "chat", cfg.LogLevel))
+	t.Cleanup(ws.cancelFanout)
+	alice, viewer := registerPresenceTestSocket(t, ws, fanoutAlice)
+	if !ws.refreshPresence(viewer) {
+		t.Fatal("could not create a pending grant")
+	}
+	snapshot, found := alice.presencePending[fanoutBob]
+	if !found {
+		t.Fatal("grant is missing")
+	}
+	timer := time.NewTimer(time.Until(snapshot.deadline))
+	defer timer.Stop()
+	<-timer.C
+	if id, _ := ws.hub.popPresence(alice); id != "" {
+		t.Fatalf("expired grant still permits sending presence for %s", id)
+	}
+	if _, sent := alice.presenceSent[fanoutBob]; sent {
+		t.Fatal("dropped frame was recorded as sent")
+	}
+	if !ws.refreshPresence(viewer) {
+		t.Fatal("could not obtain a fresh grant")
+	}
+	if id, _ := ws.hub.popPresence(alice); id != fanoutBob {
+		t.Fatalf("discarded state was not eligible for retry: %s", id)
+	}
+}
+
+type reconnectPresenceHistory struct {
+	presenceTestHistory
+	pool chan struct{}
+}
+
+func (h reconnectPresenceHistory) SaveMessage(ctx context.Context, _ *historyv1.SaveMessageRequest) (*historyv1.SaveMessageResponse, error) {
+	select {
+	case h.pool <- struct{}{}:
+		defer func() { <-h.pool }()
+		return &historyv1.SaveMessageResponse{MessageId: sendTestMessageID, Seq: 1, CreatedAt: timestamppb.Now()}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func TestWSPresenceMassReconnectLeavesRoomForMessageAck(t *testing.T) {
+	pool := make(chan struct{}, 16)
+	started, release := make(chan struct{}, 200), make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(release) })
+	t.Cleanup(unblock)
+	client := startTestHistoryRPC(t, reconnectPresenceHistory{
+		pool: pool,
+		presenceTestHistory: presenceTestHistory{list: func(ctx context.Context, _ string) ([]string, error) {
+			select {
+			case pool <- struct{}{}:
+				defer func() { <-pool }()
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			started <- struct{}{}
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-release:
+				return nil, nil
+			}
+		}},
+	})
+	cfg := testConfig(t)
+	cfg.HistoryRPCTimeout = 10 * time.Second
+	ws, url := startTestWSEndpointWithConfig(t, cfg, defaultWSTiming(), client)
+	sender, _ := dialTestUser(t, url, fanoutAlice)
+	for index := range 200 {
+		dialTestUser(t, url, fmt.Sprintf("70000000-0000-4000-8000-%012x", index))
+	}
+	waitForConnections(t, ws, 201)
+	for range presenceRPCConcurrency {
+		waitPresenceSignal(t, started)
+	}
+	if inFlight := len(pool); inFlight != presenceRPCConcurrency {
+		t.Fatalf("background RPCs use %d of 16 History slots, want %d", inFlight, presenceRPCConcurrency)
+	}
+
+	requestID := newWSEventID()
+	sendTestMessage(t, sender, requestID, sendTestClientID, "message during reconnect")
+	var ack wsAckPayload
+	if id := readTestEvent(t, sender, "message.ack", &ack); id != requestID || ack.MessageID != sendTestMessageID {
+		t.Fatalf("unexpected ACK while discovery is blocked: %s %+v", id, ack)
+	}
+	if inFlight := len(pool); inFlight != presenceRPCConcurrency {
+		t.Fatalf("ACK arrived after presence left the shared pool: %d blocked", inFlight)
+	}
+	unblock()
+}
+
+func waitPresenceSignal(t *testing.T, signal <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-signal:
+	case <-time.After(3 * time.Second):
+		t.Fatal("presence operation did not reach the expected point")
+	}
+}
+
+type unavailablePresenceClient struct {
+	historyv1.HistoryServiceClient
+	calls chan time.Time
+}
+
+func (c unavailablePresenceClient) ListPresencePeers(context.Context, *historyv1.ListPresencePeersRequest, ...grpc.CallOption) (*historyv1.ListPresencePeersResponse, error) {
+	c.calls <- time.Now()
+	return nil, status.Error(codes.Unavailable, "history down")
+}
+
+func TestPresenceBackoffCoalescesWakeups(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		cfg := testConfig(t)
+		timing := defaultWSTiming()
+		timing.presenceRefresh = time.Second
+		calls := make(chan time.Time, 16)
+		ws := newWSEndpoint(cfg, &atomic.Bool{}, timing, unavailablePresenceClient{calls: calls}, newLogger(io.Discard, "chat", cfg.LogLevel))
+		t.Cleanup(ws.cancelFanout)
+		_, user := registerPresenceTestSocket(t, ws, fanoutAlice)
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			ws.runPresence(user)
+		}()
+		first := <-calls
+		synctest.Wait()
+		user.wakePresence()
+		second := <-calls
+		if elapsed := second.Sub(first); elapsed < 800*time.Millisecond || elapsed > 1200*time.Millisecond {
+			t.Fatalf("first retry after %s, want 0.8–1.2 s", elapsed)
+		}
+		synctest.Wait()
+		user.wakePresence()
+		third := <-calls
+		if elapsed := third.Sub(second); elapsed < 1600*time.Millisecond || elapsed > 2400*time.Millisecond {
+			t.Fatalf("second retry after %s, want 1.6–2.4 s", elapsed)
+		}
+		ws.cancelFanout()
+		<-done
+	})
 }

@@ -239,10 +239,8 @@ func (ws *wsEndpoint) writeSocket(socket *socketSession, pending *atomic.Pointer
 				return
 			}
 		case <-socket.presenceReady:
-			if event := ws.takePresenceEvent(socket); event != nil {
-				if err := ws.writeSocketEvent(socket, event); err != nil {
-					return
-				}
+			if err := ws.writePresenceEvent(socket); err != nil {
+				return
 			}
 		case <-pings.C:
 			ping := &pingProbe{payload: rand.Text()}
@@ -271,7 +269,11 @@ func (ws *wsEndpoint) writeSocketEvent(socket *socketSession, event []byte) erro
 	if !now.Before(socket.expiresAt) {
 		return nil
 	}
-	if err := socket.conn.SetWriteDeadline(ws.socketWriteDeadline(socket, now)); err != nil {
+	return writeSocketText(socket, event, ws.socketWriteDeadline(socket, now))
+}
+
+func writeSocketText(socket *socketSession, event []byte, deadline time.Time) error {
+	if err := socket.conn.SetWriteDeadline(deadline); err != nil {
 		return err
 	}
 	return socket.conn.WriteMessage(websocket.TextMessage, event)

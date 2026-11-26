@@ -31,6 +31,11 @@ service HistoryService {
   // The requester must be a current member of each returned peer's personal chat.
   // INVALID_ARGUMENT: malformed requester UUID. UNAVAILABLE: storage unavailable.
   rpc ListPresencePeers(ListPresencePeersRequest) returns (ListPresencePeersResponse);
+  // AuthorizePresenceDelivery rechecks candidates and orders a short write
+  // window against any concurrent change to the authorizing personal chats.
+  // Chat may write only within 250 ms from the start of this request, including
+  // queue time and the socket write. Never extend the window on receipt.
+  rpc AuthorizePresenceDelivery(AuthorizePresenceDeliveryRequest) returns (AuthorizePresenceDeliveryResponse);
 }
 
 message SaveMessageRequest {
@@ -123,5 +128,17 @@ message ListPresencePeersRequest {
 message ListPresencePeersResponse {
   // Unique peer UUIDs sorted in canonical order. Each shares a current personal
   // chat with exactly two members, including the requester. An empty list is OK.
+  repeated string user_ids = 1;
+}
+
+message AuthorizePresenceDeliveryRequest {
+  // Required canonical, non-zero UUID from the access JWT verified by Chat.
+  string requester_id = 1;
+  // 1..128 distinct canonical, non-zero peer UUIDs, excluding requester_id.
+  repeated string user_ids = 2;
+}
+
+message AuthorizePresenceDeliveryResponse {
+  // Authorized subset of the request. A missing peer may not be sent.
   repeated string user_ids = 1;
 }

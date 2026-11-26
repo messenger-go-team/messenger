@@ -34,6 +34,13 @@ func run(ctx context.Context, c config, logger *slog.Logger) error {
 	db.SetMaxOpenConns(16)
 	db.SetMaxIdleConns(4)
 	db.SetConnMaxLifetime(30 * time.Minute)
+
+	// Presence is best effort. Its queries cannot use all regular History connections.
+	presenceDB := stdlib.OpenDB(*dbcfg)
+	defer func() { _ = presenceDB.Close() }()
+	presenceDB.SetMaxOpenConns(4)
+	presenceDB.SetMaxIdleConns(2)
+	presenceDB.SetConnMaxLifetime(30 * time.Minute)
 	startup, cancel := context.WithTimeout(ctx, 5*time.Second)
 	err = db.PingContext(startup)
 	cancel()
@@ -56,7 +63,10 @@ func run(ctx context.Context, c config, logger *slog.Logger) error {
 	var ready atomic.Bool
 	checkReady := historyReadiness(repo, savedRepo)
 	rpcMetrics := metrics.NewRequests("history", "grpc")
-	collectors := append(rpcMetrics.Collectors(), metrics.NewDBPoolCollector("history", db))
+	collectors := append(rpcMetrics.Collectors(),
+		metrics.NewDBPoolCollector("history", db),
+		metrics.NewDBPoolCollector("history_presence", presenceDB),
+	)
 	routes := chatRoutes(service, c.JWTVerifier, &reading.Service{Repo: repo, Users: service.Users}, &later.Service{Repo: savedRepo})
 	web := &http.Server{
 		Handler:           newServiceHandlerWithReadiness(&ready, logger, routes, checkReady, collectors...),
@@ -71,7 +81,7 @@ func run(ctx context.Context, c config, logger *slog.Logger) error {
 		grpc.ChainUnaryInterceptor(rpcMetrics.UnaryServerInterceptor(historyv1.HistoryService_ServiceDesc), rpcLogging(logger)),
 		grpc.MaxRecvMsgSize(1<<20),
 	)
-	historyv1.RegisterHistoryServiceServer(rpc, &historyGRPC{repo: repo, presence: repo, messages: messages.New(repo), receipts: repo})
+	historyv1.RegisterHistoryServiceServer(rpc, &historyGRPC{repo: repo, presence: &postgres.Repository{DB: presenceDB}, messages: messages.New(repo), receipts: repo})
 	healthpb.RegisterHealthServer(rpc, &historyHealth{ready: &ready, check: checkReady})
 	return serveHistory(ctx, web, rpc, httpListener, grpcListener, &ready, c.ShutdownTimeout, logger)
 }

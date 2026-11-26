@@ -9,8 +9,9 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type presencePeerFinder interface {
+type presenceRepository interface {
 	ListPresencePeers(ctx context.Context, requesterID string) ([]string, error)
+	AuthorizePresenceDelivery(ctx context.Context, requesterID string, peerIDs []string) ([]string, error)
 }
 
 func (s *historyGRPC) ListPresencePeers(ctx context.Context, request *historyv1.ListPresencePeersRequest) (*historyv1.ListPresencePeersResponse, error) {
@@ -22,4 +23,23 @@ func (s *historyGRPC) ListPresencePeers(ctx context.Context, request *historyv1.
 		return nil, rpcError(ctx, err)
 	}
 	return &historyv1.ListPresencePeersResponse{UserIds: ids}, nil
+}
+
+func (s *historyGRPC) AuthorizePresenceDelivery(ctx context.Context, request *historyv1.AuthorizePresenceDeliveryRequest) (*historyv1.AuthorizePresenceDeliveryResponse, error) {
+	requesterID, ids := request.GetRequesterId(), request.GetUserIds()
+	if !chats.ValidRPCID(requesterID) || len(ids) == 0 || len(ids) > 128 {
+		return nil, status.Error(codes.InvalidArgument, "invalid presence delivery request")
+	}
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if _, duplicate := seen[id]; duplicate || !chats.ValidRPCID(id) || id == requesterID {
+			return nil, status.Error(codes.InvalidArgument, "invalid presence peer UUID")
+		}
+		seen[id] = struct{}{}
+	}
+	allowed, err := s.presence.AuthorizePresenceDelivery(ctx, requesterID, ids)
+	if err != nil {
+		return nil, rpcError(ctx, err)
+	}
+	return &historyv1.AuthorizePresenceDeliveryResponse{UserIds: allowed}, nil
 }

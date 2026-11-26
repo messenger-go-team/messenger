@@ -31,6 +31,7 @@ type wsEndpoint struct {
 	cancelFanout context.CancelFunc
 
 	hub            *connectionHub
+	presenceRPC    presenceRPCGate
 	broker         Broker
 	typing         typingTracker
 	history        historyv1.HistoryServiceClient
@@ -60,6 +61,7 @@ func newWSEndpoint(cfg config, ready *atomic.Bool, timing wsTiming,
 		fanoutCtx:      fanoutCtx,
 		cancelFanout:   cancelFanout,
 		hub:            hub,
+		presenceRPC:    presenceRPCGate{slots: make(chan struct{}, presenceRPCConcurrency)},
 		broker:         memoryBroker{hub: hub},
 		typing:         typingTracker{byUser: make(map[string]map[string]*typingGroup)},
 		history:        history,
