@@ -46,15 +46,36 @@ function Compare-SmokeWeb($Expected, $Har) {
     $seen = @{}
     foreach ($entry in $log.log.entries) {
         $url = [uri]$entry.request.url
-        $mime = [string]$entry.response.content.mimeType
+        $mime = ([string]$entry.response.content.mimeType).Split(';')[0].Trim().ToLowerInvariant()
         $path = $url.AbsolutePath
-        $isAsset = $path -match '\.(js|mjs|css)$'
-        $isDocument = $mime -match '^text/html' -and $path.StartsWith('/app/')
-        if (-not ($isAsset -or $isDocument)) { continue }
+        $resourceType = ([string]$entry._resourceType).ToLowerInvariant()
+        $destHeader = @($entry.request.headers | Where-Object { $_.name -ieq 'Sec-Fetch-Dest' })
+        $dest = if ($destHeader.Count -eq 1) { ([string]$destHeader[0].value).Trim().ToLowerInvariant() } else { '' }
+        $isStyle = $path -match '\.css$' -or $resourceType -eq 'stylesheet' -or $dest -eq 'style'
+        $isScript = $path -match '\.(js|mjs)$' -or $resourceType -eq 'script' -or $dest -eq 'script'
+        $isAsset = $isStyle -or $isScript
+        # Request identity takes precedence over a misleading response MIME.
+        $isDocument = -not $isAsset -and ($resourceType -eq 'document' -or $dest -eq 'document')
+        if (-not ($isAsset -or $isDocument)) {
+            if ($mime -eq 'text/html' -and $path.StartsWith('/app/')) {
+                throw "HTML-ответ без признака документа: $path"
+            }
+            continue
+        }
         if ($url.GetLeftPart([System.UriPartial]::Authority) -ne $ref.origin) {
             throw 'Неожиданный origin веб-ресурса'
         }
-        if ($isDocument) { $path = '/app/index.html' }
+        if ($isAsset) {
+            if ($mime -eq 'text/html') { throw "HTML вместо JS/CSS: $path" }
+            $allowed = if ($isStyle) { @('text/css') } else { @('application/javascript', 'text/javascript') }
+            if ($mime -notin $allowed) { throw "Неверный MIME JS/CSS: $path" }
+            # Keep the original path for catalog lookup and SHA-256 comparison.
+        } else {
+            if ($mime -ne 'text/html' -or -not $path.StartsWith('/app/')) {
+                throw "Неверный документ приложения: $path"
+            }
+            $path = '/app/index.html'
+        }
         $body = $entry.response.content
         if ($entry.response.status -ne 200 -or $null -eq $body.text -or $body.text.Length -eq 0) {
             throw "Нет полного 200-ответа с телом: $path"
@@ -82,3 +103,11 @@ Compare-SmokeWeb -Expected ./expected.json -Har ./B.har
 Для промежуточного HAR сохранить Preserve log с исходной загрузкой, чтобы обязательные ресурсы присутствовали. Для финиша использовать только свежую запись после reload, не весь старый Preserve log. Неполный HAR, ответ 304 без тела, недоступный эталон или невозможность закончить сверку в оставшееся время не дают Passed. Если ручной экспорт не укладывается в бюджет, подготовить более быстрый достоверный способ до следующего прогона; не вычитать сверку из длительности.
 
 В отчёте зафиксировать отдельно старт и финиш: время с TZ, артефакт/полный SHA, результат A и B, публичные пути/хеши, источник свежей проверки backend и подтверждение оператора об отсутствии смены релиза. MATCH подтверждает соответствие файлов артефакту, а не прохождение остальных девяти пунктов smoke.
+
+## Отрицательные контроли классификации ресурсов
+
+Перед smoke выполнить `pwsh -File docs/qa/check-smoke-web-version.ps1` из корня репозитория. Проверка извлекает именно функцию из этого документа и вызывает её на временных HAR; копия логики классификации в тесте не используется. Реальные аккаунты, сеть и секреты не нужны.
+
+Обязательная регрессия ревью: к корректному HAR добавляется неизвестный `/app/assets/unknown-lazy.js` с HTTP 200, MIME text/html и телом эталонного index.html. Требуется конкретная ошибка «HTML вместо JS/CSS», не MATCH и не ошибка запуска. Аналогично проверяются известный JS, известный/неизвестный CSS, extensionless script, недостоверный HTML без признака document и неверный MIME. Даже если HAR пометил URL с расширением .js как document, исходный путь JS имеет приоритет и HTML отклоняется. Корректная HTML-навигация /app/login сопоставляется с index.html только при document-признаке HAR или Sec-Fetch-Dest.
+
+Контроли также сохраняют проверки подменённого хеша, отсутствующего тела, 304, обязательного файла, неизвестного JS с правильным MIME, чужого origin и пустого HAR. Позитивные варианты включают UTF-8, base64, параметры MIME и признак документа через заголовок. Отсутствие достоверной классификации/тела даёт отказ проверки, а не подтверждение версии. Результаты этих контролей не заменяют фактический smoke и сравнение свежих HAR обоих профилей.
