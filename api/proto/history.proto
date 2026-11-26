@@ -27,6 +27,10 @@ service HistoryService {
   // UNAVAILABLE: storage unavailable or commit result unknown. Deadline and
   // cancellation may leave the caller uncertain whether the update committed.
   rpc AdvanceReceipt(AdvanceReceiptRequest) returns (AdvanceReceiptResponse);
+  // ListPresencePeers returns a point-in-time authorization snapshot for Chat.
+  // The requester must be a current member of each returned peer's personal chat.
+  // INVALID_ARGUMENT: malformed requester UUID. UNAVAILABLE: storage unavailable.
+  rpc ListPresencePeers(ListPresencePeersRequest) returns (ListPresencePeersResponse);
 }
 
 message SaveMessageRequest {
@@ -109,4 +113,15 @@ message AdvanceReceiptResponse {
   // True if this transaction increased public last_delivered_seq, compared
   // with its value before the update. False for a repeat without advancement.
   bool delivered_advanced = 3;
+}
+
+message ListPresencePeersRequest {
+  // Required canonical, non-zero UUID from the access JWT verified by Chat.
+  string requester_id = 1;
+}
+
+message ListPresencePeersResponse {
+  // Unique peer UUIDs sorted in canonical order. Each shares a current personal
+  // chat with exactly two members, including the requester. An empty list is OK.
+  repeated string user_ids = 1;
 }
