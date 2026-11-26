@@ -3,6 +3,7 @@ import { ApiError } from '@/api/client'
 
 const LOCK_NAME = 'messenger:auth-refresh'
 const CHANNEL_NAME = 'messenger:auth-refresh'
+const CHANNEL_LOCK = 'messenger:auth-refresh-channel'
 const EPOCH_STORAGE_KEY = 'messenger:auth-refresh-epoch'
 const META_STORAGE_KEY = 'messenger:auth-refresh-meta'
 const OP_ID_STORAGE_KEY = 'messenger:auth-refresh-opid'
@@ -287,11 +288,7 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
   const finalFailureListeners = new Set<RefreshFinalFailureListener>()
 
   let channel: BroadcastChannelLike | null = null
-  try {
-    channel = createChannel(CHANNEL_NAME)
-  } catch {
-    channel = null
-  }
+  let outcomeAtChannelOpen: RefreshOutcomeMeta | null = null
 
   const settleFlight = async (pending: Promise<AccessTokenResponse> | null) => {
     if (!pending) return
@@ -370,7 +367,7 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     session: AccessTokenResponse,
     epoch: number,
     opId: number,
-    fromRemote: boolean,
+    publish: boolean,
   ) => {
     syncEpochFromStore()
     if (disposed || epoch !== sessionEpoch) return
@@ -386,9 +383,9 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
 
     const meta: RefreshOutcomeMeta = { kind: 'success', sessionEpoch: epoch, opId, at: now() }
     memoryOutcome = { ...meta, session }
-    store.writeMeta(meta)
     notifySuccess(session, epoch)
-    if (!fromRemote && channel) {
+    if (!publish || !channel) return
+    try {
       channel.postMessage({
         v: 1,
         type: 'refresh-success',
@@ -398,7 +395,11 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
         access_token: session.access_token,
         expires_in: session.expires_in,
       })
+    } catch {
+      return
     }
+    // Другие вкладки ждут JWT только после успешной отправки.
+    store.writeMeta(meta)
   }
 
   const applyFinalFailure = (
@@ -496,7 +497,48 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     }
   }
 
-  if (channel) {
+  const withLock = async <T>(
+    name: string,
+    signal: AbortSignal | undefined,
+    fn: () => T | Promise<T>,
+  ): Promise<T> => {
+    if (!locks) return fn()
+    if (signal) {
+      try {
+        return await locks.request(name, { signal }, fn)
+      } catch (error) {
+        if (signal.aborted) throw abortError(signal)
+        throw error
+      }
+    }
+    return locks.request(name, fn)
+  }
+
+  const tryChannelLock = async (signal: AbortSignal | undefined, fn: () => void) => {
+    let acquired = false
+    try {
+      await withLock(CHANNEL_LOCK, signal, () => {
+        acquired = true
+        fn()
+      })
+    } catch (error) {
+      // Отказ дополнительного lock отключает обмен JWT, сохраняя основной lock.
+      if (acquired || signal?.aborted) throw error
+    }
+    return acquired
+  }
+
+  // Публикация success не может вклиниться между открытием канала и чтением meta.
+  const channelReady = tryChannelLock(undefined, () => {
+    if (disposed) return
+    try {
+      channel = createChannel(CHANNEL_NAME)
+    } catch {
+      channel = null
+    }
+    outcomeAtChannelOpen = store.readMeta()
+    if (!channel) return
+
     channel.onmessage = (event) => {
       const data = event.data
       if (!data || data.v !== 1) return
@@ -511,7 +553,7 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
           },
           data.sessionEpoch,
           data.opId,
-          true,
+          false,
         )
         return
       }
@@ -527,11 +569,16 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
         adoptEpoch(data.sessionEpoch, 'logout', true)
       }
     }
-  }
+  })
+  void channelReady.catch(() => undefined)
 
   const leaderSuccessMeta = (epoch: number) => {
+    if (!channel) return null
     const meta = store.readMeta()
     if (!meta || meta.kind !== 'success' || meta.sessionEpoch !== epoch) return null
+    if (outcomeAtChannelOpen?.sessionEpoch === epoch && outcomeAtChannelOpen.opId === meta.opId) {
+      return null
+    }
     return meta
   }
 
@@ -622,9 +669,17 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     void refreshPromise.catch(() => undefined)
     try {
       const session = await Promise.race([refreshPromise, whenAborted(signal)])
+      const acceptSuccess = (publish: boolean) => {
+        syncEpochFromStore()
+        if (signal.aborted || epoch !== sessionEpoch) throw abortError(signal)
+        applySuccess(session, epoch, opId, publish)
+      }
+      // После HTTP отказ блокировки публикации оставляет JWT доступным в этой вкладке.
+      if (!channel || !(await tryChannelLock(signal, () => acceptSuccess(true)))) {
+        acceptSuccess(false)
+      }
       syncEpochFromStore()
       if (signal.aborted || epoch !== sessionEpoch) throw abortError(signal)
-      applySuccess(session, epoch, opId, false)
       return session
     } catch (error) {
       if (signal.aborted || epoch !== sessionEpoch) throw abortError(signal)
@@ -654,26 +709,14 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     }
   }
 
-  const withLock = async <T>(signal: AbortSignal | undefined, fn: () => Promise<T>): Promise<T> => {
-    if (!locks) return fn()
-    if (signal) {
-      try {
-        return await locks.request(LOCK_NAME, { signal }, fn)
-      } catch (error) {
-        if (signal.aborted) throw abortError(signal)
-        throw error
-      }
-    }
-    return locks.request(LOCK_NAME, fn)
-  }
-
   const refreshWithLock = async (
     epoch: number,
     opId: number,
     signal: AbortSignal,
     queuedAt: number,
   ): Promise<AccessTokenResponse> => {
-    return withLock(signal, async () => {
+    return withLock(LOCK_NAME, signal, async () => {
+      await Promise.race([channelReady, whenAborted(signal)])
       syncEpochFromStore()
       if (signal.aborted || epoch !== sessionEpoch) throw abortError(signal)
       return runRefresh(epoch, opId, signal, queuedAt)
@@ -752,7 +795,8 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     ): Promise<T> {
       const pending = abortLocalFlight(reason)
       await settleFlight(pending)
-      return withLock(undefined, async () => {
+      return withLock(LOCK_NAME, undefined, async () => {
+        await channelReady
         bumpEpochLocked(reason)
         return fn()
       })
@@ -761,7 +805,8 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     async cancel(reason: 'logout' | 'account_switch' = 'logout') {
       const pending = abortLocalFlight(reason)
       await settleFlight(pending)
-      await withLock(undefined, async () => {
+      await withLock(LOCK_NAME, undefined, async () => {
+        await channelReady
         bumpEpochLocked(reason)
       })
     },
