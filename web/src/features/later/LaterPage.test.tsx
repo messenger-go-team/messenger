@@ -8,6 +8,7 @@ import { login } from '@/api/auth'
 import { AuthContext, type AuthContextValue } from '@/features/auth/auth-context'
 import { LaterPage } from '@/features/later/LaterPage'
 import { LaterRemindersProvider } from '@/features/later/LaterRemindersProvider'
+import { expectScrollChainWithinViewport } from '@/test/scrollChain'
 import { server } from '../../../mocks/server'
 import { seedLaterMocks } from '../../../mocks/handlers/later'
 
@@ -70,6 +71,45 @@ describe('LaterPage', () => {
     const auth = await authValue()
     renderLater(auth)
     expect(await screen.findByText('Пока пусто')).toBeInTheDocument()
+  })
+
+  it('keeps the Important list scrollable inside the viewport on mobile (min-h-0 chain)', async () => {
+    seedLaterMocks([])
+    const auth = await authValue()
+    renderLater(auth)
+
+    const pane = (await screen.findByRole('heading', { name: 'Важно' })).closest('section')!
+    expectScrollChainWithinViewport(pane.querySelector('.overflow-y-auto')!)
+  })
+
+  it('lifts the reminder toast above the mobile tab bar and keeps md+ position', async () => {
+    seedLaterMocks([
+      {
+        id: '98fcaed4-d453-4cba-b561-4100fe7aa314',
+        message: MESSAGE,
+        due_at: '2020-01-01T00:00:00.000Z',
+        created_at: '2026-11-14T15:00:00Z',
+        updated_at: '2026-11-14T15:00:00Z',
+      },
+    ])
+    const auth = await authValue()
+    renderLater(auth)
+
+    const toast = (await screen.findByRole('region', { name: 'Напоминание' })).parentElement!
+    const toastClasses = toast.className.split(/\s+/)
+    const navClasses = screen
+      .getByRole('navigation', { name: 'Основная навигация' })
+      .className.split(/\s+/)
+
+    // Отступ toast на mobile = высота нижнего tab bar (без префикса брейкпоинта) + safe-area.
+    const barHeight = navClasses.find((name) => /^h-\[\d+px\]$/.test(name))?.match(/\d+/)?.[0]
+    expect(barHeight).toBeDefined()
+    expect(toastClasses).toContain(`bottom-[calc(${barHeight}px+env(safe-area-inset-bottom,0px))]`)
+    expect(toastClasses).not.toContain('bottom-0')
+    // С md навигация в боковом rail: toast остаётся карточкой справа внизу.
+    expect(toastClasses).toEqual(
+      expect.arrayContaining(['md:bottom-4', 'md:right-4', 'md:inset-x-auto', 'md:w-96']),
+    )
   })
 
   it('uses the shared reminders provider: one GET /later for provider and page', async () => {

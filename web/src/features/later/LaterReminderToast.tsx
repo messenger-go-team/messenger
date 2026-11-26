@@ -6,7 +6,8 @@ import { useLaterReminders } from '@/features/later/useLaterReminders'
 
 /**
  * Toast напоминания Later (Figma mobile 496:84911, tablet 537:110293).
- * Mobile (<580) — на всю ширину внизу; tablet+ (md:) — карточка справа внизу.
+ * Mobile (<580) — на всю ширину над нижним tab bar (60px + safe-area), чтобы не перекрывать
+ * вкладки; tablet+ (md:) — карточка справа внизу (там навигация в боковом rail).
  * «Позже» скрывает toast в этой сессии, «Открыть» переходит к сообщению в чате.
  */
 export function LaterReminderToast() {
@@ -24,7 +25,7 @@ export function LaterReminderToast() {
   }
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 p-3 md:inset-x-auto md:right-4 md:bottom-4 md:w-96 md:p-0">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(60px+env(safe-area-inset-bottom,0px))] z-50 p-3 md:inset-x-auto md:right-4 md:bottom-4 md:w-96 md:p-0">
       <section
         aria-label="Напоминание"
         aria-live="polite"

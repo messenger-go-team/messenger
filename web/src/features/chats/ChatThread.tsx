@@ -554,7 +554,7 @@ export function ChatThread({
 
       <div
         ref={listRef}
-        className="min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-5 lg:px-6"
+        className="relative min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-5 lg:px-6"
         onScroll={onScroll}
         data-testid="chat-thread-scroll"
       >

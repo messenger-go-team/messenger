@@ -18,6 +18,7 @@ import { ChatListPage } from '@/features/chats/ChatListPage'
 import { WsProvider } from '@/features/ws/WsProvider'
 import { useWs } from '@/features/ws/useWs'
 import { MockWebSocketServer } from '@/ws/mock/server'
+import { expectScrollChainWithinViewport } from '@/test/scrollChain'
 import { server } from '../../../mocks/server'
 import { addUser } from '../../../mocks/data/auth'
 import { INITIAL_CHAT_ID } from '../../../mocks/data/history'
@@ -514,6 +515,24 @@ describe('ChatListPage', () => {
     expect(listPane?.className ?? '').toMatch(/\bhidden\b/)
     // Split list+thread only at desktop (lg); tablet is list OR thread like Figma.
     expect(listPane?.className ?? '').toMatch(/\blg:flex\b/)
+  })
+
+  it('keeps the chat list scrollable inside the viewport on mobile (min-h-0 chain)', async () => {
+    const auth = await authValue()
+    renderChats(auth)
+
+    const listPane = (await screen.findByRole('heading', { name: 'Чаты' })).closest('aside')!
+    expectScrollChainWithinViewport(listPane.querySelector('.overflow-y-auto')!)
+  })
+
+  it('keeps the thread composer inside the viewport on mobile (min-h-0 chain)', async () => {
+    const auth = await authValue()
+    renderChats(auth, `/chats/${INITIAL_CHAT_ID}`)
+
+    const scroller = await screen.findByTestId('chat-thread-scroll')
+    expectScrollChainWithinViewport(scroller)
+    // sr-only статусы absolute: без relative они растягивают документ, и страница уезжает.
+    expect(scroller).toHaveClass('relative')
   })
 
   it('shows error with retry when list fails', async () => {

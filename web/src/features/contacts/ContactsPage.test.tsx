@@ -7,6 +7,7 @@ import type { User } from '@/api/auth'
 import { login } from '@/api/auth'
 import { AuthContext, type AuthContextValue } from '@/features/auth/auth-context'
 import { ContactsPage } from '@/features/contacts/ContactsPage'
+import { expectScrollChainWithinViewport } from '@/test/scrollChain'
 import { server } from '../../../mocks/server'
 import { addUser } from '../../../mocks/data/auth'
 
@@ -56,6 +57,15 @@ describe('ContactsPage', () => {
 
     await user.click(await screen.findByRole('link', { name: 'Профиль' }))
     expect(await screen.findByRole('heading', { name: 'Профиль' })).toBeInTheDocument()
+  })
+
+  it('keeps the contacts list scrollable inside the viewport on mobile (min-h-0 chain)', async () => {
+    server.use(http.get('/contacts', () => HttpResponse.json({ contacts: [] })))
+    const auth = await authValue()
+    renderContacts(auth)
+
+    const pane = (await screen.findByRole('heading', { name: 'Контакты' })).closest('section')!
+    expectScrollChainWithinViewport(pane.querySelector('.overflow-y-auto')!)
   })
 
   it('shows empty state when there are no contacts', async () => {

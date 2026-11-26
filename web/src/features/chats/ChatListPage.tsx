@@ -317,7 +317,7 @@ export function ChatListPage() {
 
       <aside
         className={cn(
-          'min-w-0 flex-1 flex-col bg-card',
+          'min-h-0 min-w-0 flex-1 flex-col bg-card',
           // Tablet: full width after rail. Desktop: narrow list + split.
           'lg:max-w-[380px] lg:border-r lg:border-border',
           chatId ? 'hidden lg:flex' : 'flex',
@@ -390,7 +390,7 @@ export function ChatListPage() {
 
       <main
         className={cn(
-          'min-w-0 flex-1 bg-background',
+          'min-h-0 min-w-0 flex-1 bg-background',
           // Empty «Выберите чат» only on desktop split (Figma tablet = list OR thread).
           chatId ? 'flex' : 'hidden items-center justify-center lg:flex',
         )}
