@@ -27,7 +27,7 @@ import { connectionStatusLabel } from '@/features/chats/connectionStatus'
 import { formatChatListTime } from '@/features/chats/formatChatListTime'
 import { resolveMarkReadSeq } from '@/features/chats/markReadSeq'
 import { mergeThreadMessages, type ThreadMessage } from '@/features/chats/mergeThreadMessages'
-import { dismissVirtualKeyboard } from '@/lib/dismissVirtualKeyboard'
+import { dismissVirtualKeyboardAfterSend } from '@/lib/dismissVirtualKeyboard'
 import { MessageLaterMenu } from '@/features/later/MessageLaterMenu'
 import { useOptionalLaterReminders } from '@/features/later/useLaterReminders'
 import { useWs } from '@/features/ws/useWs'
@@ -493,8 +493,8 @@ export function ChatThread({
       // Отправка из окна контекста возвращает ленту к последним сообщениям.
       if (hasMoreAfter) jumpToLatest()
       if (historyStatus === 'empty') setHistoryStatus('ready')
-      // iOS: после скрытия клавиатуры вернуть композер вниз оболочки.
-      dismissVirtualKeyboard()
+      // Touch: свернуть virtual keyboard. Desktop: фокус в композере сохраняем (Enter → снова печатать).
+      dismissVirtualKeyboardAfterSend()
     } catch {
       setSendError('Не удалось отправить сообщение')
     }

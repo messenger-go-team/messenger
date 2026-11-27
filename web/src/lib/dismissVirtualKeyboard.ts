@@ -28,7 +28,16 @@ export function syncShellAfterKeyboard(): void {
 }
 
 /**
+ * Десктоп / трекпад с физической клавиатурой: после Enter фокус в композере
+ * должен остаться (две отправки подряд без клика по полю).
+ */
+export function prefersPhysicalKeyboard(): boolean {
+  return window.matchMedia('(hover: hover) and (pointer: fine)').matches
+}
+
+/**
  * Снимает фокус с поля и синхронизирует оболочку (отправка / успешный логин).
+ * На physical keyboard не вызывается после send — см. dismissVirtualKeyboardAfterSend.
  */
 export function dismissVirtualKeyboard(): void {
   const active = document.activeElement
@@ -41,6 +50,17 @@ export function dismissVirtualKeyboard(): void {
     window.setTimeout(() => syncShellToVisualViewport(), 50)
     window.setTimeout(() => syncShellToVisualViewport(), 300)
   })
+}
+
+/**
+ * После send: на touch/virtual keyboard — blur+sync; на desktop — только sync, фокус остаётся.
+ */
+export function dismissVirtualKeyboardAfterSend(): void {
+  if (prefersPhysicalKeyboard()) {
+    syncShellToVisualViewport()
+    return
+  }
+  dismissVirtualKeyboard()
 }
 
 /**

@@ -186,6 +186,45 @@ describe('ChatThread', () => {
     expect(mockWs.received[0]?.payload.body).toBe('новое из теста')
   })
 
+  it('keeps composer focus after Enter so the next keystroke types without re-click (#45 P2)', async () => {
+    // jsdom: emulate desktop fine pointer (physical keyboard).
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      configurable: true,
+      value: (query: string) => ({
+        matches: query === '(hover: hover) and (pointer: fine)',
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }),
+    })
+
+    const auth = await authValue()
+    const mockWs = new MockWebSocketServer({ senderId: ALICE.id })
+    mockWs.ensureSequenceAtLeast(INITIAL_CHAT_ID, 6)
+    renderThread(auth, mockWs)
+
+    await screen.findByText('Да, договорились.')
+    await waitFor(() => expect(mockWs.connections.size).toBeGreaterThan(0))
+
+    const user = userEvent.setup()
+    const composer = screen.getByLabelText('Сообщение')
+    await user.click(composer)
+    await user.keyboard('первая{Enter}')
+
+    expect(await screen.findByText('первая')).toBeInTheDocument()
+    expect(composer).toHaveFocus()
+
+    await user.keyboard('вторая{Enter}')
+    expect(await screen.findByText('вторая')).toBeInTheDocument()
+    expect(composer).toHaveFocus()
+    expect(mockWs.received.map((item) => item.payload.body)).toEqual(['первая', 'вторая'])
+  })
+
   it('saves an acked message into Later mocks', async () => {
     const auth = await authValue()
     const mockWs = new MockWebSocketServer({ senderId: ALICE.id })

@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   dismissVirtualKeyboard,
+  dismissVirtualKeyboardAfterSend,
   installKeyboardShellSync,
+  prefersPhysicalKeyboard,
   syncShellToVisualViewport,
 } from './dismissVirtualKeyboard'
 
@@ -53,6 +55,50 @@ describe('dismissVirtualKeyboard', () => {
     dismissVirtualKeyboard()
 
     expect(document.activeElement).not.toBe(input)
+    input.remove()
+  })
+
+  it('prefersPhysicalKeyboard follows fine pointer + hover media', () => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      configurable: true,
+      value: (query: string) => ({
+        matches: query === '(hover: hover) and (pointer: fine)',
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }),
+    })
+    expect(prefersPhysicalKeyboard()).toBe(true)
+  })
+
+  it('dismissVirtualKeyboardAfterSend keeps focus on desktop media', () => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      configurable: true,
+      value: (query: string) => ({
+        matches: query === '(hover: hover) and (pointer: fine)',
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }),
+    })
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+
+    dismissVirtualKeyboardAfterSend()
+
+    expect(document.activeElement).toBe(input)
     input.remove()
   })
 
