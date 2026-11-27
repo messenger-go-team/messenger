@@ -117,7 +117,7 @@ describe('LaterPage', () => {
     expect(toastClasses).not.toContain('bottom-0')
     // С md навигация в боковом rail: toast остаётся карточкой справа внизу.
     expect(toastClasses).toEqual(
-      expect.arrayContaining(['md:bottom-4', 'md:right-4', 'md:inset-x-auto', 'md:w-96']),
+      expect.arrayContaining(['md:bottom-4', 'md:right-4', 'md:inset-x-auto', 'md:w-[328px]']),
     )
   })
 

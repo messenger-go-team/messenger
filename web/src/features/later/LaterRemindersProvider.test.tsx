@@ -313,7 +313,8 @@ describe('LaterRemindersProvider reminders', () => {
 
     const toast = screen.getByRole('region', { name: 'Напоминание' })
     expect(toast).toHaveTextContent('Текст a')
-    expect(toast).toHaveTextContent('Срок:')
+    expect(toast).toHaveTextContent(/Сегодня в |в \d{2}:\d{2}/)
+    expect(toast).not.toHaveTextContent('Срок:')
     expect(screen.getByRole('button', { name: 'Позже' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Открыть' })).toBeInTheDocument()
   })

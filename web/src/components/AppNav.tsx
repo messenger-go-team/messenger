@@ -1,6 +1,14 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
-import { Bell, LogOut, MessageCircle, User, Users } from 'lucide-react'
+import { LogOut } from 'lucide-react'
+import attentionIcon from '@/assets/attention.png'
+import attentionActiveIcon from '@/assets/attention_active.png'
+import chatIcon from '@/assets/chat.png'
+import chatActiveIcon from '@/assets/chat_active.png'
+import contactIcon from '@/assets/contact.png'
+import contactActiveIcon from '@/assets/contact_active.png'
+import userIcon from '@/assets/user.png'
+import userActiveIcon from '@/assets/user_active.png'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -34,20 +42,48 @@ export function AppNav({ active, onLogout, className }: AppNavProps) {
         className,
       )}
     >
-      <div className="contents md:flex md:flex-col md:items-center md:gap-[28px]">
-        <NavItem label="Важно" to="/later" active={active === 'later'}>
-          <Bell className="size-5" />
+      <div className="contents md:flex md:flex-col md:items-center md:gap-3">
+        <NavItem label="Важно" to="/later" active={active === 'later'} chipIcon>
+          <img
+            src={active === 'later' ? attentionActiveIcon : attentionIcon}
+            alt=""
+            width={40}
+            height={40}
+            className="size-10"
+            aria-hidden
+          />
         </NavItem>
-        <NavItem label="Чаты" to="/" active={active === 'chats'}>
-          <MessageCircle className="size-5" />
+        <NavItem label="Чаты" to="/" active={active === 'chats'} chipIcon>
+          <img
+            src={active === 'chats' ? chatActiveIcon : chatIcon}
+            alt=""
+            width={40}
+            height={40}
+            className="size-10"
+            aria-hidden
+          />
         </NavItem>
-        <NavItem label="Контакты" to="/contacts" active={active === 'contacts'}>
-          <Users className="size-5" />
+        <NavItem label="Контакты" to="/contacts" active={active === 'contacts'} chipIcon>
+          <img
+            src={active === 'contacts' ? contactActiveIcon : contactIcon}
+            alt=""
+            width={40}
+            height={40}
+            className="size-10"
+            aria-hidden
+          />
         </NavItem>
       </div>
       <div className="contents md:flex md:flex-col md:items-center md:gap-2">
-        <NavItem label="Профиль" to="/profile" active={active === 'profile'}>
-          <User className="size-5" />
+        <NavItem label="Профиль" to="/profile" active={active === 'profile'} chipIcon>
+          <img
+            src={active === 'profile' ? userActiveIcon : userIcon}
+            alt=""
+            width={40}
+            height={40}
+            className="size-10"
+            aria-hidden
+          />
         </NavItem>
         {onLogout ? (
           <Button
@@ -72,17 +108,22 @@ function NavItem({
   label,
   to,
   active,
+  chipIcon = false,
 }: {
   children: ReactNode
   label: string
   to: string
   active: boolean
+  /** Иконка уже с подложкой (Figma chip) — не красим bg-accent повторно. */
+  chipIcon?: boolean
 }) {
   const className = cn(
     // Figma tablet hit 44×44; mobile tabs slightly larger
     // Figma 415:8407 — soft accent chip behind active icon
     'inline-flex size-11 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent md:size-11 lg:size-10',
-    active && 'bg-accent text-foreground',
+    active && !chipIcon && 'bg-accent text-foreground',
+    // Chip-иконки: без hover-подложки поверх PNG
+    chipIcon && 'hover:bg-transparent',
   )
 
   if (active) {
