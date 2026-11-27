@@ -1,0 +1,25 @@
+meta {
+  name: RECEIPTS-PRIVATE-ADVANCE-B-BEFORE
+  type: http
+  seq: 329
+}
+
+get {
+  url: {{baseUrl}}/chats
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("RECEIPTS-PRIVATE-ADVANCE-B-BEFORE", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("RECEIPTS-PRIVATE-ADVANCE-B-BEFORE", bru, req, res, test, expect);
+}

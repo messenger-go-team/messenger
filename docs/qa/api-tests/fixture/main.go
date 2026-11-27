@@ -216,6 +216,21 @@ func control(mode string) {
 			_, err := rpc.AdvanceReceipt(ctx, &historyv1.AdvanceReceiptRequest{ChatId: f["chatAB"].(string), ActorId: f[step.actor].(string), Kind: step.kind, Seq: &step.seq})
 			must(err)
 		}
+	case "append-private-read-message":
+		conn, err := grpc.NewClient("history:9090", grpc.WithTransportCredentials(insecure.NewCredentials()))
+		must(err)
+		defer func() { _ = conn.Close() }()
+		rpc := historyv1.NewHistoryServiceClient(conn)
+		saved, err := rpc.SaveMessage(ctx, &historyv1.SaveMessageRequest{
+			ChatId:      f["chatAB"].(string),
+			SenderId:    f["aID"].(string),
+			ClientMsgId: newUUID(),
+			Body:        "T137 incoming after public receipts",
+		})
+		must(err)
+		if saved.GetSeq() != 206 || saved.GetDuplicate() {
+			panic("expected one new message at seq 206")
+		}
 	case "receipts-group":
 		exec(h, `UPDATE history.chats SET type='group' WHERE id=$1`, f["chatAB"])
 	case "receipts-personal":

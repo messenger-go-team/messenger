@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 
 // Compare values across Bruno JS realms, and identify participants by ID.
-function assertReceiptSnapshot(body, fixture, expected, headers) {
+function assertReceiptSnapshot(body, fixture, expected, headers, lastSeq = 205) {
   assert.equal(headers["cache-control"], "no-store", "receipts no-store");
   assert.equal(body.chat_id, fixture.chatAB, "receipts chat_id");
   assert.equal(body.members.length, 2, "receipts two participants");
@@ -24,7 +24,7 @@ function assertReceiptSnapshot(body, fixture, expected, headers) {
     assert.ok(
       0 <= member.last_read_seq &&
         member.last_read_seq <= member.last_delivered_seq &&
-        member.last_delivered_seq <= 205,
+        member.last_delivered_seq <= lastSeq,
       "receipts cursor bounds",
     );
     assert.equal(

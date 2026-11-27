@@ -888,9 +888,9 @@ h("UNREAD-AFTER-PRIVATE-WRITES", "/chats", "get", "/chats", 200, {
 const receipts = "/chats/{chat_id}/receipts";
 const receiptsAB = "/chats/{{chatAB}}/receipts";
 const receiptsCheck =
-  (expected) =>
+  (expected, lastSeq) =>
   ({ b, f, res }) =>
-    assertReceiptSnapshot(b, f, expected, res.headers);
+    assertReceiptSnapshot(b, f, expected, res.headers, lastSeq);
 const initialReceipts = [
   [0, 0],
   [0, 0],
@@ -1025,4 +1025,23 @@ h("RECEIPTS-ADVANCED-RECOVERED", receipts, "get", receiptsAB, 200, {
   control: "storage-up",
   check: receiptsCheck(advancedReceipts),
 });
+// Append after the other cases that depend on the original last_seq=205.
+h("RECEIPTS-PRIVATE-ADVANCE-B-BEFORE", "/chats", "get", "/chats", 200, {
+  auth: "b",
+  control: "append-private-read-message",
+  check: ({ b, e, f }) => e(unread(b, f.chatAB)).equal(1),
+});
+h("RECEIPTS-PRIVATE-ADVANCE-B-READ", read, "post", "/chats/{{chatAB}}/read", 204, {
+  auth: "b",
+  body: { seq: 206 },
+});
+h("RECEIPTS-PRIVATE-ADVANCE-B-AFTER", "/chats", "get", "/chats", 200, {
+  auth: "b",
+  check: ({ b, e, f }) => e(unread(b, f.chatAB)).equal(0),
+});
+for (const auth of ["a", "b"])
+  h("RECEIPTS-AFTER-PRIVATE-ADVANCE-" + auth, receipts, "get", receiptsAB, 200, {
+    auth,
+    check: receiptsCheck(advancedReceipts, 206),
+  });
 module.exports = { cases };

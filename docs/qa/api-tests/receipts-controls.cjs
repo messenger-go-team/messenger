@@ -138,6 +138,14 @@ assert.equal(cases.find((c) => c.id === "RECEIPTS-PRIVATE-B-READ").auth, "b");
 assert.deepEqual(cases.find((c) => c.id === "RECEIPTS-PRIVATE-B-READ").body, {
   seq: 205,
 });
+// A valid-looking snapshot must not disclose or reset either public pair.
+for (const auth of ["a", "b"]) {
+  const id = "RECEIPTS-AFTER-PRIVATE-ADVANCE-" + auth;
+  run(id, advanced);
+  assert.throws(() => run(id, snapshot([[80, 42], [206, 206]])), /receipts expected/);
+  assert.throws(() => run(id, snapshot([[0, 0], [7, 3]])), /receipts expected/);
+  rejected += 2;
+}
 console.log(
-  `Receipts: 4 positive controls, ${rejected} rejected mutations; auth/query matrix checked`,
+  `Receipts: 6 positive controls, ${rejected} rejected mutations; auth/query matrix checked`,
 );
