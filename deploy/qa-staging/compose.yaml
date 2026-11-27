@@ -1,0 +1,128 @@
+name: messenger-qa-staging
+
+x-runtime: &runtime
+  restart: unless-stopped
+
+services:
+  postgres:
+    <<: *runtime
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: messenger_qa
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${QA_DB_PASSWORD:?set QA_DB_PASSWORD}
+    volumes:
+      - qa_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d messenger_qa"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks: [backend]
+
+  init:
+    build:
+      context: ../..
+      dockerfile: deploy/qa-staging/tools.Dockerfile
+      args:
+        QA_REVISION: ${QA_REVISION:?set QA_REVISION}
+    image: messenger-qa-tools:${QA_REVISION}
+    entrypoint: ["/opt/qa/init.sh"]
+    depends_on:
+      postgres: {condition: service_healthy}
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: messenger_qa
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${QA_DB_PASSWORD}
+      QA_AUTH_DB_PASSWORD: ${QA_AUTH_DB_PASSWORD:?set QA_AUTH_DB_PASSWORD}
+      QA_HISTORY_DB_PASSWORD: ${QA_HISTORY_DB_PASSWORD:?set QA_HISTORY_DB_PASSWORD}
+    networks: [backend]
+
+  auth:
+    <<: *runtime
+    build:
+      context: ../..
+      dockerfile: services/auth/Dockerfile
+      labels:
+        org.opencontainers.image.revision: ${QA_REVISION}
+    image: messenger-qa-auth:${QA_REVISION}
+    depends_on:
+      init: {condition: service_completed_successfully}
+    environment:
+      AUTH_DATABASE_URL: postgres://qa_auth:${QA_AUTH_DB_PASSWORD}@postgres:5432/messenger_qa?sslmode=disable
+      AUTH_INTERNAL_TOKEN: ${QA_INTERNAL_TOKEN:?set QA_INTERNAL_TOKEN}
+      JWT_SECRET: ${QA_JWT_SECRET:?set QA_JWT_SECRET}
+    networks: [backend]
+
+  history:
+    <<: *runtime
+    build:
+      context: ../..
+      dockerfile: services/history/Dockerfile
+      labels:
+        org.opencontainers.image.revision: ${QA_REVISION}
+    image: messenger-qa-history:${QA_REVISION}
+    depends_on:
+      init: {condition: service_completed_successfully}
+    environment:
+      HISTORY_DATABASE_URL: postgres://qa_history:${QA_HISTORY_DB_PASSWORD}@postgres:5432/messenger_qa?sslmode=disable
+      AUTH_BASE_URL: http://auth:8080
+      AUTH_INTERNAL_TOKEN: ${QA_INTERNAL_TOKEN}
+      JWT_SECRET: ${QA_JWT_SECRET}
+    networks: [backend]
+
+  chat:
+    <<: *runtime
+    build:
+      context: ../..
+      dockerfile: services/chat/Dockerfile
+      labels:
+        org.opencontainers.image.revision: ${QA_REVISION}
+    image: messenger-qa-chat:${QA_REVISION}
+    depends_on:
+      history: {condition: service_started}
+    environment:
+      JWT_SECRET: ${QA_JWT_SECRET}
+      WS_ALLOWED_ORIGINS: ${QA_ORIGIN:?set QA_ORIGIN}
+      HISTORY_GRPC_ADDR: history:9090
+    stop_grace_period: 25s
+    networks: [backend]
+
+  faults:
+    <<: *runtime
+    image: messenger-qa-tools:${QA_REVISION}
+    entrypoint: ["/usr/local/bin/qa-faults"]
+    user: "65532:65532"
+    read_only: true
+    environment:
+      AUTH_INTERNAL_TOKEN: ${QA_INTERNAL_TOKEN}
+    depends_on:
+      init: {condition: service_completed_successfully}
+    networks: [backend]
+
+  gateway:
+    <<: *runtime
+    build:
+      context: ../..
+      dockerfile: deploy/qa-staging/gateway.Dockerfile
+      args:
+        QA_REVISION: ${QA_REVISION}
+    image: messenger-qa-web:${QA_REVISION}
+    depends_on:
+      auth: {condition: service_started}
+      history: {condition: service_started}
+      chat: {condition: service_started}
+      faults: {condition: service_started}
+    ports:
+      - "127.0.0.1:${QA_HTTP_PORT:-19080}:8080"
+    networks: [edge, backend]
+
+networks:
+  edge:
+  backend:
+    internal: true
+
+volumes:
+  qa_data:

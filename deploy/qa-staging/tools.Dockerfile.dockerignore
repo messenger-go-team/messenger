@@ -1,0 +1,10 @@
+**
+!go.mod
+!go.sum
+!api/gen/**
+!cmd/migrate/**
+!services/auth/migrations/**
+!services/history/migrations/**
+!deploy/qa-staging/faults/**
+!deploy/qa-staging/init.sh
+!deploy/qa-staging/init.sql

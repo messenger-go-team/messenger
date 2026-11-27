@@ -1,0 +1,5 @@
+services:
+  chat:
+    environment:
+      WS_SEND_INTERVAL: 5ms
+      WS_SEND_BURST: "200"
