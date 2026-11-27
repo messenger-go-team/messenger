@@ -98,6 +98,8 @@ func (ws *wsEndpoint) serveSocket(socket *socketSession) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	commands := make(chan wsInboundCommand, wsCommandQueueSize)
+	receipts := make(chan wsInboundCommand, wsReceiptQueueSize)
+	receiptDone := make(chan struct{})
 	typingWake := make(chan struct{}, 1)
 	workerDone, writeDone, typingDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	go func() {
@@ -107,6 +109,10 @@ func (ws *wsEndpoint) serveSocket(socket *socketSession) {
 	go func() {
 		defer close(workerDone)
 		ws.runWSCommands(ctx, socket, commands)
+	}()
+	go func() {
+		defer close(receiptDone)
+		ws.runWSCommands(ctx, socket, receipts)
 	}()
 	go func() {
 		defer close(writeDone)
@@ -121,10 +127,11 @@ func (ws *wsEndpoint) serveSocket(socket *socketSession) {
 		cancel()
 		ws.hub.unregister(socket)
 		_ = conn.Close()
-		// A saved message may still be fanning out after the socket closes.
+		// Committed messages and receipts may still be fanning out.
 		ws.clearSocketTyping(socket)
 		<-writeDone
 		<-workerDone
+		<-receiptDone
 		<-typingDone
 	}()
 
@@ -154,10 +161,27 @@ func (ws *wsEndpoint) serveSocket(socket *socketSession) {
 			}
 			continue
 		}
+		inbound := wsInboundCommand{command: command, problem: problem}
+		if isWSReceiptType(command.kind) {
+			if problem != "" {
+				ws.replyWSError(socket, command, problem)
+				continue
+			}
+			// Receipt backpressure is local to this lane. The reader and text
+			// worker can continue while either receipt RPC is blocked.
+			select {
+			case <-ctx.Done():
+				return
+			case receipts <- inbound:
+			default:
+				ws.replyWSError(socket, command, "temporarily_unavailable")
+			}
+			continue
+		}
 		select {
 		case <-ctx.Done():
 			return
-		case commands <- wsInboundCommand{command: command, problem: problem}:
+		case commands <- inbound:
 		default:
 			ws.sendClose(conn, websocket.CloseTryAgainLater, "inbound queue full")
 			return
