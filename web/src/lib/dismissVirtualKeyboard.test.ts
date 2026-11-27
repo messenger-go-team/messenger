@@ -30,7 +30,12 @@ describe('dismissVirtualKeyboard', () => {
     document.body.appendChild(root)
     Object.defineProperty(window, 'visualViewport', {
       configurable: true,
-      value: { height: 420, offsetTop: 120, addEventListener: vi.fn(), removeEventListener: vi.fn() },
+      value: {
+        height: 420,
+        offsetTop: 120,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      },
     })
 
     syncShellToVisualViewport()
