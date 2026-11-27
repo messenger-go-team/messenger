@@ -13,8 +13,10 @@ import (
 )
 
 const (
-	wsSendType   = "message.send"
-	wsTypingType = "typing"
+	wsSendType      = "message.send"
+	wsTypingType    = "typing"
+	wsDeliveredType = "message.delivered"
+	wsReadType      = "message.read"
 )
 
 var wsUUIDPattern = regexp.MustCompile(
@@ -24,6 +26,8 @@ var wsUTCTimestampPattern = regexp.MustCompile(
 	`^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt][0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?([Zz]|\+00:00)$`,
 )
 
+var wsIntegerPattern = regexp.MustCompile(`^-?[0-9]+$`)
+
 type wsCommand struct {
 	kind        string
 	id          string
@@ -31,6 +35,7 @@ type wsCommand struct {
 	clientMsgID string
 	body        string
 	isTyping    bool
+	seq         int64
 }
 
 func validWSUUID(value string) bool {
@@ -113,6 +118,20 @@ func parseWSCommand(raw []byte) (wsCommand, string) {
 			return cmd, "invalid_payload"
 		}
 		cmd.isTyping = flag == "true"
+		return cmd, ""
+	}
+
+	if cmd.kind == wsDeliveredType || cmd.kind == wsReadType {
+		cmd.chatID = strings.ToLower(wsString(payload["chat_id"]))
+		seq := string(bytes.TrimSpace(payload["seq"]))
+		if len(payload) != 2 || !validWSUUID(cmd.chatID) || !wsIntegerPattern.MatchString(seq) {
+			return cmd, "invalid_payload"
+		}
+		value, err := strconv.ParseInt(seq, 10, 64)
+		if err != nil || value < 0 || value > wsMaxMessageSeq {
+			return cmd, "invalid_seq"
+		}
+		cmd.seq = value
 		return cmd, ""
 	}
 
