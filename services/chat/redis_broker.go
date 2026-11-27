@@ -21,10 +21,13 @@ const (
 	redisQueueSize = 256
 	// Bound the Redis pipeline even if History returns an oversized recipient list.
 	redisMaxRecipients    = 256
+	redisMaxACLRechecks   = 2 * redisMaxRecipients
 	redisOperationTimeout = time.Second
 	redisPublicationAge   = 2 * time.Second
 	redisProbeInterval    = 500 * time.Millisecond
 )
+
+var errRedisPublicationQueueFull = errors.New("full Redis publication queue")
 
 type redisBrokerConfig struct {
 	URL    string
@@ -119,6 +122,7 @@ func newRedisBroker(cfg redisBrokerConfig, hub *connectionHub, logger *slog.Logg
 
 func (b *redisBroker) userChannel(user string) string { return b.prefix + ":user:" + user }
 func (b *redisBroker) healthChannel() string          { return b.prefix + ":health" }
+func (b *redisBroker) publishProbeChannel() string    { return b.userChannel("probe") }
 
 func (b *redisBroker) Collectors() []prometheus.Collector {
 	ready := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
@@ -206,38 +210,44 @@ func (b *redisBroker) Publish(ctx context.Context, users []string, event []byte)
 		}
 	}
 	b.dropped.WithLabelValues("queue_full").Inc()
-	return errors.New("full Redis publication queue")
+	return errRedisPublicationQueueFull
 }
 
 func (b *redisBroker) runPublisher() {
 	ticker := time.NewTicker(redisProbeInterval)
 	defer ticker.Stop()
-	b.probePublisher()
+	// Retain the known ACL failures even when unrelated publications succeed.
+	denied := make(map[string]struct{})
+	b.probePublisher(denied)
 	for b.ctx.Err() == nil {
 		select {
 		case <-b.ctx.Done():
 			return
 		case <-ticker.C:
-			b.probePublisher()
+			b.probePublisher(denied)
 		case item := <-b.publications:
-			b.publishItem(item)
+			b.publishItem(item, denied)
 		}
 	}
 }
 
-// Probe the same command used by real publications, including scoped ACLs.
-// The health channel is internal to the broker and never reaches a WebSocket.
-func (b *redisBroker) probePublisher() {
+// Probe the user-channel namespace and any channels with known ACL failures.
+func (b *redisBroker) probePublisher(denied map[string]struct{}) {
 	ctx, cancel := context.WithTimeout(b.ctx, redisOperationTimeout)
 	defer cancel()
-	err := b.client.Publish(ctx, b.healthChannel(), "").Err()
-	b.publisherReady.Store(err == nil)
+	channels := make([]string, 0, 1+len(denied))
+	channels = append(channels, b.publishProbeChannel())
+	for channel := range denied {
+		channels = append(channels, channel)
+	}
+	err := b.publishChannels(ctx, channels, nil, denied)
+	b.publisherReady.Store(err == nil && len(denied) == 0)
 	if err != nil && b.ctx.Err() == nil {
 		b.errors.WithLabelValues("probe").Inc()
 	}
 }
 
-func (b *redisBroker) publishItem(item redisPublication) {
+func (b *redisBroker) publishItem(item redisPublication, denied map[string]struct{}) {
 	now := time.Now()
 	valid, expired := inspectRedisEvent(item.event, now)
 	if !valid {
@@ -248,26 +258,57 @@ func (b *redisBroker) publishItem(item redisPublication) {
 		b.dropped.WithLabelValues("expired").Inc()
 		return
 	}
+
+	channels := make([]string, 0, len(item.users))
+	seen := make(map[string]struct{}, len(item.users))
+	untracked := 0
+	for _, user := range item.users {
+		channel := b.userChannel(user)
+		if _, exists := seen[channel]; exists {
+			continue
+		}
+		seen[channel] = struct{}{}
+		channels = append(channels, channel)
+		if _, exists := denied[channel]; !exists {
+			untracked++
+		}
+	}
+	// Keep revalidation bounded without forgetting an observed denial.
+	if len(denied)+untracked > redisMaxACLRechecks {
+		b.dropped.WithLabelValues("acl_recheck_capacity").Inc()
+		return
+	}
 	ctx, cancel := context.WithDeadline(b.ctx, minTime(item.expiresAt, now.Add(redisOperationTimeout)))
 	defer cancel()
-	seen := make(map[string]struct{}, len(item.users))
-	_, err := b.client.Pipelined(ctx, func(pipe redis.Pipeliner) error {
-		for _, user := range item.users {
-			if _, ok := seen[user]; !ok {
-				seen[user] = struct{}{}
-				pipe.Publish(ctx, b.userChannel(user), item.event)
+	if err := b.publishChannels(ctx, channels, item.event, denied); err != nil {
+		wasReady := b.publisherReady.Swap(false)
+		if b.ctx.Err() == nil {
+			b.errors.WithLabelValues("publish").Inc()
+			b.dropped.WithLabelValues("publish_failed").Inc()
+			if wasReady {
+				b.logger.Warn("Redis event publication failed")
 			}
+		}
+	}
+}
+
+func (b *redisBroker) publishChannels(ctx context.Context, channels []string, data []byte, denied map[string]struct{}) error {
+	commands, err := b.client.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		for _, channel := range channels {
+			pipe.Publish(ctx, channel, data)
 		}
 		return nil
 	})
-	wasReady := b.publisherReady.Swap(err == nil)
-	if err != nil && b.ctx.Err() == nil {
-		b.errors.WithLabelValues("publish").Inc()
-		b.dropped.WithLabelValues("publish_failed").Inc()
-		if wasReady {
-			b.logger.Warn("Redis event publication failed")
+	for i, command := range commands {
+		channel := channels[i]
+		switch {
+		case command.Err() == nil:
+			delete(denied, channel)
+		case channel != b.publishProbeChannel() && redis.HasErrorPrefix(command.Err(), "NOPERM"):
+			denied[channel] = struct{}{}
 		}
 	}
+	return err
 }
 
 func minTime(a, b time.Time) time.Time {

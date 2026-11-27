@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -132,6 +133,9 @@ func (ws *wsEndpoint) publishReceiptEvent(ctx context.Context, members []string,
 }
 
 func receiptWSErrorCode(err error) string {
+	if errors.Is(err, errRedisPublicationQueueFull) {
+		return "temporarily_unavailable"
+	}
 	code := status.Code(err)
 	if code == codes.Unknown {
 		code = status.FromContextError(err).Code()

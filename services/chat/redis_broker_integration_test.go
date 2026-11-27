@@ -626,3 +626,120 @@ func TestRedisBrokerSlowPublishDoesNotDelayFollowingMessageAck(t *testing.T) {
 		t.Fatalf("second SaveMessage did not complete while PUBLISH was held: %d saved", saved.count())
 	}
 }
+
+func TestRedisBrokerRemainsUnreadyWhileRecipientPublicationIsDenied(t *testing.T) {
+	raw, admin := redisIntegrationClient(t)
+	prefix := "chat141-acl-" + newWSEventID()
+	name, password := "chat141-user-"+newWSEventID(), newWSEventID()
+	senderChannel := prefix + ":user:" + fanoutAlice
+	recipientChannel := prefix + ":user:" + fanoutBob
+	if err := admin.Do(t.Context(), "ACL", "SETUSER", name, "on", ">"+password, "+@all", "&"+prefix+":*").Err(); err != nil {
+		t.Fatalf("create test Redis user: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = admin.Do(ctx, "ACL", "DELUSER", name).Err()
+	})
+	restricted, err := url.Parse(raw)
+	if err != nil {
+		t.Fatal("invalid test Redis URL")
+	}
+	restricted.User = url.UserPassword(name, password)
+	history, _ := setupRedisTestHistory(t)
+	wsA, _, urlA := startRedisTestReplica(t, restricted.String(), prefix, history)
+	_, _, urlB := startRedisTestReplica(t, raw, prefix, history)
+	a, _ := dialTestUser(t, urlA, fanoutAlice)
+	b, _ := dialTestUser(t, urlB, fanoutBob)
+	waitRedisTestSubscribers(t, admin, senderChannel, 1)
+	waitRedisTestSubscribers(t, admin, recipientChannel, 1)
+
+	// Both probes and Alice's working channel remain writable. Only Bob's
+	// actual channel loses permission.
+	if err := admin.Do(t.Context(), "ACL", "SETUSER", name, "resetchannels", "&"+prefix+":health",
+		"&"+prefix+":user:probe", "&"+senderChannel).Err(); err != nil {
+		t.Fatalf("restrict test Redis user: %v", err)
+	}
+	ack := sendRedisTestMessage(t, a, sendTestClientID, 1, time.Second)
+	assertRedisTestMessage(t, ack, a)
+	waitRedisTest(t, "recipient publish error", func() bool {
+		const metric = "chat_redis_broker_errors_total{operation=\"publish\"}"
+		return redisTestMetric(t, urlA, metric) >= 1
+	})
+	assertNextWSFrameIsInvalidJSON(t, b)
+	assertRedisTestFence(t, wsA, fanoutAlice, a)
+
+	until := time.Now().Add(3 * redisProbeInterval)
+	for time.Now().Before(until) {
+		if got := redisTestHTTP(t, urlA+"/readyz"); got != http.StatusServiceUnavailable {
+			t.Fatalf("readiness = %d while publication to recipient is still denied", got)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got := redisTestHTTP(t, urlA+"/healthz"); got != http.StatusOK {
+		t.Fatalf("Redis ACL failure changed liveness to %d", got)
+	}
+	if err := admin.Do(t.Context(), "ACL", "SETUSER", name, "&"+recipientChannel).Err(); err != nil {
+		t.Fatalf("restore test Redis user's permission: %v", err)
+	}
+	waitRedisTest(t, "readiness after recipient permission returns", func() bool {
+		return redisTestHTTP(t, urlA+"/readyz") == http.StatusOK
+	})
+	next := sendRedisTestMessage(t, a, newWSEventID(), 2, time.Second)
+	assertRedisTestMessage(t, next, a, b)
+}
+
+func TestRedisBrokerFullQueueReturnsRetryableReceiptError(t *testing.T) {
+	raw, client := redisIntegrationClient(t)
+	proxy := startRedisTestProxy(t, client.Options().Addr)
+	prefix := "chat141-full-" + newWSEventID()
+	var advances atomic.Int32
+	history := startTestHistoryRPC(t, receiptTestServer{
+		membershipTestServer: membershipTestServer{members: func(context.Context, *historyv1.GetChatMembersRequest) (*historyv1.GetChatMembersResponse, error) {
+			return &historyv1.GetChatMembersResponse{UserIds: []string{fanoutAlice, fanoutBob}}, nil
+		}},
+		advance: func(_ context.Context, request *historyv1.AdvanceReceiptRequest) (*historyv1.AdvanceReceiptResponse, error) {
+			if request.GetActorId() != fanoutBob || request.GetSeq() != 1 || request.GetKind() != testReceiptRead {
+				t.Errorf("unexpected receipt request: %v", request)
+			}
+			return &historyv1.AdvanceReceiptResponse{LastReadSeq: 1, LastDeliveredSeq: 1, DeliveredAdvanced: advances.Add(1) == 1}, nil
+		},
+	})
+	_, broker, wsURL := startRedisTestReplica(t, proxy.redisURL(t, raw), prefix, history)
+	bob, _ := dialTestUser(t, wsURL, fanoutBob)
+	waitRedisTestSubscribers(t, client, broker.userChannel(fanoutBob), 1)
+	gate := proxy.holdCommand(t, "PUBLISH", broker.userChannel(fanoutAlice))
+	data, err := json.Marshal(newWSEnvelope(wsDeliveredType, newWSEventID(), wsReceiptPayload{ChatID: fanoutChat, UserID: fanoutAlice, Seq: 1}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	enqueue := func() {
+		t.Helper()
+		if err := broker.Publish(t.Context(), []string{fanoutAlice}, data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	enqueue()
+	select {
+	case <-gate.started:
+	case <-time.After(time.Second):
+		t.Fatal("publication did not reach the gate")
+	}
+	for range cap(broker.publications) {
+		enqueue()
+	}
+	payload := map[string]any{"chat_id": fanoutChat, "seq": 1}
+	id := sendTestReceipt(t, bob, wsReadType, payload)
+	readTestReceiptError(t, bob, id, "temporarily_unavailable", true)
+	if advances.Load() != 1 {
+		t.Fatalf("first receipt did not reach History: %d requests", advances.Load())
+	}
+
+	gate.unblock()
+	waitRedisTest(t, "available publication capacity", func() bool { return len(broker.publications) == 0 })
+	retryID := sendTestReceipt(t, bob, wsReadType, payload)
+	readTestReceipt(t, bob, receiptTestUpdate{wsReadType, 1}, fanoutBob, retryID)
+	if advances.Load() != 2 {
+		t.Fatalf("receipt retry did not reach History: %d requests", advances.Load())
+	}
+}

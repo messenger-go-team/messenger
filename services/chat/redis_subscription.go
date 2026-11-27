@@ -233,7 +233,8 @@ func (b *redisBroker) confirmSubscriptionState(session *redisSubscriptionState) 
 }
 
 func (b *redisBroker) deliverRedisMessage(ctx context.Context, message *redis.Message) {
-	if message.Channel == b.healthChannel() {
+	// Empty payloads on user channels recheck a previous ACL denial.
+	if message.Channel == b.healthChannel() || message.Payload == "" {
 		return
 	}
 	user, ok := strings.CutPrefix(message.Channel, b.prefix+":user:")
