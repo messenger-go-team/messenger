@@ -317,7 +317,7 @@ export function ChatListPage() {
 
       <aside
         className={cn(
-          'min-h-0 min-w-0 flex-1 flex-col bg-card',
+          'relative z-10 min-h-0 min-w-0 flex-1 flex-col bg-card',
           // Tablet: full width after rail. Desktop: narrow list + split.
           'lg:max-w-[380px] lg:border-r lg:border-border',
           chatId ? 'hidden lg:flex' : 'flex',
@@ -337,12 +337,13 @@ export function ChatListPage() {
           </Button>
         </header>
 
-        <div className="px-4 pb-3">
+        <div className="flex w-full flex-col gap-1 self-stretch px-4 pb-3">
           <label htmlFor={searchId} className="sr-only">
             Поиск по логину
           </label>
-          <div className="relative">
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          {/* Figma Input: 312×40 stretch; filled/focus — white, border #94A3B8, radius 12 */}
+          <div className="relative h-10 w-full self-stretch">
+            <Search className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               id={searchId}
               role="searchbox"
@@ -353,7 +354,12 @@ export function ChatListPage() {
                 setQuery(event.target.value)
                 setOpenError(null)
               }}
-              className="h-10 rounded-full border-transparent bg-muted pl-9 focus-visible:border-border focus-visible:bg-card"
+              className={cn(
+                'h-10 min-h-9 w-full gap-2 rounded-[12px] border bg-card py-2.5 pr-4 pl-10',
+                // Focus: только border 1px solid #94A3B8, без ring/glow
+                'focus:border-[#94A3B8] focus:ring-0 focus-visible:border-[#94A3B8] focus-visible:ring-0 focus-visible:ring-offset-0',
+                query.trim() ? 'border-[#94A3B8]' : 'border-border',
+              )}
               autoComplete="off"
             />
           </div>
@@ -490,13 +496,17 @@ function ChatsPanel({
           const selected = chat.id === selectedChatId
 
           return (
-            <li key={chat.id}>
+            <li
+              key={chat.id}
+              // Figma Separator h=0 между Chat Item — hairline на всю ширину
+              className="border-b border-border last:border-b-0"
+            >
               <Link
                 to={`/chats/${chat.id}`}
                 className={cn(
-                  // Figma 415:8501 — мягкий muted-фон выбранной строки (не solid primary)
-                  'mx-2 flex items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-muted/80',
-                  selected && 'bg-muted',
+                  // Figma Chat Item: 12/16 pad, gap 12, h 76; idle #FFF, hover #E2E8F0 (= --border)
+                  'flex h-[76px] items-center gap-3 bg-card px-4 py-3 transition-colors hover:bg-border',
+                  selected && 'bg-border hover:bg-border',
                 )}
               >
                 <InitialAvatar username={name} />

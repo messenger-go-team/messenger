@@ -13,6 +13,10 @@ type Placement = 'above' | 'below'
 
 const MENU_ESTIMATE_PX = 280
 
+/** Hover/focus ряда: Figma 426:22967 — серо-голубой muted, не cyan accent. */
+const menuItemClass =
+  'mx-1 flex w-[calc(100%-0.5rem)] items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground hover:bg-muted focus:bg-muted focus:outline-none'
+
 type MenuCloser = (returnFocus: boolean) => void
 
 let activeLaterMenu: { id: symbol; close: MenuCloser } | null = null
@@ -77,6 +81,7 @@ export function MessageLaterMenu({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [noticeCoords, setNoticeCoords] = useState<{ top: number; left: number } | null>(null)
   const [picker, setPicker] = useState(defaultPickerValues)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -186,8 +191,23 @@ export function MessageLaterMenu({
       if (panelId.current === submittedPanel) {
         closePanel(floatingRef.current?.contains(document.activeElement) ?? false)
       }
+      const rect = triggerRef.current?.getBoundingClientRect()
+      const noticeWidth = 192
+      if (rect) {
+        // Держим тост справа от триггера / в viewport — не наезжает на список чатов.
+        const left = Math.min(
+          Math.max(rect.left, 12),
+          window.innerWidth - noticeWidth - 12,
+        )
+        setNoticeCoords({ top: rect.bottom + 8, left })
+      } else {
+        setNoticeCoords(null)
+      }
       setNotice(successText)
-      window.setTimeout(() => setNotice(null), 2500)
+      window.setTimeout(() => {
+        setNotice(null)
+        setNoticeCoords(null)
+      }, 2500)
     } catch {
       if (panelId.current === submittedPanel) {
         setError('Не удалось сохранить. Повторите попытку.')
@@ -243,7 +263,7 @@ export function MessageLaterMenu({
                   <button
                     type="button"
                     role="menuitem"
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent"
+                    className={menuItemClass}
                     aria-disabled={busy}
                     onClick={() => void persist(null, 'Сохранено без срока')}
                   >
@@ -253,7 +273,7 @@ export function MessageLaterMenu({
                   <button
                     type="button"
                     role="menuitem"
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent"
+                    className={menuItemClass}
                     aria-disabled={busy}
                     onClick={() => void persist(dueAtInOneHour(), 'Напомним через час')}
                   >
@@ -263,7 +283,7 @@ export function MessageLaterMenu({
                   <button
                     type="button"
                     role="menuitem"
-                    className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent"
+                    className={cn(menuItemClass, 'justify-between')}
                     aria-disabled={busy}
                     onClick={() => void persist(dueAtEvening(), 'Напомним вечером')}
                   >
@@ -273,10 +293,11 @@ export function MessageLaterMenu({
                     </span>
                     <span className="text-xs text-muted-foreground">{eveningHint()}</span>
                   </button>
+                  <div className="my-1 border-t border-border" role="separator" />
                   <button
                     type="button"
                     role="menuitem"
-                    className="flex w-full items-center gap-2 border-t border-border px-3 py-1.5 text-left text-sm hover:bg-accent"
+                    className={menuItemClass}
                     aria-disabled={busy}
                     onClick={() => {
                       if (saving.current) return
@@ -397,14 +418,22 @@ export function MessageLaterMenu({
 
       {floating}
 
-      {notice ? (
-        <p
-          className="absolute top-8 left-1/2 z-20 w-48 -translate-x-1/2 rounded-md border border-border bg-card px-2 py-1 text-xs text-muted-foreground shadow"
-          role="status"
-        >
-          {notice}
-        </p>
-      ) : null}
+      {notice
+        ? createPortal(
+            <p
+              className="pointer-events-none fixed z-[60] w-48 rounded-md border border-border bg-card px-2 py-1 text-xs text-muted-foreground shadow-md"
+              style={
+                noticeCoords
+                  ? { top: noticeCoords.top, left: noticeCoords.left }
+                  : { top: 16, right: 16 }
+              }
+              role="status"
+            >
+              {notice}
+            </p>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }

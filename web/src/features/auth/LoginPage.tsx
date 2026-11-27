@@ -156,7 +156,8 @@ export function LoginPage() {
               ) : null}
             </div>
 
-            <div className="flex items-center justify-between gap-3">
+            {/* Figma 129:3455: Checkbox 20h + «Забыли пароль» 12/16 right-aligned */}
+            <div className="flex h-5 items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Checkbox
                   id={rememberId}
@@ -165,13 +166,16 @@ export function LoginPage() {
                   disabled={submitting}
                   className="size-5"
                 />
-                <Label htmlFor={rememberId} className="cursor-pointer text-sm font-medium">
+                <Label
+                  htmlFor={rememberId}
+                  className="cursor-pointer text-sm leading-5 font-medium"
+                >
                   Запомнить меня
                 </Label>
               </div>
               <Link
                 to="/forgot-password"
-                className="text-xs leading-4 tracking-[0.024px] text-primary hover:underline"
+                className="shrink-0 text-xs leading-4 tracking-[0.024px] text-primary hover:underline"
               >
                 Забыли пароль
               </Link>
