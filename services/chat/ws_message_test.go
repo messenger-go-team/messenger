@@ -357,7 +357,7 @@ func TestWSCommandValidation(t *testing.T) {
 		{"incorrect field casing", strings.Replace(valid, "chat_id", "Chat_ID", 1), "invalid_payload", "", true},
 		{"server-only field", prefix + `"hello","sender_id":"ignored"}}`, "invalid_payload", "", true},
 		{"duplicate body", prefix + `"hello","body":"again"}}`, "invalid_payload", "", true},
-		{"unsupported", strings.Replace(valid, wsSendType, "message.read", 1), "unsupported_type", "", true},
+		{"unsupported", strings.Replace(valid, wsSendType, "future.command", 1), "unsupported_type", "", true},
 		{"second object", valid + `{}`, "invalid_json", "", false},
 		{"not an object", `[]`, "invalid_json", "", false},
 		{"syntax", `{"type":`, "invalid_json", "", false},

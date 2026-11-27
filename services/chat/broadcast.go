@@ -14,11 +14,19 @@ import (
 func (ws *wsEndpoint) broadcastChat(ctx context.Context, requester jwtauth.Identity, chatID string, event []byte) error {
 	fanoutCtx, cancel := context.WithTimeout(ctx, ws.historyTimeout)
 	defer cancel()
-	members, err := ws.history.GetChatMembers(fanoutCtx, &historyv1.GetChatMembersRequest{
-		ChatId: strings.ToLower(chatID), RequesterId: requester.UserID,
+	members, err := ws.chatMembers(fanoutCtx, chatID, requester.UserID)
+	if err != nil {
+		return err
+	}
+	return ws.broker.Publish(fanoutCtx, members, event)
+}
+
+func (ws *wsEndpoint) chatMembers(ctx context.Context, chatID, requesterID string) ([]string, error) {
+	members, err := ws.history.GetChatMembers(ctx, &historyv1.GetChatMembersRequest{
+		ChatId: strings.ToLower(chatID), RequesterId: requesterID,
 	})
 	if err != nil {
-		return fmt.Errorf("get chat members: %w", err)
+		return nil, fmt.Errorf("get chat members: %w", err)
 	}
-	return ws.broker.Publish(fanoutCtx, members.GetUserIds(), event)
+	return members.GetUserIds(), nil
 }

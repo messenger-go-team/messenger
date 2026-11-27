@@ -31,12 +31,15 @@ type wsEndpoint struct {
 	cancelFanout context.CancelFunc
 
 	hub            *connectionHub
+	presenceRPC    *presenceBatcher
 	broker         Broker
 	typing         typingTracker
 	history        historyv1.HistoryServiceClient
 	historyTimeout time.Duration
 	sendLimiter    *sendLimiter
 	sendRejections prometheus.Counter
+	receiptLimiter *sendLimiter
+	receiptSlots   chan struct{}
 	logger         *slog.Logger
 
 	mu     sync.Mutex
@@ -47,6 +50,9 @@ func newWSEndpoint(cfg config, ready *atomic.Bool, timing wsTiming,
 	history historyv1.HistoryServiceClient, logger *slog.Logger,
 ) *wsEndpoint {
 	hub := newConnectionHub()
+	if timing.presenceRefresh <= 0 {
+		timing.presenceRefresh = defaultPresenceRefresh
+	}
 	fanoutCtx, cancelFanout := context.WithCancel(context.Background())
 	return &wsEndpoint{
 		logger:         logger,
@@ -57,11 +63,14 @@ func newWSEndpoint(cfg config, ready *atomic.Bool, timing wsTiming,
 		fanoutCtx:      fanoutCtx,
 		cancelFanout:   cancelFanout,
 		hub:            hub,
+		presenceRPC:    newPresenceBatcher(),
 		broker:         memoryBroker{hub: hub},
 		typing:         typingTracker{byUser: make(map[string]map[string]*typingGroup)},
 		history:        history,
 		historyTimeout: cfg.HistoryRPCTimeout,
 		sendLimiter:    newSendLimiter(cfg.SendInterval, cfg.SendBurst, time.Now),
+		receiptLimiter: newSendLimiter(wsReceiptInterval, wsReceiptBurst, time.Now),
+		receiptSlots:   make(chan struct{}, wsReceiptConcurrency),
 		sendRejections: prometheus.NewCounter(prometheus.CounterOpts{
 			Name:        "chat_ws_message_send_rejected_total",
 			Help:        "Number of valid message.send commands rejected by Chat before calling History.",
@@ -119,10 +128,16 @@ func (ws *wsEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = conn.Close() }()
 	socket := newSocketSession(conn, identity)
-	if !ws.hub.register(socket) {
+	user, registered := ws.hub.register(ws.fanoutCtx, socket)
+	if !registered {
+		if !time.Now().Before(socket.expiresAt) {
+			ws.sendClose(conn, wsTokenExpired, "access token expired")
+		}
 		return
 	}
-	defer ws.hub.unregister(socket)
+	if user != nil && ws.history != nil {
+		ws.active.Go(func() { ws.runPresence(user) })
+	}
 	ws.serveSocket(socket)
 }
 

@@ -1,0 +1,24 @@
+{
+  "saveRequestAt": "2026-11-26T23:31:35.965Z",
+  "saveResponseAt": "2026-11-26T23:31:35.984Z",
+  "saveCompletedAt": "2026-11-26T23:31:36.005Z",
+  "focusRequestedAt": "2026-11-26T23:31:36.008Z",
+  "actualFocusAt": "2026-11-26T23:31:36.126Z",
+  "BRequestAt": "2026-11-26T23:31:36.132Z",
+  "BResponseAt": "2026-11-26T23:31:36.157Z",
+  "BResponseCompletedAt": "2026-11-26T23:31:36.159Z",
+  "requestAfterSaveMs": 127,
+  "responseAfterSaveMs": 154,
+  "entryId": "2599085e-521b-4ecc-a6d0-9d5e431a0f7a",
+  "statusB": 200,
+  "entryAbsent": true,
+  "doneCompletedAt": "2026-11-26T23:31:38.881Z",
+  "sameSocketB": {
+    "openedAt": "2026-11-26T23:31:31.450Z",
+    "observationStartedAt": "2026-11-26T23:31:32.047Z",
+    "throughDoneAt": "2026-11-26T23:31:38.881Z",
+    "sameSocket": true,
+    "noReload": true
+  },
+  "noReload": true
+}

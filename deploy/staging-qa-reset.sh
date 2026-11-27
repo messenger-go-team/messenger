@@ -99,7 +99,10 @@ FROM qa_target t;
 
 \if :apply
 DELETE FROM history.messages m USING qa_target t WHERE m.chat_id = t.chat_id;
+-- History v4 can wait 12 seconds for an abandoned presence reservation.
+SET LOCAL statement_timeout = '20s';
 DELETE FROM history.chats c USING qa_target t WHERE c.id = t.chat_id;
+SET LOCAL statement_timeout = '10s';
 COMMIT;
 \else
 ROLLBACK;

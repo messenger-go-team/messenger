@@ -55,6 +55,10 @@ func (ws *wsEndpoint) handleWSCommand(ctx context.Context, socket *socketSession
 		ws.replyWSError(socket, cmd, problem)
 		return
 	}
+	if isWSReceiptType(cmd.kind) {
+		ws.handleWSReceipt(ctx, socket, cmd)
+		return
+	}
 	if wait := ws.sendLimiter.take(socket.userID); wait > 0 {
 		ws.sendRejections.Inc()
 		// Round up so a sub-millisecond wait never becomes an early retry.
@@ -167,6 +171,8 @@ func (ws *wsEndpoint) replyWSErrorPayload(socket *socketSession, cmd wsCommand, 
 		payload.Message = "Команда не поддерживается."
 	case "forbidden":
 		payload.Message = "Нет доступа к чату."
+	case "invalid_seq":
+		payload.Message = "Курсор вне допустимого диапазона."
 	case "idempotency_conflict":
 		payload.Message = "Этот идентификатор уже использован с другим текстом."
 	case wsRateLimited:
