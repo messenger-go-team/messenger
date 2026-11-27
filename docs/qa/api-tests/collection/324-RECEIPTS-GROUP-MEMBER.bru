@@ -1,0 +1,25 @@
+meta {
+  name: RECEIPTS-GROUP-MEMBER
+  type: http
+  seq: 324
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/receipts
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("RECEIPTS-GROUP-MEMBER", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("RECEIPTS-GROUP-MEMBER", bru, req, res, test, expect);
+}

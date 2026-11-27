@@ -1,0 +1,25 @@
+meta {
+  name: RECEIPTS-AUTH-QUERY-limit-expired
+  type: http
+  seq: 303
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/receipts?limit=1
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("RECEIPTS-AUTH-QUERY-limit-expired", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("RECEIPTS-AUTH-QUERY-limit-expired", bru, req, res, test, expect);
+}

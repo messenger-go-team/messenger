@@ -4,6 +4,7 @@ const {
   assertLogoutCookie,
   assertRefreshJar,
 } = require("./invariants.cjs");
+const { assertReceiptSnapshot } = require("./receipts.cjs");
 // Single source for collection order, contract binding and business assertions.
 const cases = [];
 function add(id, api, route, method, path, status, extra = {}) {
@@ -886,17 +887,19 @@ h("UNREAD-AFTER-PRIVATE-WRITES", "/chats", "get", "/chats", 200, {
 });
 const receipts = "/chats/{chat_id}/receipts";
 const receiptsAB = "/chats/{{chatAB}}/receipts";
-const checkInitialReceipts = ({ b, e, f, res }) => {
-  e(res.headers["cache-control"]).equal("no-store");
-  e(b.chat_id).equal(f.chatAB);
-  e(b.members).deep.equal(
-    [f.aID, f.bID].sort().map((user_id) => ({
-      user_id,
-      last_delivered_seq: 0,
-      last_read_seq: 0,
-    })),
-  );
-};
+const receiptsCheck =
+  (expected, lastSeq) =>
+  ({ b, f, res }) =>
+    assertReceiptSnapshot(b, f, expected, res.headers, lastSeq);
+const initialReceipts = [
+  [0, 0],
+  [0, 0],
+];
+const advancedReceipts = [
+  [80, 42],
+  [7, 3],
+];
+const checkInitialReceipts = receiptsCheck(initialReceipts);
 h("RECEIPTS-INITIAL-AFTER-REST-READ", receipts, "get", receiptsAB, 200, {
   check: checkInitialReceipts,
 });
@@ -916,4 +919,129 @@ h("RECEIPTS-RECOVERED", receipts, "get", receiptsAB, 200, {
   control: "storage-up",
   check: checkInitialReceipts,
 });
+// T137: explicit private-read isolation, nonzero snapshots and auth precedence.
+h("RECEIPTS-PRIVATE-B-BEFORE", "/chats", "get", "/chats", 200, {
+  auth: "b",
+  check: ({ b, e, f }) => e(unread(b, f.chatAB)).equal(1),
+});
+h("RECEIPTS-PRIVATE-B-READ", read, "post", "/chats/{{chatAB}}/read", 204, {
+  auth: "b",
+  body: { seq: 205 },
+});
+h("RECEIPTS-PRIVATE-B-AFTER", "/chats", "get", "/chats", 200, {
+  auth: "b",
+  check: ({ b, e, f }) => e(unread(b, f.chatAB)).equal(0),
+});
+for (const auth of ["a", "b"])
+  h("RECEIPTS-ZERO-BOTH-" + auth, receipts, "get", receiptsAB, 200, {
+    auth,
+    check: checkInitialReceipts,
+  });
+// Seed public state through real History RPC, not SQL or a fake REST response.
+// This proves REST projection only; it does not test Chat WS fanout.
+h("RECEIPTS-ADVANCED-A", receipts, "get", receiptsAB, 200, {
+  control: "advance-receipts",
+  check: receiptsCheck(advancedReceipts),
+});
+h("RECEIPTS-ADVANCED-B", receipts, "get", receiptsAB, 200, {
+  auth: "b",
+  check: receiptsCheck(advancedReceipts),
+});
+for (const [auth, seq] of [
+  ["a", 1],
+  ["b", 205],
+  ["b", 0],
+]) {
+  h(
+    "RECEIPTS-PRIVATE-REPEAT-" + auth + seq,
+    read,
+    "post",
+    "/chats/{{chatAB}}/read",
+    204,
+    {
+      auth,
+      body: { seq },
+    },
+  );
+  h("RECEIPTS-UNCHANGED-" + auth + seq, receipts, "get", receiptsAB, 200, {
+    auth,
+    check: receiptsCheck(advancedReceipts),
+  });
+}
+for (const auth of ["a", "b"])
+  h("RECEIPTS-PRIVATE-UNREAD-" + auth, "/chats", "get", "/chats", 200, {
+    auth,
+    check: ({ b, e, f }) => e(unread(b, f.chatAB)).equal(0),
+  });
+for (const [name, query] of [
+  ["limit", "limit=1"],
+  ["after", "after_seq=0"],
+  ["bad-value", "unexpected=%zz"],
+  ["bad-key", "%zz=1"],
+  ["bare-percent", "%"],
+]) {
+  h("RECEIPTS-QUERY-" + name, receipts, "get", receiptsAB + "?" + query, 422, {
+    check: ({ b, e }) => e(b.code).equal("validation_error"),
+  });
+  for (const auth of ["none", "invalid", "expired"])
+    h(
+      "RECEIPTS-AUTH-QUERY-" + name + "-" + auth,
+      receipts,
+      "get",
+      receiptsAB + "?" + query,
+      401,
+      { auth },
+    );
+}
+for (const auth of ["none", "invalid", "expired"])
+  h(
+    "RECEIPTS-AUTH-BAD-PATH-" + auth,
+    receipts,
+    "get",
+    "/chats/bad-uuid/receipts?%",
+    401,
+    { auth },
+  );
+h(
+  "RECEIPTS-ZERO-UUID",
+  receipts,
+  "get",
+  "/chats/00000000-0000-0000-0000-000000000000/receipts",
+  422,
+);
+h("RECEIPTS-GROUP-MEMBER", receipts, "get", receiptsAB, 422, {
+  control: "receipts-group",
+});
+h("RECEIPTS-GROUP-OUTSIDER", receipts, "get", receiptsAB, 403, { auth: "c" });
+h("RECEIPTS-GROUP-RESTORED", receipts, "get", receiptsAB, 200, {
+  control: "receipts-personal",
+  check: receiptsCheck(advancedReceipts),
+});
+h("RECEIPTS-ADVANCED-503", receipts, "get", receiptsAB, 503, {
+  control: "storage-down",
+  check: ({ b, e }) => e(b.code).equal("service_unavailable"),
+});
+h("RECEIPTS-ADVANCED-RECOVERED", receipts, "get", receiptsAB, 200, {
+  control: "storage-up",
+  check: receiptsCheck(advancedReceipts),
+});
+// Append after the other cases that depend on the original last_seq=205.
+h("RECEIPTS-PRIVATE-ADVANCE-B-BEFORE", "/chats", "get", "/chats", 200, {
+  auth: "b",
+  control: "append-private-read-message",
+  check: ({ b, e, f }) => e(unread(b, f.chatAB)).equal(1),
+});
+h("RECEIPTS-PRIVATE-ADVANCE-B-READ", read, "post", "/chats/{{chatAB}}/read", 204, {
+  auth: "b",
+  body: { seq: 206 },
+});
+h("RECEIPTS-PRIVATE-ADVANCE-B-AFTER", "/chats", "get", "/chats", 200, {
+  auth: "b",
+  check: ({ b, e, f }) => e(unread(b, f.chatAB)).equal(0),
+});
+for (const auth of ["a", "b"])
+  h("RECEIPTS-AFTER-PRIVATE-ADVANCE-" + auth, receipts, "get", receiptsAB, 200, {
+    auth,
+    check: receiptsCheck(advancedReceipts, 206),
+  });
 module.exports = { cases };

@@ -1,0 +1,25 @@
+meta {
+  name: RECEIPTS-PRIVATE-UNREAD-b
+  type: http
+  seq: 299
+}
+
+get {
+  url: {{baseUrl}}/chats
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("RECEIPTS-PRIVATE-UNREAD-b", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("RECEIPTS-PRIVATE-UNREAD-b", bru, req, res, test, expect);
+}

@@ -198,6 +198,43 @@ func control(mode string) {
 		defer func() { _ = a.Close() }()
 		exec(a, `TRUNCATE auth.contacts,auth.refresh_tokens,auth.users CASCADE`)
 		exec(h, `TRUNCATE history.later_entries,history.messages,history.personal_chat_pairs,history.chat_members,history.chats CASCADE`)
+	case "advance-receipts":
+		conn, err := grpc.NewClient("history:9090", grpc.WithTransportCredentials(insecure.NewCredentials()))
+		must(err)
+		defer func() { _ = conn.Close() }()
+		rpc := historyv1.NewHistoryServiceClient(conn)
+		for _, step := range []struct {
+			actor string
+			kind  historyv1.ReceiptKind
+			seq   int64
+		}{
+			{"aID", historyv1.ReceiptKind_RECEIPT_KIND_READ, 42},
+			{"aID", historyv1.ReceiptKind_RECEIPT_KIND_DELIVERED, 80},
+			{"bID", historyv1.ReceiptKind_RECEIPT_KIND_READ, 3},
+			{"bID", historyv1.ReceiptKind_RECEIPT_KIND_DELIVERED, 7},
+		} {
+			_, err := rpc.AdvanceReceipt(ctx, &historyv1.AdvanceReceiptRequest{ChatId: f["chatAB"].(string), ActorId: f[step.actor].(string), Kind: step.kind, Seq: &step.seq})
+			must(err)
+		}
+	case "append-private-read-message":
+		conn, err := grpc.NewClient("history:9090", grpc.WithTransportCredentials(insecure.NewCredentials()))
+		must(err)
+		defer func() { _ = conn.Close() }()
+		rpc := historyv1.NewHistoryServiceClient(conn)
+		saved, err := rpc.SaveMessage(ctx, &historyv1.SaveMessageRequest{
+			ChatId:      f["chatAB"].(string),
+			SenderId:    f["aID"].(string),
+			ClientMsgId: newUUID(),
+			Body:        "T137 incoming after public receipts",
+		})
+		must(err)
+		if saved.GetSeq() != 206 || saved.GetDuplicate() {
+			panic("expected one new message at seq 206")
+		}
+	case "receipts-group":
+		exec(h, `UPDATE history.chats SET type='group' WHERE id=$1`, f["chatAB"])
+	case "receipts-personal":
+		exec(h, `UPDATE history.chats SET type='personal' WHERE id=$1`, f["chatAB"])
 	case "snapshot-later":
 		var snapshot []byte
 		must(h.QueryRowContext(ctx, `SELECT COALESCE(json_agg(row_to_json(x) ORDER BY x.id),'[]'::json) FROM (SELECT id,user_id,message_id,due_at,state,created_at,updated_at FROM history.later_entries) x`).Scan(&snapshot))

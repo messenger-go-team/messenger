@@ -1,0 +1,25 @@
+meta {
+  name: RECEIPTS-ADVANCED-503
+  type: http
+  seq: 327
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/receipts
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("RECEIPTS-ADVANCED-503", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("RECEIPTS-ADVANCED-503", bru, req, res, test, expect);
+}

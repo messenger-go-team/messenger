@@ -1,0 +1,25 @@
+meta {
+  name: RECEIPTS-GROUP-RESTORED
+  type: http
+  seq: 326
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/receipts
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("RECEIPTS-GROUP-RESTORED", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("RECEIPTS-GROUP-RESTORED", bru, req, res, test, expect);
+}

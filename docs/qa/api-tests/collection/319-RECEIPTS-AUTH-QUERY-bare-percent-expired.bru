@@ -1,0 +1,25 @@
+meta {
+  name: RECEIPTS-AUTH-QUERY-bare-percent-expired
+  type: http
+  seq: 319
+}
+
+get {
+  url: {{baseUrl}}/chats/{{chatAB}}/receipts?%
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("RECEIPTS-AUTH-QUERY-bare-percent-expired", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("RECEIPTS-AUTH-QUERY-bare-percent-expired", bru, req, res, test, expect);
+}

@@ -1,0 +1,25 @@
+meta {
+  name: RECEIPTS-ZERO-UUID
+  type: http
+  seq: 323
+}
+
+get {
+  url: {{baseUrl}}/chats/00000000-0000-0000-0000-000000000000/receipts
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const { prepare } = require("./support.cjs");
+  await prepare("RECEIPTS-ZERO-UUID", bru, req);
+}
+
+tests {
+  const { verify } = require("./support.cjs");
+  verify("RECEIPTS-ZERO-UUID", bru, req, res, test, expect);
+}
