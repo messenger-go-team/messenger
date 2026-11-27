@@ -25,7 +25,7 @@ import (
 var uuid = regexp.MustCompile(`^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$`)
 var readPath = regexp.MustCompile(`^/chats/([^/]+)/read$`)
 var messagesPath = regexp.MustCompile(`^/chats/([^/]+)/messages$`)
-var lostResponse = errors.New("QA dropped a response after History returned 204")
+var errLostResponse = errors.New("QA dropped a response after History returned 204")
 
 type rule struct {
 	Kind    string    `json:"kind"`
@@ -153,14 +153,14 @@ func (f *faults) history() http.Handler {
 			if p := readPath.FindStringSubmatch(req.URL.Path); p != nil {
 				user := subject(strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer "))
 				if _, _, ok := f.match("drop-read", p[1], user, "", true); ok {
-					return lostResponse
+					return errLostResponse
 				}
 			}
 		}
 		return nil
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, req *http.Request, err error) {
-		if errors.Is(err, lostResponse) {
+		if errors.Is(err, errLostResponse) {
 			panic(http.ErrAbortHandler)
 		}
 		http.Error(w, "History upstream unavailable", http.StatusBadGateway)
