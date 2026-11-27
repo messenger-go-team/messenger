@@ -1,0 +1,118 @@
+name: Playwright E2E
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Browser scenarios against isolated Compose
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      COMPOSE_PROJECT_NAME: qa-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Start the ten-minute CI budget
+        run: |
+          started=$(date +%s%3N)
+          printf 'E2E_STARTED_AT_MS=%s\nE2E_DEADLINE_MS=%s\n' "$started" "$((started + 600000))" >> "$GITHUB_ENV"
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.16.0'
+          cache: npm
+          cache-dependency-path: qa/e2e/package-lock.json
+
+      - name: Install test dependencies and Chromium
+        working-directory: qa/e2e
+        run: |
+          remaining=$(((E2E_DEADLINE_MS - $(date +%s%3N)) / 1000))
+          if (( remaining <= 0 )); then
+            echo "::error::The ten-minute E2E budget expired before dependency installation"
+            exit 1
+          fi
+          timeout --kill-after=10s "${remaining}s" bash -euo pipefail -c '
+            npm ci --ignore-scripts
+            npx --no-install playwright install --with-deps chromium
+          '
+
+      - name: Build and start the isolated services
+        id: compose
+        run: |
+          started=$SECONDS
+          trap 'printf "Compose build and startup: %s s\n" "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"' EXIT
+          remaining=$(((E2E_DEADLINE_MS - $(date +%s%3N)) / 1000))
+          if (( remaining <= 0 )); then
+            echo "::error::The ten-minute E2E budget expired before Compose startup"
+            exit 1
+          fi
+          timeout --kill-after=10s "${remaining}s" docker compose -f qa/e2e/compose.yaml up -d --build --wait --wait-timeout 120
+          address=$(docker compose -f qa/e2e/compose.yaml port gateway 8080)
+          if [[ ! "$address" =~ ^127\.0\.0\.1:[1-9][0-9]{0,4}$ ]]; then
+            echo "::error::The E2E gateway must publish exclusively on IPv4 loopback"
+            exit 1
+          fi
+          echo "E2E_BASE_URL=http://$address" >> "$GITHUB_ENV"
+
+      - name: Run the browser suite twice within the remaining budget
+        working-directory: qa/e2e
+        run: |
+          started=$SECONDS
+          trap 'printf "Repeated browser suites, combined: %s s\n" "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"; printf "E2E_FINISHED_AT_MS=%s\n" "${finished:-$(date +%s%3N)}" >> "$GITHUB_ENV"' EXIT
+          remaining=$(((E2E_DEADLINE_MS - $(date +%s%3N)) / 1000))
+          if (( remaining <= 0 )); then
+            echo "::error::The ten-minute E2E budget expired before the browser suites"
+            exit 1
+          fi
+          timeout --kill-after=10s "${remaining}s" bash -euo pipefail -c '
+            for run in 1 2; do
+              suite_started=$SECONDS
+              status=0
+              E2E_RUN="run-$run" npm test || status=$?
+              printf "Browser suite %s: %s s, exit %s\n" "$run" "$((SECONDS - suite_started))" "$status" >> "$GITHUB_STEP_SUMMARY"
+              if (( status != 0 )); then
+                exit "$status"
+              fi
+            done
+          '
+          finished=$(date +%s%3N)
+          if (( finished > E2E_DEADLINE_MS )); then
+            echo "::error::Checkout, setup, Compose and both browser suites exceeded 600 seconds"
+            exit 1
+          fi
+
+      - name: Report total E2E time
+        if: always() && env.E2E_STARTED_AT_MS != ''
+        run: |
+          finished=${E2E_FINISHED_AT_MS:-$(date +%s%3N)}
+          elapsed=$((finished - E2E_STARTED_AT_MS))
+          printf "Total E2E time from before checkout: %d.%03d s (budget 600 s)\n" "$((elapsed / 1000))" "$((elapsed % 1000))" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove the isolated services and data
+        if: always() && steps.compose.outcome != 'skipped'
+        run: docker compose -f qa/e2e/compose.yaml down --volumes --remove-orphans
+
+      - name: Upload traces and screenshots from failed tests
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-e2e-failure-${{ github.run_attempt }}
+          path: qa/e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
