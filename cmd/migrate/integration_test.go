@@ -102,7 +102,7 @@ func assertMigrationTestInt(t *testing.T, db *sql.DB, query string, want int) {
 
 func migrationTestVersion(service string) int {
 	if service == "history" {
-		return 3
+		return 4
 	}
 	return 1
 }
@@ -129,7 +129,7 @@ func TestMigrationsIntegration(t *testing.T) {
 		apply("auth", directionUp)
 		assertMigrationTestInt(t, db, "SELECT count(*) FROM pg_class WHERE relname = 'history_schema_migrations'", 0)
 		apply("history", directionUp)
-		assertMigrationTestInt(t, db, "SELECT count(*) FROM information_schema.tables WHERE table_schema IN ('auth', 'history')", 8)
+		assertMigrationTestInt(t, db, "SELECT count(*) FROM information_schema.tables WHERE table_schema IN ('auth', 'history')", 9)
 		for _, service := range services {
 			assertMigrationTestInt(t, db, fmt.Sprintf("SELECT count(*) FROM %s_schema_migrations WHERE version = %d AND NOT dirty", service, migrationTestVersion(service)), 1)
 		}
@@ -218,9 +218,19 @@ WHERE c.user_id = '00000000-0000-4000-8000-000000000001'`).Scan(&usernames); err
 		assertMigrationTestInt(t, db, "SELECT count(*) FROM history.messages", 2)
 		assertMigrationTestInt(t, db, "SELECT count(*) FROM history.chat_members", 2)
 
+		// Revert v4 alone before the full round trip. It adds no domain data.
+		if err := migrateService("history", directionDown, 1, config); err != nil {
+			t.Fatal(err)
+		}
+		assertMigrationTestInt(t, db, "SELECT count(*) FROM history_schema_migrations WHERE version = 3 AND NOT dirty", 1)
+		assertMigrationTestInt(t, db, "SELECT count(*) FROM history.messages", 2)
+		assertMigrationTestInt(t, db, "SELECT count(*) FROM history.chat_members", 2)
+		assertMigrationTestInt(t, db, "SELECT count(*) FROM pg_trigger WHERE tgname LIKE 'presence_guard_%'", 0)
+		apply("history", directionUp)
+
 		apply("auth", directionDown)
 		assertMigrationTestInt(t, db, "SELECT count(*) FROM history.messages", 2)
-		assertMigrationTestInt(t, db, "SELECT count(*) FROM history_schema_migrations WHERE version = 3 AND NOT dirty", 1)
+		assertMigrationTestInt(t, db, "SELECT count(*) FROM history_schema_migrations WHERE version = 4 AND NOT dirty", 1)
 		apply("history", directionDown)
 		assertMigrationTestInt(t, db, "SELECT count(*) FROM information_schema.tables WHERE table_schema IN ('auth', 'history')", 0)
 		for _, service := range services {

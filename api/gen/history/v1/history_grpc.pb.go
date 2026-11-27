@@ -19,10 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	HistoryService_SaveMessage_FullMethodName     = "/messenger.history.v1.HistoryService/SaveMessage"
-	HistoryService_GetChatMembers_FullMethodName  = "/messenger.history.v1.HistoryService/GetChatMembers"
-	HistoryService_CheckMembership_FullMethodName = "/messenger.history.v1.HistoryService/CheckMembership"
-	HistoryService_AdvanceReceipt_FullMethodName  = "/messenger.history.v1.HistoryService/AdvanceReceipt"
+	HistoryService_SaveMessage_FullMethodName               = "/messenger.history.v1.HistoryService/SaveMessage"
+	HistoryService_GetChatMembers_FullMethodName            = "/messenger.history.v1.HistoryService/GetChatMembers"
+	HistoryService_CheckMembership_FullMethodName           = "/messenger.history.v1.HistoryService/CheckMembership"
+	HistoryService_AdvanceReceipt_FullMethodName            = "/messenger.history.v1.HistoryService/AdvanceReceipt"
+	HistoryService_ListPresencePeers_FullMethodName         = "/messenger.history.v1.HistoryService/ListPresencePeers"
+	HistoryService_AuthorizePresenceDelivery_FullMethodName = "/messenger.history.v1.HistoryService/AuthorizePresenceDelivery"
+	HistoryService_BatchPresence_FullMethodName             = "/messenger.history.v1.HistoryService/BatchPresence"
 )
 
 // HistoryServiceClient is the client API for HistoryService service.
@@ -50,6 +53,15 @@ type HistoryServiceClient interface {
 	// UNAVAILABLE: storage unavailable or commit result unknown. Deadline and
 	// cancellation may leave the caller uncertain whether the update committed.
 	AdvanceReceipt(ctx context.Context, in *AdvanceReceiptRequest, opts ...grpc.CallOption) (*AdvanceReceiptResponse, error)
+	// ListPresencePeers returns a point-in-time authorization snapshot for Chat.
+	// The requester must be a current member of each returned peer's personal chat.
+	// INVALID_ARGUMENT: malformed requester UUID. UNAVAILABLE: storage unavailable.
+	ListPresencePeers(ctx context.Context, in *ListPresencePeersRequest, opts ...grpc.CallOption) (*ListPresencePeersResponse, error)
+	// AuthorizePresenceDelivery rechecks membership and reserves a bounded write.
+	AuthorizePresenceDelivery(ctx context.Context, in *AuthorizePresenceDeliveryRequest, opts ...grpc.CallOption) (*AuthorizePresenceDeliveryResponse, error)
+	// BatchPresence combines presence lookups for different users and releases
+	// completed writes. Operations and results correspond by position.
+	BatchPresence(ctx context.Context, in *BatchPresenceRequest, opts ...grpc.CallOption) (*BatchPresenceResponse, error)
 }
 
 type historyServiceClient struct {
@@ -100,6 +112,36 @@ func (c *historyServiceClient) AdvanceReceipt(ctx context.Context, in *AdvanceRe
 	return out, nil
 }
 
+func (c *historyServiceClient) ListPresencePeers(ctx context.Context, in *ListPresencePeersRequest, opts ...grpc.CallOption) (*ListPresencePeersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListPresencePeersResponse)
+	err := c.cc.Invoke(ctx, HistoryService_ListPresencePeers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *historyServiceClient) AuthorizePresenceDelivery(ctx context.Context, in *AuthorizePresenceDeliveryRequest, opts ...grpc.CallOption) (*AuthorizePresenceDeliveryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AuthorizePresenceDeliveryResponse)
+	err := c.cc.Invoke(ctx, HistoryService_AuthorizePresenceDelivery_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *historyServiceClient) BatchPresence(ctx context.Context, in *BatchPresenceRequest, opts ...grpc.CallOption) (*BatchPresenceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BatchPresenceResponse)
+	err := c.cc.Invoke(ctx, HistoryService_BatchPresence_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // HistoryServiceServer is the server API for HistoryService service.
 // All implementations must embed UnimplementedHistoryServiceServer
 // for forward compatibility.
@@ -125,6 +167,15 @@ type HistoryServiceServer interface {
 	// UNAVAILABLE: storage unavailable or commit result unknown. Deadline and
 	// cancellation may leave the caller uncertain whether the update committed.
 	AdvanceReceipt(context.Context, *AdvanceReceiptRequest) (*AdvanceReceiptResponse, error)
+	// ListPresencePeers returns a point-in-time authorization snapshot for Chat.
+	// The requester must be a current member of each returned peer's personal chat.
+	// INVALID_ARGUMENT: malformed requester UUID. UNAVAILABLE: storage unavailable.
+	ListPresencePeers(context.Context, *ListPresencePeersRequest) (*ListPresencePeersResponse, error)
+	// AuthorizePresenceDelivery rechecks membership and reserves a bounded write.
+	AuthorizePresenceDelivery(context.Context, *AuthorizePresenceDeliveryRequest) (*AuthorizePresenceDeliveryResponse, error)
+	// BatchPresence combines presence lookups for different users and releases
+	// completed writes. Operations and results correspond by position.
+	BatchPresence(context.Context, *BatchPresenceRequest) (*BatchPresenceResponse, error)
 	mustEmbedUnimplementedHistoryServiceServer()
 }
 
@@ -146,6 +197,15 @@ func (UnimplementedHistoryServiceServer) CheckMembership(context.Context, *Check
 }
 func (UnimplementedHistoryServiceServer) AdvanceReceipt(context.Context, *AdvanceReceiptRequest) (*AdvanceReceiptResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AdvanceReceipt not implemented")
+}
+func (UnimplementedHistoryServiceServer) ListPresencePeers(context.Context, *ListPresencePeersRequest) (*ListPresencePeersResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListPresencePeers not implemented")
+}
+func (UnimplementedHistoryServiceServer) AuthorizePresenceDelivery(context.Context, *AuthorizePresenceDeliveryRequest) (*AuthorizePresenceDeliveryResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AuthorizePresenceDelivery not implemented")
+}
+func (UnimplementedHistoryServiceServer) BatchPresence(context.Context, *BatchPresenceRequest) (*BatchPresenceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method BatchPresence not implemented")
 }
 func (UnimplementedHistoryServiceServer) mustEmbedUnimplementedHistoryServiceServer() {}
 func (UnimplementedHistoryServiceServer) testEmbeddedByValue()                        {}
@@ -240,6 +300,60 @@ func _HistoryService_AdvanceReceipt_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HistoryService_ListPresencePeers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListPresencePeersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HistoryServiceServer).ListPresencePeers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HistoryService_ListPresencePeers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HistoryServiceServer).ListPresencePeers(ctx, req.(*ListPresencePeersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HistoryService_AuthorizePresenceDelivery_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AuthorizePresenceDeliveryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HistoryServiceServer).AuthorizePresenceDelivery(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HistoryService_AuthorizePresenceDelivery_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HistoryServiceServer).AuthorizePresenceDelivery(ctx, req.(*AuthorizePresenceDeliveryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HistoryService_BatchPresence_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BatchPresenceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HistoryServiceServer).BatchPresence(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HistoryService_BatchPresence_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HistoryServiceServer).BatchPresence(ctx, req.(*BatchPresenceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // HistoryService_ServiceDesc is the grpc.ServiceDesc for HistoryService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -262,6 +376,18 @@ var HistoryService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AdvanceReceipt",
 			Handler:    _HistoryService_AdvanceReceipt_Handler,
+		},
+		{
+			MethodName: "ListPresencePeers",
+			Handler:    _HistoryService_ListPresencePeers_Handler,
+		},
+		{
+			MethodName: "AuthorizePresenceDelivery",
+			Handler:    _HistoryService_AuthorizePresenceDelivery_Handler,
+		},
+		{
+			MethodName: "BatchPresence",
+			Handler:    _HistoryService_BatchPresence_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
