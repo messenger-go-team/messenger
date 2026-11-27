@@ -1,0 +1,3198 @@
+{
+  "A": {
+    "handshakes": [
+      {
+        "at": "2026-11-26T19:08:50.898Z",
+        "status": 101,
+        "protocol": "messenger.v1"
+      },
+      {
+        "at": "2026-11-26T19:08:53.533Z",
+        "status": 101,
+        "protocol": "messenger.v1"
+      }
+    ],
+    "http": [
+      {
+        "url": "/auth/refresh",
+        "method": "POST",
+        "status": 401,
+        "at": "2026-11-26T19:08:48.895Z",
+        "completedAt": "2026-11-26T19:08:48.895Z"
+      },
+      {
+        "url": "/auth/login",
+        "method": "POST",
+        "status": 200,
+        "at": "2026-11-26T19:08:50.817Z",
+        "completedAt": "2026-11-26T19:08:50.817Z"
+      },
+      {
+        "url": "/me",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:50.838Z",
+        "emptyBody": false,
+        "body": {
+          "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+          "username": "qa38_mwqa7f6q_a",
+          "created_at": "2026-11-21T10:47:33.684747Z"
+        },
+        "completedAt": "2026-11-26T19:08:50.847Z"
+      },
+      {
+        "url": "/later",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:50.866Z",
+        "emptyBody": false,
+        "body": {
+          "server_time": "2026-11-26T19:08:50.624806Z",
+          "entries": []
+        },
+        "completedAt": "2026-11-26T19:08:50.867Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:50.883Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "162c2a14-8f73-43fe-a983-26a547fd6338",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 14,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:05:21.918049Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:08:50.896Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages?after_seq=0&limit=100",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:50.922Z",
+        "emptyBody": false,
+        "body": {
+          "messages": [
+            {
+              "id": "9ec6881a-703d-41d6-832b-8fb839d29b20",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 1,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "QA: первое сообщение A → B",
+              "created_at": "2026-11-22T09:05:21.855357Z"
+            },
+            {
+              "id": "56c2badf-fdff-41fb-99a9-b44762c56556",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 2,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T50 UI 2026-11-25: проверка Later ✅",
+              "created_at": "2026-11-25T17:23:40.263743Z"
+            },
+            {
+              "id": "8b39a79c-2155-4c4a-b1bd-251bf2793663",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 3,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T50 UI 2026-11-25: ответ B → A ✅",
+              "created_at": "2026-11-25T17:32:39.749516Z"
+            },
+            {
+              "id": "c2555f15-85e0-4076-94f8-8268289d7f6e",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 4,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51 17:53:32 M1 A → B ✅",
+              "created_at": "2026-11-26T17:58:32.970248Z"
+            },
+            {
+              "id": "02b43132-7d71-43f4-8c57-74aec30cf62f",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 5,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51 17:53:32 M2 B → A ✅",
+              "created_at": "2026-11-26T18:00:14.354911Z"
+            },
+            {
+              "id": "d5f0ec0f-26ce-4b1b-ba96-8ddc9804da58",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 6,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M1 A → B ✅",
+              "created_at": "2026-11-26T18:33:50.111105Z"
+            },
+            {
+              "id": "20d35fd5-fb7f-4532-b89e-7257f565f758",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 7,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M2 B → A ✅",
+              "created_at": "2026-11-26T18:34:31.853232Z"
+            },
+            {
+              "id": "912536f2-769d-4d8f-82ab-f5e8c619558e",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 8,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M3 offline ✅",
+              "created_at": "2026-11-26T18:37:51.113801Z"
+            },
+            {
+              "id": "47e9f1e2-8121-460f-b6b3-03a956a76386",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 9,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M1 A → B ✅",
+              "created_at": "2026-11-26T18:45:34.243001Z"
+            },
+            {
+              "id": "9cdc10cc-04ab-4d5d-b644-4d8c3408994c",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 10,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M2 B → A ✅",
+              "created_at": "2026-11-26T18:46:21.108452Z"
+            },
+            {
+              "id": "c363c0d8-44e7-4cf2-ac19-1148fb618738",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 11,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M3 offline ✅",
+              "created_at": "2026-11-26T18:48:28.000261Z"
+            },
+            {
+              "id": "889a7cf5-0f07-4243-91f3-8e71b3fd055a",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 12,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M1 A → B ✅",
+              "created_at": "2026-11-26T19:04:52.962355Z"
+            },
+            {
+              "id": "a5472760-7f07-4fb1-96d1-2725c8840b7d",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 13,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M2 B → A ✅",
+              "created_at": "2026-11-26T19:04:53.269215Z"
+            },
+            {
+              "id": "162c2a14-8f73-43fe-a983-26a547fd6338",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 14,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M3 offline ✅",
+              "created_at": "2026-11-26T19:05:21.918049Z"
+            }
+          ],
+          "next_before_seq": 1,
+          "next_after_seq": 14,
+          "has_more_before": false,
+          "has_more_after": false
+        },
+        "completedAt": "2026-11-26T19:08:50.924Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:51.219Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "162c2a14-8f73-43fe-a983-26a547fd6338",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 14,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:05:21.918049Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:08:51.220Z"
+      },
+      {
+        "url": "/users/search?prefix=qa38_mwqa7f6q_b",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:52.150Z",
+        "emptyBody": false,
+        "body": {
+          "users": [
+            {
+              "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "username": "qa38_mwqa7f6q_b"
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:08:52.156Z"
+      },
+      {
+        "url": "/chats/personal",
+        "method": "POST",
+        "status": 200,
+        "at": "2026-11-26T19:08:52.708Z",
+        "emptyBody": false,
+        "body": {
+          "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+          "type": "personal",
+          "created_at": "2026-11-21T10:52:21.437936Z",
+          "members": [
+            {
+              "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "username": "qa38_mwqa7f6q_b"
+            },
+            {
+              "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "username": "qa38_mwqa7f6q_a"
+            }
+          ],
+          "last_seq": 14
+        },
+        "completedAt": "2026-11-26T19:08:52.717Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:52.739Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "162c2a14-8f73-43fe-a983-26a547fd6338",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 14,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:05:21.918049Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:08:52.742Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages?limit=50",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:52.761Z",
+        "emptyBody": false,
+        "body": {
+          "messages": [
+            {
+              "id": "9ec6881a-703d-41d6-832b-8fb839d29b20",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 1,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "QA: первое сообщение A → B",
+              "created_at": "2026-11-22T09:05:21.855357Z"
+            },
+            {
+              "id": "56c2badf-fdff-41fb-99a9-b44762c56556",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 2,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T50 UI 2026-11-25: проверка Later ✅",
+              "created_at": "2026-11-25T17:23:40.263743Z"
+            },
+            {
+              "id": "8b39a79c-2155-4c4a-b1bd-251bf2793663",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 3,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T50 UI 2026-11-25: ответ B → A ✅",
+              "created_at": "2026-11-25T17:32:39.749516Z"
+            },
+            {
+              "id": "c2555f15-85e0-4076-94f8-8268289d7f6e",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 4,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51 17:53:32 M1 A → B ✅",
+              "created_at": "2026-11-26T17:58:32.970248Z"
+            },
+            {
+              "id": "02b43132-7d71-43f4-8c57-74aec30cf62f",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 5,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51 17:53:32 M2 B → A ✅",
+              "created_at": "2026-11-26T18:00:14.354911Z"
+            },
+            {
+              "id": "d5f0ec0f-26ce-4b1b-ba96-8ddc9804da58",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 6,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M1 A → B ✅",
+              "created_at": "2026-11-26T18:33:50.111105Z"
+            },
+            {
+              "id": "20d35fd5-fb7f-4532-b89e-7257f565f758",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 7,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M2 B → A ✅",
+              "created_at": "2026-11-26T18:34:31.853232Z"
+            },
+            {
+              "id": "912536f2-769d-4d8f-82ab-f5e8c619558e",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 8,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M3 offline ✅",
+              "created_at": "2026-11-26T18:37:51.113801Z"
+            },
+            {
+              "id": "47e9f1e2-8121-460f-b6b3-03a956a76386",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 9,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M1 A → B ✅",
+              "created_at": "2026-11-26T18:45:34.243001Z"
+            },
+            {
+              "id": "9cdc10cc-04ab-4d5d-b644-4d8c3408994c",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 10,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M2 B → A ✅",
+              "created_at": "2026-11-26T18:46:21.108452Z"
+            },
+            {
+              "id": "c363c0d8-44e7-4cf2-ac19-1148fb618738",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 11,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M3 offline ✅",
+              "created_at": "2026-11-26T18:48:28.000261Z"
+            },
+            {
+              "id": "889a7cf5-0f07-4243-91f3-8e71b3fd055a",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 12,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M1 A → B ✅",
+              "created_at": "2026-11-26T19:04:52.962355Z"
+            },
+            {
+              "id": "a5472760-7f07-4fb1-96d1-2725c8840b7d",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 13,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M2 B → A ✅",
+              "created_at": "2026-11-26T19:04:53.269215Z"
+            },
+            {
+              "id": "162c2a14-8f73-43fe-a983-26a547fd6338",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 14,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M3 offline ✅",
+              "created_at": "2026-11-26T19:05:21.918049Z"
+            }
+          ],
+          "next_before_seq": 1,
+          "next_after_seq": 14,
+          "has_more_before": false,
+          "has_more_after": false
+        },
+        "completedAt": "2026-11-26T19:08:52.767Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/read",
+        "method": "POST",
+        "status": 204,
+        "at": "2026-11-26T19:08:52.789Z",
+        "emptyBody": true,
+        "completedAt": "2026-11-26T19:08:52.791Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:52.812Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "162c2a14-8f73-43fe-a983-26a547fd6338",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 14,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:05:21.918049Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:08:52.817Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:52.957Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "59057994-5284-4202-9313-dc92f9ae9d1b",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 15,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M1 A → B ✅",
+                "created_at": "2026-11-26T19:08:52.65891Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:08:52.966Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/read",
+        "method": "POST",
+        "status": 204,
+        "at": "2026-11-26T19:08:52.971Z",
+        "emptyBody": true,
+        "completedAt": "2026-11-26T19:08:52.973Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:52.995Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "59057994-5284-4202-9313-dc92f9ae9d1b",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 15,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M1 A → B ✅",
+                "created_at": "2026-11-26T19:08:52.65891Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:08:52.999Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:53.219Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "4f4b7225-a1b8-4364-aff6-4cd96c873aa0",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 16,
+                "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M2 B → A ✅",
+                "created_at": "2026-11-26T19:08:52.941969Z"
+              },
+              "unread_count": 1
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:08:53.227Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/read",
+        "method": "POST",
+        "status": 204,
+        "at": "2026-11-26T19:08:53.244Z",
+        "completedAt": "2026-11-26T19:08:53.283Z"
+      },
+      {
+        "url": "/auth/refresh",
+        "method": "POST",
+        "status": 200,
+        "at": "2026-11-26T19:08:53.445Z",
+        "completedAt": "2026-11-26T19:08:53.445Z"
+      },
+      {
+        "url": "/me",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:53.465Z",
+        "emptyBody": false,
+        "body": {
+          "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+          "username": "qa38_mwqa7f6q_a",
+          "created_at": "2026-11-21T10:47:33.684747Z"
+        },
+        "completedAt": "2026-11-26T19:08:53.474Z"
+      },
+      {
+        "url": "/later",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:53.504Z",
+        "emptyBody": false,
+        "body": {
+          "server_time": "2026-11-26T19:08:53.261512Z",
+          "entries": []
+        },
+        "completedAt": "2026-11-26T19:08:53.505Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:53.508Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "4f4b7225-a1b8-4364-aff6-4cd96c873aa0",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 16,
+                "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M2 B → A ✅",
+                "created_at": "2026-11-26T19:08:52.941969Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:08:53.517Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages?limit=50",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:53.509Z",
+        "emptyBody": false,
+        "body": {
+          "messages": [
+            {
+              "id": "9ec6881a-703d-41d6-832b-8fb839d29b20",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 1,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "QA: первое сообщение A → B",
+              "created_at": "2026-11-22T09:05:21.855357Z"
+            },
+            {
+              "id": "56c2badf-fdff-41fb-99a9-b44762c56556",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 2,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T50 UI 2026-11-25: проверка Later ✅",
+              "created_at": "2026-11-25T17:23:40.263743Z"
+            },
+            {
+              "id": "8b39a79c-2155-4c4a-b1bd-251bf2793663",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 3,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T50 UI 2026-11-25: ответ B → A ✅",
+              "created_at": "2026-11-25T17:32:39.749516Z"
+            },
+            {
+              "id": "c2555f15-85e0-4076-94f8-8268289d7f6e",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 4,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51 17:53:32 M1 A → B ✅",
+              "created_at": "2026-11-26T17:58:32.970248Z"
+            },
+            {
+              "id": "02b43132-7d71-43f4-8c57-74aec30cf62f",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 5,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51 17:53:32 M2 B → A ✅",
+              "created_at": "2026-11-26T18:00:14.354911Z"
+            },
+            {
+              "id": "d5f0ec0f-26ce-4b1b-ba96-8ddc9804da58",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 6,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M1 A → B ✅",
+              "created_at": "2026-11-26T18:33:50.111105Z"
+            },
+            {
+              "id": "20d35fd5-fb7f-4532-b89e-7257f565f758",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 7,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M2 B → A ✅",
+              "created_at": "2026-11-26T18:34:31.853232Z"
+            },
+            {
+              "id": "912536f2-769d-4d8f-82ab-f5e8c619558e",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 8,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M3 offline ✅",
+              "created_at": "2026-11-26T18:37:51.113801Z"
+            },
+            {
+              "id": "47e9f1e2-8121-460f-b6b3-03a956a76386",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 9,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M1 A → B ✅",
+              "created_at": "2026-11-26T18:45:34.243001Z"
+            },
+            {
+              "id": "9cdc10cc-04ab-4d5d-b644-4d8c3408994c",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 10,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M2 B → A ✅",
+              "created_at": "2026-11-26T18:46:21.108452Z"
+            },
+            {
+              "id": "c363c0d8-44e7-4cf2-ac19-1148fb618738",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 11,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M3 offline ✅",
+              "created_at": "2026-11-26T18:48:28.000261Z"
+            },
+            {
+              "id": "889a7cf5-0f07-4243-91f3-8e71b3fd055a",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 12,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M1 A → B ✅",
+              "created_at": "2026-11-26T19:04:52.962355Z"
+            },
+            {
+              "id": "a5472760-7f07-4fb1-96d1-2725c8840b7d",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 13,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M2 B → A ✅",
+              "created_at": "2026-11-26T19:04:53.269215Z"
+            },
+            {
+              "id": "162c2a14-8f73-43fe-a983-26a547fd6338",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 14,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M3 offline ✅",
+              "created_at": "2026-11-26T19:05:21.918049Z"
+            },
+            {
+              "id": "59057994-5284-4202-9313-dc92f9ae9d1b",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 15,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M1 A → B ✅",
+              "created_at": "2026-11-26T19:08:52.65891Z"
+            },
+            {
+              "id": "4f4b7225-a1b8-4364-aff6-4cd96c873aa0",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 16,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M2 B → A ✅",
+              "created_at": "2026-11-26T19:08:52.941969Z"
+            }
+          ],
+          "next_before_seq": 1,
+          "next_after_seq": 16,
+          "has_more_before": false,
+          "has_more_after": false
+        },
+        "completedAt": "2026-11-26T19:08:53.517Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages?after_seq=0&limit=100",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:53.556Z",
+        "emptyBody": false,
+        "body": {
+          "messages": [
+            {
+              "id": "9ec6881a-703d-41d6-832b-8fb839d29b20",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 1,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "QA: первое сообщение A → B",
+              "created_at": "2026-11-22T09:05:21.855357Z"
+            },
+            {
+              "id": "56c2badf-fdff-41fb-99a9-b44762c56556",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 2,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T50 UI 2026-11-25: проверка Later ✅",
+              "created_at": "2026-11-25T17:23:40.263743Z"
+            },
+            {
+              "id": "8b39a79c-2155-4c4a-b1bd-251bf2793663",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 3,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T50 UI 2026-11-25: ответ B → A ✅",
+              "created_at": "2026-11-25T17:32:39.749516Z"
+            },
+            {
+              "id": "c2555f15-85e0-4076-94f8-8268289d7f6e",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 4,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51 17:53:32 M1 A → B ✅",
+              "created_at": "2026-11-26T17:58:32.970248Z"
+            },
+            {
+              "id": "02b43132-7d71-43f4-8c57-74aec30cf62f",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 5,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51 17:53:32 M2 B → A ✅",
+              "created_at": "2026-11-26T18:00:14.354911Z"
+            },
+            {
+              "id": "d5f0ec0f-26ce-4b1b-ba96-8ddc9804da58",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 6,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M1 A → B ✅",
+              "created_at": "2026-11-26T18:33:50.111105Z"
+            },
+            {
+              "id": "20d35fd5-fb7f-4532-b89e-7257f565f758",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 7,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M2 B → A ✅",
+              "created_at": "2026-11-26T18:34:31.853232Z"
+            },
+            {
+              "id": "912536f2-769d-4d8f-82ab-f5e8c619558e",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 8,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M3 offline ✅",
+              "created_at": "2026-11-26T18:37:51.113801Z"
+            },
+            {
+              "id": "47e9f1e2-8121-460f-b6b3-03a956a76386",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 9,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M1 A → B ✅",
+              "created_at": "2026-11-26T18:45:34.243001Z"
+            },
+            {
+              "id": "9cdc10cc-04ab-4d5d-b644-4d8c3408994c",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 10,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M2 B → A ✅",
+              "created_at": "2026-11-26T18:46:21.108452Z"
+            },
+            {
+              "id": "c363c0d8-44e7-4cf2-ac19-1148fb618738",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 11,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M3 offline ✅",
+              "created_at": "2026-11-26T18:48:28.000261Z"
+            },
+            {
+              "id": "889a7cf5-0f07-4243-91f3-8e71b3fd055a",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 12,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M1 A → B ✅",
+              "created_at": "2026-11-26T19:04:52.962355Z"
+            },
+            {
+              "id": "a5472760-7f07-4fb1-96d1-2725c8840b7d",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 13,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M2 B → A ✅",
+              "created_at": "2026-11-26T19:04:53.269215Z"
+            },
+            {
+              "id": "162c2a14-8f73-43fe-a983-26a547fd6338",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 14,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M3 offline ✅",
+              "created_at": "2026-11-26T19:05:21.918049Z"
+            },
+            {
+              "id": "59057994-5284-4202-9313-dc92f9ae9d1b",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 15,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M1 A → B ✅",
+              "created_at": "2026-11-26T19:08:52.65891Z"
+            },
+            {
+              "id": "4f4b7225-a1b8-4364-aff6-4cd96c873aa0",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 16,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M2 B → A ✅",
+              "created_at": "2026-11-26T19:08:52.941969Z"
+            }
+          ],
+          "next_before_seq": 1,
+          "next_after_seq": 16,
+          "has_more_before": false,
+          "has_more_after": false
+        },
+        "completedAt": "2026-11-26T19:08:53.563Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/read",
+        "method": "POST",
+        "status": 204,
+        "at": "2026-11-26T19:08:53.564Z",
+        "emptyBody": true,
+        "completedAt": "2026-11-26T19:08:53.566Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:53.584Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "4f4b7225-a1b8-4364-aff6-4cd96c873aa0",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 16,
+                "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M2 B → A ✅",
+                "created_at": "2026-11-26T19:08:52.941969Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:08:53.587Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:21.846Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:09:21.852Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/read",
+        "method": "POST",
+        "status": 204,
+        "at": "2026-11-26T19:09:21.858Z",
+        "emptyBody": true,
+        "completedAt": "2026-11-26T19:09:21.861Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:21.881Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:09:21.887Z"
+      },
+      {
+        "url": "/later",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:23.529Z",
+        "emptyBody": false,
+        "body": {
+          "server_time": "2026-11-26T19:09:23.287134Z",
+          "entries": []
+        },
+        "completedAt": "2026-11-26T19:09:23.532Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:23.591Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:09:23.592Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages?after_seq=16&limit=100",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:23.613Z",
+        "emptyBody": false,
+        "body": {
+          "messages": [
+            {
+              "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 17,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+              "created_at": "2026-11-26T19:09:21.561695Z"
+            }
+          ],
+          "next_before_seq": 17,
+          "next_after_seq": 17,
+          "has_more_before": true,
+          "has_more_after": false
+        },
+        "completedAt": "2026-11-26T19:09:23.616Z"
+      },
+      {
+        "url": "/later",
+        "method": "POST",
+        "status": 201,
+        "at": "2026-11-26T19:09:51.723Z",
+        "emptyBody": false,
+        "body": {
+          "server_time": "2026-11-26T19:09:51.477086Z",
+          "entry": {
+            "id": "182d30c3-0282-4038-9fbb-d01514f017d0",
+            "message": {
+              "id": "4f4b7225-a1b8-4364-aff6-4cd96c873aa0",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 16,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M2 B → A ✅",
+              "created_at": "2026-11-26T19:08:52.941969Z"
+            },
+            "due_at": null,
+            "status": "unscheduled",
+            "created_at": "2026-11-26T19:09:51.475933Z",
+            "updated_at": "2026-11-26T19:09:51.475933Z"
+          }
+        },
+        "completedAt": "2026-11-26T19:09:51.727Z"
+      },
+      {
+        "url": "/later",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:53.562Z",
+        "emptyBody": false,
+        "body": {
+          "server_time": "2026-11-26T19:09:53.319222Z",
+          "entries": [
+            {
+              "id": "182d30c3-0282-4038-9fbb-d01514f017d0",
+              "message": {
+                "id": "4f4b7225-a1b8-4364-aff6-4cd96c873aa0",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 16,
+                "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M2 B → A ✅",
+                "created_at": "2026-11-26T19:08:52.941969Z"
+              },
+              "due_at": null,
+              "status": "unscheduled",
+              "created_at": "2026-11-26T19:09:51.475933Z",
+              "updated_at": "2026-11-26T19:09:51.475933Z"
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:09:53.566Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:53.640Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:09:53.642Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages?after_seq=17&limit=100",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:53.664Z",
+        "emptyBody": false,
+        "body": {
+          "messages": [],
+          "next_before_seq": null,
+          "next_after_seq": null,
+          "has_more_before": false,
+          "has_more_after": false
+        },
+        "completedAt": "2026-11-26T19:09:53.669Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:10:21.816Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:10:21.821Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages/4f4b7225-a1b8-4364-aff6-4cd96c873aa0/context?limit=50",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:10:21.825Z",
+        "emptyBody": false,
+        "body": {
+          "target_message_id": "4f4b7225-a1b8-4364-aff6-4cd96c873aa0",
+          "messages": [
+            {
+              "id": "9ec6881a-703d-41d6-832b-8fb839d29b20",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 1,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "QA: первое сообщение A → B",
+              "created_at": "2026-11-22T09:05:21.855357Z"
+            },
+            {
+              "id": "56c2badf-fdff-41fb-99a9-b44762c56556",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 2,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T50 UI 2026-11-25: проверка Later ✅",
+              "created_at": "2026-11-25T17:23:40.263743Z"
+            },
+            {
+              "id": "8b39a79c-2155-4c4a-b1bd-251bf2793663",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 3,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T50 UI 2026-11-25: ответ B → A ✅",
+              "created_at": "2026-11-25T17:32:39.749516Z"
+            },
+            {
+              "id": "c2555f15-85e0-4076-94f8-8268289d7f6e",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 4,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51 17:53:32 M1 A → B ✅",
+              "created_at": "2026-11-26T17:58:32.970248Z"
+            },
+            {
+              "id": "02b43132-7d71-43f4-8c57-74aec30cf62f",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 5,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51 17:53:32 M2 B → A ✅",
+              "created_at": "2026-11-26T18:00:14.354911Z"
+            },
+            {
+              "id": "d5f0ec0f-26ce-4b1b-ba96-8ddc9804da58",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 6,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M1 A → B ✅",
+              "created_at": "2026-11-26T18:33:50.111105Z"
+            },
+            {
+              "id": "20d35fd5-fb7f-4532-b89e-7257f565f758",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 7,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M2 B → A ✅",
+              "created_at": "2026-11-26T18:34:31.853232Z"
+            },
+            {
+              "id": "912536f2-769d-4d8f-82ab-f5e8c619558e",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 8,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M3 offline ✅",
+              "created_at": "2026-11-26T18:37:51.113801Z"
+            },
+            {
+              "id": "47e9f1e2-8121-460f-b6b3-03a956a76386",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 9,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M1 A → B ✅",
+              "created_at": "2026-11-26T18:45:34.243001Z"
+            },
+            {
+              "id": "9cdc10cc-04ab-4d5d-b644-4d8c3408994c",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 10,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M2 B → A ✅",
+              "created_at": "2026-11-26T18:46:21.108452Z"
+            },
+            {
+              "id": "c363c0d8-44e7-4cf2-ac19-1148fb618738",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 11,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M3 offline ✅",
+              "created_at": "2026-11-26T18:48:28.000261Z"
+            },
+            {
+              "id": "889a7cf5-0f07-4243-91f3-8e71b3fd055a",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 12,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M1 A → B ✅",
+              "created_at": "2026-11-26T19:04:52.962355Z"
+            },
+            {
+              "id": "a5472760-7f07-4fb1-96d1-2725c8840b7d",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 13,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M2 B → A ✅",
+              "created_at": "2026-11-26T19:04:53.269215Z"
+            },
+            {
+              "id": "162c2a14-8f73-43fe-a983-26a547fd6338",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 14,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M3 offline ✅",
+              "created_at": "2026-11-26T19:05:21.918049Z"
+            },
+            {
+              "id": "59057994-5284-4202-9313-dc92f9ae9d1b",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 15,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M1 A → B ✅",
+              "created_at": "2026-11-26T19:08:52.65891Z"
+            },
+            {
+              "id": "4f4b7225-a1b8-4364-aff6-4cd96c873aa0",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 16,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M2 B → A ✅",
+              "created_at": "2026-11-26T19:08:52.941969Z"
+            },
+            {
+              "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 17,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+              "created_at": "2026-11-26T19:09:21.561695Z"
+            }
+          ],
+          "next_before_seq": 1,
+          "next_after_seq": 17,
+          "has_more_before": false,
+          "has_more_after": false
+        },
+        "completedAt": "2026-11-26T19:10:21.834Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:10:21.841Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:10:21.846Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/read",
+        "method": "POST",
+        "status": 204,
+        "at": "2026-11-26T19:10:21.852Z",
+        "emptyBody": true,
+        "completedAt": "2026-11-26T19:10:21.853Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:10:21.874Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:10:21.883Z"
+      },
+      {
+        "url": "/later/182d30c3-0282-4038-9fbb-d01514f017d0/done",
+        "method": "POST",
+        "status": 204,
+        "at": "2026-11-26T19:10:22.007Z",
+        "emptyBody": true,
+        "completedAt": "2026-11-26T19:10:22.009Z"
+      },
+      {
+        "url": "/later",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:10:23.587Z",
+        "emptyBody": false,
+        "body": {
+          "server_time": "2026-11-26T19:10:23.34274Z",
+          "entries": []
+        },
+        "completedAt": "2026-11-26T19:10:23.588Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:10:23.695Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:10:23.697Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages?after_seq=17&limit=100",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:10:23.718Z",
+        "emptyBody": false,
+        "body": {
+          "messages": [],
+          "next_before_seq": null,
+          "next_after_seq": null,
+          "has_more_before": false,
+          "has_more_after": false
+        },
+        "completedAt": "2026-11-26T19:10:23.719Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:10:51.842Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:10:51.845Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:10:51.897Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:10:51.898Z"
+      },
+      {
+        "url": "/auth/logout",
+        "method": "POST",
+        "status": 204,
+        "at": "2026-11-26T19:10:51.915Z",
+        "emptyBody": true,
+        "completedAt": "2026-11-26T19:10:51.917Z"
+      },
+      {
+        "url": "/auth/refresh",
+        "method": "POST",
+        "status": 401,
+        "at": "2026-11-26T19:11:30.621Z",
+        "completedAt": "2026-11-26T19:11:30.621Z"
+      }
+    ],
+    "frames": [
+      {
+        "direction": "framesent",
+        "at": "2026-11-26T19:08:52.887Z",
+        "event": {
+          "type": "message.send",
+          "id": "0786ff79-034c-4f67-89d1-6a560678e573",
+          "ts": "2026-11-26T19:08:52.880Z",
+          "payload": {
+            "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+            "client_msg_id": "e0fa278b-3593-4a9d-87ed-a9a038d5db07",
+            "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M1 A → B ✅"
+          }
+        }
+      },
+      {
+        "direction": "framereceived",
+        "at": "2026-11-26T19:08:52.901Z",
+        "event": {
+          "type": "message.ack",
+          "id": "0786ff79-034c-4f67-89d1-6a560678e573",
+          "ts": "2026-11-26T19:08:52.660237077Z",
+          "payload": {
+            "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+            "client_msg_id": "e0fa278b-3593-4a9d-87ed-a9a038d5db07",
+            "message_id": "59057994-5284-4202-9313-dc92f9ae9d1b",
+            "seq": 15,
+            "created_at": "2026-11-26T19:08:52.65891Z"
+          }
+        }
+      },
+      {
+        "direction": "framereceived",
+        "at": "2026-11-26T19:08:52.919Z",
+        "event": {
+          "type": "message.new",
+          "id": "73469ce3-fd60-4bae-881c-31e6c8a061c7",
+          "ts": "2026-11-26T19:08:52.660271188Z",
+          "payload": {
+            "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+            "client_msg_id": "e0fa278b-3593-4a9d-87ed-a9a038d5db07",
+            "message_id": "59057994-5284-4202-9313-dc92f9ae9d1b",
+            "seq": 15,
+            "created_at": "2026-11-26T19:08:52.65891Z",
+            "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+            "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M1 A → B ✅"
+          }
+        }
+      },
+      {
+        "direction": "framereceived",
+        "at": "2026-11-26T19:08:53.184Z",
+        "event": {
+          "type": "message.new",
+          "id": "f193545f-a7bf-4d05-86f7-e5068826d99f",
+          "ts": "2026-11-26T19:08:52.943162888Z",
+          "payload": {
+            "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+            "client_msg_id": "ede73823-1882-48a6-8756-27d42daea822",
+            "message_id": "4f4b7225-a1b8-4364-aff6-4cd96c873aa0",
+            "seq": 16,
+            "created_at": "2026-11-26T19:08:52.941969Z",
+            "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+            "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M2 B → A ✅"
+          }
+        }
+      },
+      {
+        "direction": "framesent",
+        "at": "2026-11-26T19:09:21.790Z",
+        "event": {
+          "type": "message.send",
+          "id": "a588869c-55d7-4542-a37e-8457ae313ad1",
+          "ts": "2026-11-26T19:09:21.784Z",
+          "payload": {
+            "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+            "client_msg_id": "1026b76c-7718-4ef7-9d26-3a0da3adcded",
+            "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅"
+          }
+        }
+      },
+      {
+        "direction": "framereceived",
+        "at": "2026-11-26T19:09:21.806Z",
+        "event": {
+          "type": "message.ack",
+          "id": "a588869c-55d7-4542-a37e-8457ae313ad1",
+          "ts": "2026-11-26T19:09:21.563321001Z",
+          "payload": {
+            "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+            "client_msg_id": "1026b76c-7718-4ef7-9d26-3a0da3adcded",
+            "message_id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+            "seq": 17,
+            "created_at": "2026-11-26T19:09:21.561695Z"
+          }
+        }
+      },
+      {
+        "direction": "framereceived",
+        "at": "2026-11-26T19:09:21.806Z",
+        "event": {
+          "type": "message.new",
+          "id": "55495741-8498-414c-a711-582812309756",
+          "ts": "2026-11-26T19:09:21.563345023Z",
+          "payload": {
+            "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+            "client_msg_id": "1026b76c-7718-4ef7-9d26-3a0da3adcded",
+            "message_id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+            "seq": 17,
+            "created_at": "2026-11-26T19:09:21.561695Z",
+            "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+            "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅"
+          }
+        }
+      }
+    ],
+    "currentSocketAtLogout": {
+      "openedAt": "2026-11-26T19:08:53.518Z",
+      "closedAt": "2026-11-26T19:10:51.896Z"
+    },
+    "newSocketAttemptsAfterLogout": 0
+  },
+  "B": {
+    "handshakes": [
+      {
+        "at": "2026-11-26T19:08:51.550Z",
+        "status": 101,
+        "protocol": "messenger.v1"
+      },
+      {
+        "at": "2026-11-26T19:09:22.749Z",
+        "status": 101,
+        "protocol": "messenger.v1"
+      }
+    ],
+    "http": [
+      {
+        "url": "/auth/refresh",
+        "method": "POST",
+        "status": 401,
+        "at": "2026-11-26T19:08:48.922Z",
+        "completedAt": "2026-11-26T19:08:48.922Z"
+      },
+      {
+        "url": "/auth/login",
+        "method": "POST",
+        "status": 200,
+        "at": "2026-11-26T19:08:51.476Z",
+        "completedAt": "2026-11-26T19:08:51.476Z"
+      },
+      {
+        "url": "/me",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:51.494Z",
+        "emptyBody": false,
+        "body": {
+          "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+          "username": "qa38_mwqa7f6q_b",
+          "created_at": "2026-11-21T10:47:33.897475Z"
+        },
+        "completedAt": "2026-11-26T19:08:51.501Z"
+      },
+      {
+        "url": "/later",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:51.517Z",
+        "emptyBody": false,
+        "body": {
+          "server_time": "2026-11-26T19:08:51.275207Z",
+          "entries": []
+        },
+        "completedAt": "2026-11-26T19:08:51.520Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:51.523Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "162c2a14-8f73-43fe-a983-26a547fd6338",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 14,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:05:21.918049Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:08:51.545Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages?after_seq=0&limit=100",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:51.568Z",
+        "emptyBody": false,
+        "body": {
+          "messages": [
+            {
+              "id": "9ec6881a-703d-41d6-832b-8fb839d29b20",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 1,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "QA: первое сообщение A → B",
+              "created_at": "2026-11-22T09:05:21.855357Z"
+            },
+            {
+              "id": "56c2badf-fdff-41fb-99a9-b44762c56556",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 2,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T50 UI 2026-11-25: проверка Later ✅",
+              "created_at": "2026-11-25T17:23:40.263743Z"
+            },
+            {
+              "id": "8b39a79c-2155-4c4a-b1bd-251bf2793663",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 3,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T50 UI 2026-11-25: ответ B → A ✅",
+              "created_at": "2026-11-25T17:32:39.749516Z"
+            },
+            {
+              "id": "c2555f15-85e0-4076-94f8-8268289d7f6e",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 4,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51 17:53:32 M1 A → B ✅",
+              "created_at": "2026-11-26T17:58:32.970248Z"
+            },
+            {
+              "id": "02b43132-7d71-43f4-8c57-74aec30cf62f",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 5,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51 17:53:32 M2 B → A ✅",
+              "created_at": "2026-11-26T18:00:14.354911Z"
+            },
+            {
+              "id": "d5f0ec0f-26ce-4b1b-ba96-8ddc9804da58",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 6,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M1 A → B ✅",
+              "created_at": "2026-11-26T18:33:50.111105Z"
+            },
+            {
+              "id": "20d35fd5-fb7f-4532-b89e-7257f565f758",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 7,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M2 B → A ✅",
+              "created_at": "2026-11-26T18:34:31.853232Z"
+            },
+            {
+              "id": "912536f2-769d-4d8f-82ab-f5e8c619558e",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 8,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M3 offline ✅",
+              "created_at": "2026-11-26T18:37:51.113801Z"
+            },
+            {
+              "id": "47e9f1e2-8121-460f-b6b3-03a956a76386",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 9,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M1 A → B ✅",
+              "created_at": "2026-11-26T18:45:34.243001Z"
+            },
+            {
+              "id": "9cdc10cc-04ab-4d5d-b644-4d8c3408994c",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 10,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M2 B → A ✅",
+              "created_at": "2026-11-26T18:46:21.108452Z"
+            },
+            {
+              "id": "c363c0d8-44e7-4cf2-ac19-1148fb618738",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 11,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M3 offline ✅",
+              "created_at": "2026-11-26T18:48:28.000261Z"
+            },
+            {
+              "id": "889a7cf5-0f07-4243-91f3-8e71b3fd055a",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 12,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M1 A → B ✅",
+              "created_at": "2026-11-26T19:04:52.962355Z"
+            },
+            {
+              "id": "a5472760-7f07-4fb1-96d1-2725c8840b7d",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 13,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M2 B → A ✅",
+              "created_at": "2026-11-26T19:04:53.269215Z"
+            },
+            {
+              "id": "162c2a14-8f73-43fe-a983-26a547fd6338",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 14,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M3 offline ✅",
+              "created_at": "2026-11-26T19:05:21.918049Z"
+            }
+          ],
+          "next_before_seq": 1,
+          "next_after_seq": 14,
+          "has_more_before": false,
+          "has_more_after": false
+        },
+        "completedAt": "2026-11-26T19:08:51.570Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:51.833Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "162c2a14-8f73-43fe-a983-26a547fd6338",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 14,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:05:21.918049Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:08:51.834Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages?limit=50",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:52.816Z",
+        "emptyBody": false,
+        "body": {
+          "messages": [
+            {
+              "id": "9ec6881a-703d-41d6-832b-8fb839d29b20",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 1,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "QA: первое сообщение A → B",
+              "created_at": "2026-11-22T09:05:21.855357Z"
+            },
+            {
+              "id": "56c2badf-fdff-41fb-99a9-b44762c56556",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 2,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T50 UI 2026-11-25: проверка Later ✅",
+              "created_at": "2026-11-25T17:23:40.263743Z"
+            },
+            {
+              "id": "8b39a79c-2155-4c4a-b1bd-251bf2793663",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 3,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T50 UI 2026-11-25: ответ B → A ✅",
+              "created_at": "2026-11-25T17:32:39.749516Z"
+            },
+            {
+              "id": "c2555f15-85e0-4076-94f8-8268289d7f6e",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 4,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51 17:53:32 M1 A → B ✅",
+              "created_at": "2026-11-26T17:58:32.970248Z"
+            },
+            {
+              "id": "02b43132-7d71-43f4-8c57-74aec30cf62f",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 5,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51 17:53:32 M2 B → A ✅",
+              "created_at": "2026-11-26T18:00:14.354911Z"
+            },
+            {
+              "id": "d5f0ec0f-26ce-4b1b-ba96-8ddc9804da58",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 6,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M1 A → B ✅",
+              "created_at": "2026-11-26T18:33:50.111105Z"
+            },
+            {
+              "id": "20d35fd5-fb7f-4532-b89e-7257f565f758",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 7,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M2 B → A ✅",
+              "created_at": "2026-11-26T18:34:31.853232Z"
+            },
+            {
+              "id": "912536f2-769d-4d8f-82ab-f5e8c619558e",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 8,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M3 offline ✅",
+              "created_at": "2026-11-26T18:37:51.113801Z"
+            },
+            {
+              "id": "47e9f1e2-8121-460f-b6b3-03a956a76386",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 9,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M1 A → B ✅",
+              "created_at": "2026-11-26T18:45:34.243001Z"
+            },
+            {
+              "id": "9cdc10cc-04ab-4d5d-b644-4d8c3408994c",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 10,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M2 B → A ✅",
+              "created_at": "2026-11-26T18:46:21.108452Z"
+            },
+            {
+              "id": "c363c0d8-44e7-4cf2-ac19-1148fb618738",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 11,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M3 offline ✅",
+              "created_at": "2026-11-26T18:48:28.000261Z"
+            },
+            {
+              "id": "889a7cf5-0f07-4243-91f3-8e71b3fd055a",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 12,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M1 A → B ✅",
+              "created_at": "2026-11-26T19:04:52.962355Z"
+            },
+            {
+              "id": "a5472760-7f07-4fb1-96d1-2725c8840b7d",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 13,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M2 B → A ✅",
+              "created_at": "2026-11-26T19:04:53.269215Z"
+            },
+            {
+              "id": "162c2a14-8f73-43fe-a983-26a547fd6338",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 14,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M3 offline ✅",
+              "created_at": "2026-11-26T19:05:21.918049Z"
+            }
+          ],
+          "next_before_seq": 1,
+          "next_after_seq": 14,
+          "has_more_before": false,
+          "has_more_after": false
+        },
+        "completedAt": "2026-11-26T19:08:52.822Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/read",
+        "method": "POST",
+        "status": 204,
+        "at": "2026-11-26T19:08:52.844Z",
+        "emptyBody": true,
+        "completedAt": "2026-11-26T19:08:52.847Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:52.865Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "162c2a14-8f73-43fe-a983-26a547fd6338",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 14,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:05:21.918049Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:08:52.868Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:52.944Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "59057994-5284-4202-9313-dc92f9ae9d1b",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 15,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M1 A → B ✅",
+                "created_at": "2026-11-26T19:08:52.65891Z"
+              },
+              "unread_count": 1
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:08:52.952Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/read",
+        "method": "POST",
+        "status": 204,
+        "at": "2026-11-26T19:08:52.964Z",
+        "emptyBody": true,
+        "completedAt": "2026-11-26T19:08:52.969Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:52.984Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "59057994-5284-4202-9313-dc92f9ae9d1b",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 15,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M1 A → B ✅",
+                "created_at": "2026-11-26T19:08:52.65891Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:08:52.988Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:53.225Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "4f4b7225-a1b8-4364-aff6-4cd96c873aa0",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 16,
+                "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M2 B → A ✅",
+                "created_at": "2026-11-26T19:08:52.941969Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:08:53.231Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/read",
+        "method": "POST",
+        "status": 204,
+        "at": "2026-11-26T19:08:53.238Z",
+        "emptyBody": true,
+        "completedAt": "2026-11-26T19:08:53.244Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:08:53.267Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "4f4b7225-a1b8-4364-aff6-4cd96c873aa0",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 16,
+                "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M2 B → A ✅",
+                "created_at": "2026-11-26T19:08:52.941969Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:08:53.270Z"
+      },
+      {
+        "url": "/later",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:21.550Z",
+        "emptyBody": false,
+        "body": {
+          "server_time": "2026-11-26T19:09:21.305517Z",
+          "entries": []
+        },
+        "completedAt": "2026-11-26T19:09:21.551Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:21.595Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "4f4b7225-a1b8-4364-aff6-4cd96c873aa0",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 16,
+                "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M2 B → A ✅",
+                "created_at": "2026-11-26T19:08:52.941969Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:09:21.597Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages?after_seq=14&limit=100",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:21.615Z",
+        "emptyBody": false,
+        "body": {
+          "messages": [
+            {
+              "id": "59057994-5284-4202-9313-dc92f9ae9d1b",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 15,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M1 A → B ✅",
+              "created_at": "2026-11-26T19:08:52.65891Z"
+            },
+            {
+              "id": "4f4b7225-a1b8-4364-aff6-4cd96c873aa0",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 16,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M2 B → A ✅",
+              "created_at": "2026-11-26T19:08:52.941969Z"
+            }
+          ],
+          "next_before_seq": 15,
+          "next_after_seq": 16,
+          "has_more_before": true,
+          "has_more_after": false
+        },
+        "completedAt": "2026-11-26T19:09:21.616Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:22.769Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 1
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:09:22.771Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages?after_seq=16&limit=100",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:22.788Z",
+        "emptyBody": false,
+        "body": {
+          "messages": [
+            {
+              "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 17,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+              "created_at": "2026-11-26T19:09:21.561695Z"
+            }
+          ],
+          "next_before_seq": 17,
+          "next_after_seq": 17,
+          "has_more_before": true,
+          "has_more_after": false
+        },
+        "completedAt": "2026-11-26T19:09:22.791Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages?limit=50",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:22.987Z",
+        "emptyBody": false,
+        "body": {
+          "messages": [
+            {
+              "id": "9ec6881a-703d-41d6-832b-8fb839d29b20",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 1,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "QA: первое сообщение A → B",
+              "created_at": "2026-11-22T09:05:21.855357Z"
+            },
+            {
+              "id": "56c2badf-fdff-41fb-99a9-b44762c56556",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 2,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T50 UI 2026-11-25: проверка Later ✅",
+              "created_at": "2026-11-25T17:23:40.263743Z"
+            },
+            {
+              "id": "8b39a79c-2155-4c4a-b1bd-251bf2793663",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 3,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T50 UI 2026-11-25: ответ B → A ✅",
+              "created_at": "2026-11-25T17:32:39.749516Z"
+            },
+            {
+              "id": "c2555f15-85e0-4076-94f8-8268289d7f6e",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 4,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51 17:53:32 M1 A → B ✅",
+              "created_at": "2026-11-26T17:58:32.970248Z"
+            },
+            {
+              "id": "02b43132-7d71-43f4-8c57-74aec30cf62f",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 5,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51 17:53:32 M2 B → A ✅",
+              "created_at": "2026-11-26T18:00:14.354911Z"
+            },
+            {
+              "id": "d5f0ec0f-26ce-4b1b-ba96-8ddc9804da58",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 6,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M1 A → B ✅",
+              "created_at": "2026-11-26T18:33:50.111105Z"
+            },
+            {
+              "id": "20d35fd5-fb7f-4532-b89e-7257f565f758",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 7,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M2 B → A ✅",
+              "created_at": "2026-11-26T18:34:31.853232Z"
+            },
+            {
+              "id": "912536f2-769d-4d8f-82ab-f5e8c619558e",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 8,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R2 2026-11-26T18:31:30.280Z M3 offline ✅",
+              "created_at": "2026-11-26T18:37:51.113801Z"
+            },
+            {
+              "id": "47e9f1e2-8121-460f-b6b3-03a956a76386",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 9,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M1 A → B ✅",
+              "created_at": "2026-11-26T18:45:34.243001Z"
+            },
+            {
+              "id": "9cdc10cc-04ab-4d5d-b644-4d8c3408994c",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 10,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M2 B → A ✅",
+              "created_at": "2026-11-26T18:46:21.108452Z"
+            },
+            {
+              "id": "c363c0d8-44e7-4cf2-ac19-1148fb618738",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 11,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "T51-R3 2026-11-26T18:42:46.563Z M3 offline ✅",
+              "created_at": "2026-11-26T18:48:28.000261Z"
+            },
+            {
+              "id": "889a7cf5-0f07-4243-91f3-8e71b3fd055a",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 12,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M1 A → B ✅",
+              "created_at": "2026-11-26T19:04:52.962355Z"
+            },
+            {
+              "id": "a5472760-7f07-4fb1-96d1-2725c8840b7d",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 13,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M2 B → A ✅",
+              "created_at": "2026-11-26T19:04:53.269215Z"
+            },
+            {
+              "id": "162c2a14-8f73-43fe-a983-26a547fd6338",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 14,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-04-46-238Z-c432616-playwright M3 offline ✅",
+              "created_at": "2026-11-26T19:05:21.918049Z"
+            },
+            {
+              "id": "59057994-5284-4202-9313-dc92f9ae9d1b",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 15,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M1 A → B ✅",
+              "created_at": "2026-11-26T19:08:52.65891Z"
+            },
+            {
+              "id": "4f4b7225-a1b8-4364-aff6-4cd96c873aa0",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 16,
+              "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+              "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M2 B → A ✅",
+              "created_at": "2026-11-26T19:08:52.941969Z"
+            },
+            {
+              "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+              "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "seq": 17,
+              "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+              "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+              "created_at": "2026-11-26T19:09:21.561695Z"
+            }
+          ],
+          "next_before_seq": 1,
+          "next_after_seq": 17,
+          "has_more_before": false,
+          "has_more_after": false
+        },
+        "completedAt": "2026-11-26T19:09:22.989Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/read",
+        "method": "POST",
+        "status": 204,
+        "at": "2026-11-26T19:09:23.007Z",
+        "emptyBody": true,
+        "completedAt": "2026-11-26T19:09:23.008Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:23.027Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:09:23.031Z"
+      },
+      {
+        "url": "/later",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:51.591Z",
+        "emptyBody": false,
+        "body": {
+          "server_time": "2026-11-26T19:09:51.346545Z",
+          "entries": []
+        },
+        "completedAt": "2026-11-26T19:09:51.592Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:51.796Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:09:51.798Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:51.819Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:09:51.820Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:52.817Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:09:52.818Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages?after_seq=17&limit=100",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:09:52.836Z",
+        "emptyBody": false,
+        "body": {
+          "messages": [],
+          "next_before_seq": null,
+          "next_after_seq": null,
+          "has_more_before": false,
+          "has_more_after": false
+        },
+        "completedAt": "2026-11-26T19:09:52.837Z"
+      },
+      {
+        "url": "/later",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:10:21.622Z",
+        "emptyBody": false,
+        "body": {
+          "server_time": "2026-11-26T19:10:21.379063Z",
+          "entries": []
+        },
+        "completedAt": "2026-11-26T19:10:21.624Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:10:22.063Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:10:22.064Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:10:22.087Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:10:22.089Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:10:22.869Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:10:22.871Z"
+      },
+      {
+        "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages?after_seq=17&limit=100",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:10:22.890Z",
+        "emptyBody": false,
+        "body": {
+          "messages": [],
+          "next_before_seq": null,
+          "next_after_seq": null,
+          "has_more_before": false,
+          "has_more_after": false
+        },
+        "completedAt": "2026-11-26T19:10:22.891Z"
+      },
+      {
+        "url": "/later",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:10:51.644Z",
+        "emptyBody": false,
+        "body": {
+          "server_time": "2026-11-26T19:10:51.401914Z",
+          "entries": []
+        },
+        "completedAt": "2026-11-26T19:10:51.645Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:10:51.983Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:10:51.989Z"
+      },
+      {
+        "url": "/chats",
+        "method": "GET",
+        "status": 200,
+        "at": "2026-11-26T19:10:52.004Z",
+        "emptyBody": false,
+        "body": {
+          "chats": [
+            {
+              "id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+              "type": "personal",
+              "created_at": "2026-11-21T10:52:21.437936Z",
+              "members": [
+                {
+                  "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+                  "username": "qa38_mwqa7f6q_b"
+                },
+                {
+                  "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                  "username": "qa38_mwqa7f6q_a"
+                }
+              ],
+              "last_message": {
+                "id": "e810fe52-2d1e-4e40-98d5-b1371b4256ce",
+                "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+                "seq": 17,
+                "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+                "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M3 offline ✅",
+                "created_at": "2026-11-26T19:09:21.561695Z"
+              },
+              "unread_count": 0
+            }
+          ]
+        },
+        "completedAt": "2026-11-26T19:10:52.006Z"
+      },
+      {
+        "url": "/auth/logout",
+        "method": "POST",
+        "status": 204,
+        "at": "2026-11-26T19:10:52.044Z",
+        "emptyBody": true,
+        "completedAt": "2026-11-26T19:10:52.046Z"
+      },
+      {
+        "url": "/auth/refresh",
+        "method": "POST",
+        "status": 401,
+        "at": "2026-11-26T19:11:30.598Z",
+        "completedAt": "2026-11-26T19:11:30.598Z"
+      }
+    ],
+    "frames": [
+      {
+        "direction": "framereceived",
+        "at": "2026-11-26T19:08:52.903Z",
+        "event": {
+          "type": "message.new",
+          "id": "73469ce3-fd60-4bae-881c-31e6c8a061c7",
+          "ts": "2026-11-26T19:08:52.660271188Z",
+          "payload": {
+            "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+            "client_msg_id": "e0fa278b-3593-4a9d-87ed-a9a038d5db07",
+            "message_id": "59057994-5284-4202-9313-dc92f9ae9d1b",
+            "seq": 15,
+            "created_at": "2026-11-26T19:08:52.65891Z",
+            "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+            "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M1 A → B ✅"
+          }
+        }
+      },
+      {
+        "direction": "framesent",
+        "at": "2026-11-26T19:08:53.170Z",
+        "event": {
+          "type": "message.send",
+          "id": "35a439aa-e379-4ccd-af91-f81d66c64bfd",
+          "ts": "2026-11-26T19:08:53.164Z",
+          "payload": {
+            "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+            "client_msg_id": "ede73823-1882-48a6-8756-27d42daea822",
+            "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M2 B → A ✅"
+          }
+        }
+      },
+      {
+        "direction": "framereceived",
+        "at": "2026-11-26T19:08:53.184Z",
+        "event": {
+          "type": "message.ack",
+          "id": "35a439aa-e379-4ccd-af91-f81d66c64bfd",
+          "ts": "2026-11-26T19:08:52.943128897Z",
+          "payload": {
+            "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+            "client_msg_id": "ede73823-1882-48a6-8756-27d42daea822",
+            "message_id": "4f4b7225-a1b8-4364-aff6-4cd96c873aa0",
+            "seq": 16,
+            "created_at": "2026-11-26T19:08:52.941969Z"
+          }
+        }
+      },
+      {
+        "direction": "framereceived",
+        "at": "2026-11-26T19:08:53.190Z",
+        "event": {
+          "type": "message.new",
+          "id": "f193545f-a7bf-4d05-86f7-e5068826d99f",
+          "ts": "2026-11-26T19:08:52.943162888Z",
+          "payload": {
+            "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+            "client_msg_id": "ede73823-1882-48a6-8756-27d42daea822",
+            "message_id": "4f4b7225-a1b8-4364-aff6-4cd96c873aa0",
+            "seq": 16,
+            "created_at": "2026-11-26T19:08:52.941969Z",
+            "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+            "body": "smoke-2026-11-26T19-08-47-005Z-c432616-playwright M2 B → A ✅"
+          }
+        }
+      }
+    ],
+    "currentSocketAtLogout": {
+      "openedAt": "2026-11-26T19:09:22.729Z",
+      "closedAt": "2026-11-26T19:10:52.030Z"
+    },
+    "newSocketAttemptsAfterLogout": 0
+  }
+}
