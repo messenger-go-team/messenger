@@ -1,0 +1,1031 @@
+{
+  "build": {
+    "environment": "https://staging.tidingm.ru/app/",
+    "backendShaFromSuccessfulCD": "2ac007c10ec9da0d1d5dddab51a5a9ef1d2008f5",
+    "frontendArtifactSha": "2ac007c10ec9da0d1d5dddab51a5a9ef1d2008f5",
+    "artifactId": 15193668103,
+    "artifactZipSha256": "ac8b15d9a586a7060f42dce931fb7b95d321a4fa76bddfea5a7eda7772412433",
+    "chromeVersion": "158.0.8127.37",
+    "chromeResourceHashesMatch": {
+      "/app/": {
+        "sha256": "847160dc14129727ccb520bea7645a942f1d116c9d0377bb7aebb942d541daf3",
+        "bytes": 399,
+        "status": 200,
+        "at": "2026-11-27T15:36:52.469Z"
+      },
+      "/app/assets/index-DF-66hO3.css": {
+        "sha256": "e714043d172858217c0479ad7cdb28d88773dffd7c8c13f9f063335ce8cbdd47",
+        "bytes": 43452,
+        "status": 200,
+        "at": "2026-11-27T15:36:52.783Z"
+      },
+      "/app/assets/index-DmWDrCWx.js": {
+        "sha256": "beee9eff0d096b4df5858a722efe3c3cadd929015c1a15c5883cc61341967535",
+        "bytes": 494606,
+        "status": 200,
+        "at": "2026-11-27T15:36:52.953Z"
+      }
+    },
+    "inAppBrowserResourcePaths": [
+      "/app/assets/index-DmWDrCWx.js",
+      "/app/assets/index-DF-66hO3.css"
+    ]
+  },
+  "sourceStats": [
+    {
+      "name": "Auth",
+      "from": "2026-11-27T15:34:36.288Z",
+      "to": "2026-11-27T15:37:14.512Z",
+      "httpRequests": 61,
+      "caseGroups": [
+        "AUTH-01",
+        "AUTH-05",
+        "AUTH-02",
+        "AUTH-03",
+        "AUTH-04",
+        "AUTH-07",
+        "AUTH-09",
+        "AUTH-06",
+        "AUTH-14"
+      ]
+    },
+    {
+      "name": "History/WS/Unread/Later",
+      "from": "2026-11-27T15:40:59.561Z",
+      "to": "2026-11-27T15:41:15.657Z",
+      "httpRequests": 83,
+      "caseGroups": [
+        "CONTACT-02",
+        "CONTACT-04",
+        "CHAT-01",
+        "UNREAD-01",
+        "UNREAD-02",
+        "UNREAD-05",
+        "UNREAD-08",
+        "UNREAD-09",
+        "CHAT-03",
+        "MSG-03",
+        "MSG-01",
+        "WS-02",
+        "LATER-15"
+      ]
+    },
+    {
+      "name": "Pagination/Context",
+      "from": "2026-11-27T16:02:32.158Z",
+      "to": "2026-11-27T16:03:39.711Z",
+      "httpRequests": 27,
+      "caseGroups": [
+        "HIST-02",
+        "LATER-13",
+        "LATER-14"
+      ]
+    },
+    {
+      "name": "Auth/Later retest",
+      "from": "2026-11-27T20:44:57.325Z",
+      "to": "2026-11-27T20:44:58.767Z",
+      "httpRequests": 25,
+      "caseGroups": [
+        "AUTH-05",
+        "LATER-06",
+        "LATER-07"
+      ]
+    }
+  ],
+  "passedCases": {
+    "AUTH-01": {
+      "fact": "Регистрация 201 без сессии и отдельный вход 200 с access и refresh-cookie.",
+      "from": "2026-11-27T15:34:36.301Z",
+      "to": "2026-11-27T15:34:37.721Z",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/auth/register",
+          "status": 201,
+          "requestId": "AMRZHJATRNEZ5RNUF63WZKAI6Q"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 200,
+          "requestId": "VR4HTCXPL66NMND5DD6F37BEJV"
+        },
+        {
+          "method": "GET",
+          "path": "/me",
+          "status": 200,
+          "requestId": "HFVY37KOCFBQZ4TS73ZJZBAU5W"
+        }
+      ]
+    },
+    "AUTH-05": {
+      "fact": "Оба регистра логина дали тот же профиль. Два отказа 401 совпали по code и message, credentials не выданы.",
+      "from": "2026-11-27T20:44:57.328Z",
+      "to": "2026-11-27T20:44:58.286Z",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 200,
+          "requestId": "BNON5MVFJQUPR77M3BEXQ4SGXW"
+        },
+        {
+          "method": "GET",
+          "path": "/me",
+          "status": 200,
+          "requestId": "WIUAZHNCKSFPIIPBM2WMV7VCBH"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 200,
+          "requestId": "CFVXK5OSN7NTRUQR5MTEHXKI7N"
+        },
+        {
+          "method": "GET",
+          "path": "/me",
+          "status": 200,
+          "requestId": "4HML2VZZHKMD2CGQ2SA7EGLFFV"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 401,
+          "requestId": "26SE7BK2ZKOAAO4MHR2SBFBPKI"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 401,
+          "requestId": "GVMQD7RKMWPMDD7CYYUVHIP7XZ"
+        }
+      ]
+    },
+    "AUTH-14": {
+      "fact": "14 невалидных вариантов login дали 422. Успешный вход, пустой 204 logout, два отказа 401.",
+      "from": "2026-11-27T15:36:24.630Z",
+      "to": "2026-11-27T15:36:57.446Z",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 422,
+          "requestId": "6OUO4ANE4ZYYHJ2OB2HYGJXZ2Z"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 422,
+          "requestId": "A4TJR2GOD3ZPU3SDGXGCCHNCTC"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 422,
+          "requestId": "I2MGVSVQSCPQ4JHV44IRZBAFL4"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 422,
+          "requestId": "KYJQYQD7CAJPY6CVPPIKTQ2SPU"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 422,
+          "requestId": "Q6QFJTXTDQOEOHCICLGGK43M7W"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 422,
+          "requestId": "KNNLAXYZFRT2THVIGNBMDEAXEL"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 422,
+          "requestId": "XF6MPG4PURQBPU6YRPW5VVT2AV"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 422,
+          "requestId": "4BJYYFUUUKGIEL4YTAMHRDR5EH"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 422,
+          "requestId": "EQWW4HXBTNHTE4YU44FKH45VZK"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 422,
+          "requestId": "FPX4P5FZXQ6JJTOSTMCK33YJ5H"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 422,
+          "requestId": "ZJN337EXA5XGINMDAS6IFYW5LP"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 422,
+          "requestId": "U6AFDCMTSUQUMHDZX6PPTTFK62"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 422,
+          "requestId": "CA6ZWWEXKHA7XRDYZFVOTFDW5A"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 422,
+          "requestId": "BFPU3JCFTC6DCEMZ3UWZPHWV34"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "status": 200,
+          "requestId": "WTZOXMZSA2G7ETUNOWFUB27GQM"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/logout",
+          "status": 204,
+          "requestId": "GLSJY3SYL6MYZEZETIXGIZ3PDV"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/logout",
+          "status": 401,
+          "requestId": "VLEW6QSTULNMEJUBN4ECYL7C7C"
+        },
+        {
+          "method": "POST",
+          "path": "/auth/logout",
+          "status": 401,
+          "requestId": "KQ6OKCI2JDZAMIWD5OQA3K2XZK"
+        }
+      ]
+    },
+    "WS-02": {
+      "fact": "Проверены границы 1/4095/4096/4097, пробельные строки и сохранение Unicode.",
+      "from": "2026-11-27T15:41:13.177Z",
+      "to": "2026-11-27T15:41:14.457Z",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/chats/050026dd-ae0d-4353-9ce9-7b7f781a5750/messages",
+          "status": 200,
+          "requestId": "EPBMPHQ75RVLMMBSEDRGIQWAW6"
+        },
+        {
+          "method": "GET",
+          "path": "/chats/050026dd-ae0d-4353-9ce9-7b7f781a5750/messages",
+          "status": 200,
+          "requestId": "ST2SOA7FJDV4MZZHP7OMDHP5ZV"
+        },
+        {
+          "method": "GET",
+          "path": "/chats/050026dd-ae0d-4353-9ce9-7b7f781a5750/messages",
+          "status": 200,
+          "requestId": "LPDOQKLB5VJATR7UQQCOSUPXVM"
+        },
+        {
+          "method": "GET",
+          "path": "/chats/050026dd-ae0d-4353-9ce9-7b7f781a5750/messages",
+          "status": 200,
+          "requestId": "P5UMGQPXGRPMUU4QWWVODEX3RY"
+        },
+        {
+          "method": "GET",
+          "path": "/chats/050026dd-ae0d-4353-9ce9-7b7f781a5750/messages",
+          "status": 200,
+          "requestId": "AWZRNVUKOVMJHV5E7JPKJHATSM"
+        }
+      ],
+      "ws": [
+        {
+          "at": "2026-11-27T15:41:13.177Z",
+          "role": "a",
+          "direction": "sent",
+          "type": "message.send",
+          "id": "ef8834ea-b818-494f-b94e-977ec0f190d1",
+          "chatId": "050026dd-ae0d-4353-9ce9-7b7f781a5750",
+          "clientMsgId": "b22f0749-660f-4d88-9510-4b9145a3ac48",
+          "bodyCodePoints": 1
+        },
+        {
+          "at": "2026-11-27T15:41:13.239Z",
+          "role": "a",
+          "direction": "received",
+          "type": "message.ack",
+          "id": "ef8834ea-b818-494f-b94e-977ec0f190d1",
+          "chatId": "050026dd-ae0d-4353-9ce9-7b7f781a5750",
+          "clientMsgId": "b22f0749-660f-4d88-9510-4b9145a3ac48",
+          "messageId": "68cdeb91-11e5-4406-b258-538438557bd7",
+          "seq": 7
+        },
+        {
+          "at": "2026-11-27T15:41:13.345Z",
+          "role": "a",
+          "direction": "sent",
+          "type": "message.send",
+          "id": "fa24b132-2d5f-4956-b7c8-50646ce7cebd",
+          "chatId": "050026dd-ae0d-4353-9ce9-7b7f781a5750",
+          "clientMsgId": "05b5d2a5-a1e1-4294-b7a8-e33c2cde9657",
+          "bodyCodePoints": 4095
+        },
+        {
+          "at": "2026-11-27T15:41:13.455Z",
+          "role": "a",
+          "direction": "received",
+          "type": "message.ack",
+          "id": "fa24b132-2d5f-4956-b7c8-50646ce7cebd",
+          "chatId": "050026dd-ae0d-4353-9ce9-7b7f781a5750",
+          "clientMsgId": "05b5d2a5-a1e1-4294-b7a8-e33c2cde9657",
+          "messageId": "e9d24eb2-967b-42e0-9100-79cc38a9854d",
+          "seq": 8
+        },
+        {
+          "at": "2026-11-27T15:41:13.575Z",
+          "role": "a",
+          "direction": "sent",
+          "type": "message.send",
+          "id": "dba6811d-0909-46ba-8101-afb2f794f28f",
+          "chatId": "050026dd-ae0d-4353-9ce9-7b7f781a5750",
+          "clientMsgId": "e179e41a-2835-4602-bde8-cb6b62b1539b",
+          "bodyCodePoints": 4096
+        },
+        {
+          "at": "2026-11-27T15:41:13.670Z",
+          "role": "a",
+          "direction": "received",
+          "type": "message.ack",
+          "id": "dba6811d-0909-46ba-8101-afb2f794f28f",
+          "chatId": "050026dd-ae0d-4353-9ce9-7b7f781a5750",
+          "clientMsgId": "e179e41a-2835-4602-bde8-cb6b62b1539b",
+          "messageId": "402c5390-35ed-485c-8748-6421682c51a2",
+          "seq": 9
+        },
+        {
+          "at": "2026-11-27T15:41:13.751Z",
+          "role": "a",
+          "direction": "sent",
+          "type": "message.send",
+          "id": "ba8b4b1b-d473-453a-8c05-2cc725c9bc59",
+          "chatId": "050026dd-ae0d-4353-9ce9-7b7f781a5750",
+          "clientMsgId": "771e83f7-1de1-4a03-aeb2-502a932d03bd",
+          "bodyCodePoints": 14
+        },
+        {
+          "at": "2026-11-27T15:41:13.820Z",
+          "role": "a",
+          "direction": "received",
+          "type": "message.ack",
+          "id": "ba8b4b1b-d473-453a-8c05-2cc725c9bc59",
+          "chatId": "050026dd-ae0d-4353-9ce9-7b7f781a5750",
+          "clientMsgId": "771e83f7-1de1-4a03-aeb2-502a932d03bd",
+          "messageId": "733738c6-040c-4a2c-9e35-ee3669f664ec",
+          "seq": 10
+        },
+        {
+          "at": "2026-11-27T15:41:13.935Z",
+          "role": "a",
+          "direction": "sent",
+          "type": "message.send",
+          "id": "85b52947-dbb1-4bd2-a5a2-d47f19ca17f2",
+          "chatId": "050026dd-ae0d-4353-9ce9-7b7f781a5750",
+          "clientMsgId": "3db4eb44-c8c2-459e-bbdf-4f99b574c220",
+          "bodyCodePoints": 15
+        },
+        {
+          "at": "2026-11-27T15:41:13.998Z",
+          "role": "a",
+          "direction": "received",
+          "type": "message.ack",
+          "id": "85b52947-dbb1-4bd2-a5a2-d47f19ca17f2",
+          "chatId": "050026dd-ae0d-4353-9ce9-7b7f781a5750",
+          "clientMsgId": "3db4eb44-c8c2-459e-bbdf-4f99b574c220",
+          "messageId": "f94c7615-0e7b-4893-a15e-5604ced229d0",
+          "seq": 11
+        },
+        {
+          "at": "2026-11-27T15:41:14.127Z",
+          "role": "a",
+          "direction": "sent",
+          "type": "message.send",
+          "id": "ff2b64fd-8195-4d77-a8ac-06399ccec28e",
+          "chatId": "050026dd-ae0d-4353-9ce9-7b7f781a5750",
+          "clientMsgId": "64fdacc0-8834-4ff2-a570-de5fa21ec375",
+          "bodyCodePoints": 0
+        },
+        {
+          "at": "2026-11-27T15:41:14.224Z",
+          "role": "a",
+          "direction": "received",
+          "type": "error",
+          "id": "ff2b64fd-8195-4d77-a8ac-06399ccec28e",
+          "clientMsgId": "64fdacc0-8834-4ff2-a570-de5fa21ec375",
+          "code": "invalid_payload"
+        },
+        {
+          "at": "2026-11-27T15:41:14.254Z",
+          "role": "a",
+          "direction": "sent",
+          "type": "message.send",
+          "id": "e0cecbe6-cd6f-42b5-8f1f-970428565290",
+          "chatId": "050026dd-ae0d-4353-9ce9-7b7f781a5750",
+          "clientMsgId": "06eb33ae-c8d1-490d-bdf7-6826d337d3a0",
+          "bodyCodePoints": 3
+        },
+        {
+          "at": "2026-11-27T15:41:14.337Z",
+          "role": "a",
+          "direction": "received",
+          "type": "error",
+          "id": "e0cecbe6-cd6f-42b5-8f1f-970428565290",
+          "clientMsgId": "06eb33ae-c8d1-490d-bdf7-6826d337d3a0",
+          "code": "invalid_payload"
+        },
+        {
+          "at": "2026-11-27T15:41:14.363Z",
+          "role": "a",
+          "direction": "sent",
+          "type": "message.send",
+          "id": "f5bf8d21-2fda-41d3-8283-2eb257d67edc",
+          "chatId": "050026dd-ae0d-4353-9ce9-7b7f781a5750",
+          "clientMsgId": "306b34fc-005e-43b0-b17b-0fbef32ff0df",
+          "bodyCodePoints": 4097
+        },
+        {
+          "at": "2026-11-27T15:41:14.454Z",
+          "role": "a",
+          "direction": "received",
+          "type": "error",
+          "id": "f5bf8d21-2fda-41d3-8283-2eb257d67edc",
+          "clientMsgId": "306b34fc-005e-43b0-b17b-0fbef32ff0df",
+          "code": "invalid_payload"
+        }
+      ]
+    },
+    "MSG-03": {
+      "fact": "Изменённое тело отклонено, ключи другого отправителя и другого чата независимы.",
+      "from": "2026-11-27T15:41:12.536Z",
+      "to": "2026-11-27T15:41:12.960Z",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/chats/personal",
+          "status": 201,
+          "requestId": "73VJZW47EXFVFJTJI42R3TJR6B"
+        }
+      ],
+      "ws": [
+        {
+          "at": "2026-11-27T15:41:12.537Z",
+          "role": "a",
+          "direction": "sent",
+          "type": "message.send",
+          "id": "da729b92-708e-499f-8f2f-57878f7846de",
+          "chatId": "050026dd-ae0d-4353-9ce9-7b7f781a5750",
+          "clientMsgId": "61d5a0e1-764c-4275-a074-430b6885afdc",
+          "bodyCodePoints": 13
+        },
+        {
+          "at": "2026-11-27T15:41:12.595Z",
+          "role": "a",
+          "direction": "received",
+          "type": "message.ack",
+          "id": "da729b92-708e-499f-8f2f-57878f7846de",
+          "chatId": "050026dd-ae0d-4353-9ce9-7b7f781a5750",
+          "clientMsgId": "61d5a0e1-764c-4275-a074-430b6885afdc",
+          "messageId": "b4e39606-4dd2-4065-9980-84c1cc4fd43e",
+          "seq": 4
+        },
+        {
+          "at": "2026-11-27T15:41:12.602Z",
+          "role": "a",
+          "direction": "sent",
+          "type": "message.send",
+          "id": "186afc25-7ba7-4243-807a-0d3f220eed26",
+          "chatId": "050026dd-ae0d-4353-9ce9-7b7f781a5750",
+          "clientMsgId": "61d5a0e1-764c-4275-a074-430b6885afdc",
+          "bodyCodePoints": 12
+        },
+        {
+          "at": "2026-11-27T15:41:12.647Z",
+          "role": "a",
+          "direction": "received",
+          "type": "error",
+          "id": "186afc25-7ba7-4243-807a-0d3f220eed26",
+          "clientMsgId": "61d5a0e1-764c-4275-a074-430b6885afdc",
+          "code": "idempotency_conflict"
+        },
+        {
+          "at": "2026-11-27T15:41:12.664Z",
+          "role": "b",
+          "direction": "sent",
+          "type": "message.send",
+          "id": "a7e6c7e4-bb2d-4b2c-bf59-e7ddcd674fcf",
+          "chatId": "050026dd-ae0d-4353-9ce9-7b7f781a5750",
+          "clientMsgId": "61d5a0e1-764c-4275-a074-430b6885afdc",
+          "bodyCodePoints": 18
+        },
+        {
+          "at": "2026-11-27T15:41:12.722Z",
+          "role": "b",
+          "direction": "received",
+          "type": "message.ack",
+          "id": "a7e6c7e4-bb2d-4b2c-bf59-e7ddcd674fcf",
+          "chatId": "050026dd-ae0d-4353-9ce9-7b7f781a5750",
+          "clientMsgId": "61d5a0e1-764c-4275-a074-430b6885afdc",
+          "messageId": "0429af69-cbf2-4442-a1bf-963f79977b10",
+          "seq": 5
+        },
+        {
+          "at": "2026-11-27T15:41:12.828Z",
+          "role": "a",
+          "direction": "sent",
+          "type": "message.send",
+          "id": "68286a60-b714-4d27-8a13-89e0ffe2763f",
+          "chatId": "5f04deac-a9b9-461c-aa26-adf7767cd491",
+          "clientMsgId": "61d5a0e1-764c-4275-a074-430b6885afdc",
+          "bodyCodePoints": 16
+        },
+        {
+          "at": "2026-11-27T15:41:12.935Z",
+          "role": "a",
+          "direction": "received",
+          "type": "message.ack",
+          "id": "68286a60-b714-4d27-8a13-89e0ffe2763f",
+          "chatId": "5f04deac-a9b9-461c-aa26-adf7767cd491",
+          "clientMsgId": "61d5a0e1-764c-4275-a074-430b6885afdc",
+          "messageId": "bd70e67f-0c58-4c5e-b552-c1f8d839c37e",
+          "seq": 1
+        }
+      ]
+    },
+    "CONTACT-02": {
+      "fact": "Повторы и конкурентные PUT оставили одну запись, списки других пользователей прежние, DELETE идемпотентен.",
+      "from": "2026-11-27T15:41:00.633Z",
+      "to": "2026-11-27T15:41:02.987Z",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/contacts",
+          "status": 200,
+          "requestId": "3XHA3RBVZDVKDF3EBNXHC65U5V"
+        },
+        {
+          "method": "GET",
+          "path": "/contacts",
+          "status": 200,
+          "requestId": "ADDMIHVRBCEW63RZUZENDS4TAZ"
+        },
+        {
+          "method": "PUT",
+          "path": "/contacts/20d86956-3715-412f-9726-b2135dfbdbe0",
+          "status": 204,
+          "requestId": "DOORZO3XODBFA6J2DJ5LIVSQF5"
+        },
+        {
+          "method": "PUT",
+          "path": "/contacts/20d86956-3715-412f-9726-b2135dfbdbe0",
+          "status": 204,
+          "requestId": "FIDJSP5QF3W7W4TJAOM4BWVAA5"
+        },
+        {
+          "method": "GET",
+          "path": "/contacts",
+          "status": 200,
+          "requestId": "TWHA2AKLQXUSQY463UZ7G2SPPC"
+        },
+        {
+          "method": "GET",
+          "path": "/contacts",
+          "status": 200,
+          "requestId": "S4542BIU2CGMBKLNUF4CXMQMCM"
+        },
+        {
+          "method": "GET",
+          "path": "/contacts",
+          "status": 200,
+          "requestId": "WH7D3RY6AJ33RBZGJISI2MLSIZ"
+        },
+        {
+          "method": "DELETE",
+          "path": "/contacts/20d86956-3715-412f-9726-b2135dfbdbe0",
+          "status": 204,
+          "requestId": "ADQV4WZ3LYXD7DFEQ2SIE3R6SQ"
+        },
+        {
+          "method": "DELETE",
+          "path": "/contacts/20d86956-3715-412f-9726-b2135dfbdbe0",
+          "status": 204,
+          "requestId": "XIWKTXMM2MNEG2WH5ZOJFBFJSJ"
+        },
+        {
+          "method": "PUT",
+          "path": "/contacts/08b710c1-c14e-4356-ae4d-fa62ff8dfc73",
+          "status": 204,
+          "requestId": "GFFE4EZMAS4ZZCUHR445J6KFLQ"
+        },
+        {
+          "method": "PUT",
+          "path": "/contacts/08b710c1-c14e-4356-ae4d-fa62ff8dfc73",
+          "status": 204,
+          "requestId": "YORCZBHLXEZLB636NE46TZDFTB"
+        },
+        {
+          "method": "GET",
+          "path": "/contacts",
+          "status": 200,
+          "requestId": "II52PQHWEBE7ZB2SPRAYHXLMM5"
+        },
+        {
+          "method": "DELETE",
+          "path": "/contacts/08b710c1-c14e-4356-ae4d-fa62ff8dfc73",
+          "status": 204,
+          "requestId": "PB7WTYDQK4CAJPTWAT4P3NBM7T"
+        }
+      ]
+    },
+    "LATER-06": {
+      "fact": "Save 201/200/200 с одним ID. Два параллельных Save новой цели дали 201 и 200, активна одна запись со сроком обновления.",
+      "from": "2026-11-27T20:44:58.287Z",
+      "to": "2026-11-27T20:44:58.552Z",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/chats/f1bcafb9-f11a-4859-9fb2-e21dbb6d716b/messages",
+          "status": 200,
+          "requestId": "VFTYLQRWNOXX5GANVMG6UGPPPR"
+        },
+        {
+          "method": "GET",
+          "path": "/later",
+          "status": 200,
+          "requestId": "DRJGVYMUC65772QOC4BLCWONAM"
+        },
+        {
+          "method": "POST",
+          "path": "/later",
+          "status": 201,
+          "requestId": "PPAY5LI7O7NIZN546QVGMJCCDY"
+        },
+        {
+          "method": "POST",
+          "path": "/later",
+          "status": 200,
+          "requestId": "5ER2LMITXH3HYD64GA6Q5IMFVY"
+        },
+        {
+          "method": "POST",
+          "path": "/later",
+          "status": 200,
+          "requestId": "KSTXO5POVGCVF2226HY3UODF3W"
+        },
+        {
+          "method": "GET",
+          "path": "/later",
+          "status": 200,
+          "requestId": "LJHJMAZWEGDAZN73OO5ZGSMSLE"
+        },
+        {
+          "method": "POST",
+          "path": "/later",
+          "status": 201,
+          "requestId": "FGCJYENSOACUFOKO5KFZKF64TD"
+        },
+        {
+          "method": "POST",
+          "path": "/later",
+          "status": 200,
+          "requestId": "FZAQFRVD2BXAMNXEZGL44TFY7F"
+        },
+        {
+          "method": "GET",
+          "path": "/later",
+          "status": 200,
+          "requestId": "EQLKZSSKHR3TN3TGWN5N2QUEFX"
+        },
+        {
+          "method": "POST",
+          "path": "/later/1366574e-2c54-48e7-aeea-9d2538c174be/done",
+          "status": 204,
+          "requestId": "LAEVQUBSLQJPQVJBC5B4CMF25H"
+        },
+        {
+          "method": "POST",
+          "path": "/later/600de428-2e65-4c7b-9c58-10bec1d13afd/done",
+          "status": 204,
+          "requestId": "TOSW7JWTM476AMEQNE73FQZ3GB"
+        }
+      ]
+    },
+    "LATER-07": {
+      "fact": "PATCH изменил срок и updated_at с сохранением ID и created_at. GET подтвердил scheduled, unscheduled и due.",
+      "from": "2026-11-27T20:44:58.552Z",
+      "to": "2026-11-27T20:44:58.726Z",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/later",
+          "status": 201,
+          "requestId": "HALCGDO42FSTCOL24DN42NM2DB"
+        },
+        {
+          "method": "PATCH",
+          "path": "/later/2e60ec21-c63d-4fee-b2e2-f0cd8df7f98f",
+          "status": 200,
+          "requestId": "O43SKFNUFIQ2HCKPQDCVSMYFW5"
+        },
+        {
+          "method": "GET",
+          "path": "/later",
+          "status": 200,
+          "requestId": "ABB63NOXVDJBEY5ZHJ3JVBVXQP"
+        },
+        {
+          "method": "PATCH",
+          "path": "/later/2e60ec21-c63d-4fee-b2e2-f0cd8df7f98f",
+          "status": 200,
+          "requestId": "R5PNA2CAUWHWZ7DAFXDAVCFCOX"
+        },
+        {
+          "method": "GET",
+          "path": "/later",
+          "status": 200,
+          "requestId": "HNPKXDEERPFV5UA6JO6CNRANKD"
+        },
+        {
+          "method": "PATCH",
+          "path": "/later/2e60ec21-c63d-4fee-b2e2-f0cd8df7f98f",
+          "status": 200,
+          "requestId": "6HAD4HL5CGC4N5JKEMH4QZLGPR"
+        },
+        {
+          "method": "GET",
+          "path": "/later",
+          "status": 200,
+          "requestId": "S3PAKWRCZCD6TVERVV2T2R3HWC"
+        },
+        {
+          "method": "POST",
+          "path": "/later/2e60ec21-c63d-4fee-b2e2-f0cd8df7f98f/done",
+          "status": 204,
+          "requestId": "3FBRVA6XZBOV63OE7MHIBCQSFA"
+        }
+      ]
+    }
+  },
+  "partialCases": {
+    "AUTH-02": "Границы имени и алфавит проверены, отсутствие отклонённых записей отдельно не сверено.",
+    "AUTH-03": "Проверены обязательные поля, типы, лишнее свойство и длины 7/8. Уточнить объём проверки длинных и Unicode-паролей.",
+    "AUTH-04": "Оба запроса с уже зарегистрированным именем дали 409. Осталась гонка регистрации и проверка одной строки в БД.",
+    "AUTH-06": "Валидный, отсутствующий и повреждённый токены проверены. Остались подписанные варианты claims и граница exp.",
+    "AUTH-07": "Ротация и повтор R1/R2 проверены. Осталась проверка закрытого журнала Auth.",
+    "AUTH-09": "API подтвердил logout и отзыв старого refresh. Остались browser jar, закрытие WS и окно без reconnect.",
+    "AUTH-10": "В Chrome подтверждены HttpOnly, Secure, Lax, Path=/auth и недоступность refresh для JS. Осталась проверка удаления cookie браузером при logout.",
+    "CHAT-01": "POST вернул 201, повтор и обращение второй стороны вернули 200 с тем же ID. Остались конкурентный вызов и проверка БД.",
+    "CHAT-03": "Чужой GET дал 403, WS-попытки отклонены, история прежде и после совпала. Осталась прямая сверка last_seq.",
+    "WS-03": "Четыре строки отображены буквально до и после reload без выполнения HTML/JS. Отдельный вариант живой доставки в открытом чате не зафиксирован.",
+    "MSG-01": "Повтор вернул совпадающий payload ack, история содержит один ID. Остались контролируемая потеря ack, reconnect и UI.",
+    "HIST-02": "История из 401 сообщения прочитана страницами 100/100/100/100/1 без дублей. Осталась полная матрица 0/1/100/101/250 и обратное чтение.",
+    "CONTACT-04": "Проверены отказы для собственного ID, отсутствующего пользователя и невалидных параметров. Осталось истечение access.",
+    "CONTACT-06": "Локальный поиск по подстроке сохранил результат в обоих регистрах. Остался совместный набор локального и глобального совпадений.",
+    "CONTACT-07": "Очистка восстановила локальные строки. Остался задержанный ответ и сверка отсутствия пустого GET поиска.",
+    "CONTACT-10": "Собственный аккаунт исключён. Тестовый контакт отображался одной строкой с действием «Удалить». Осталась сверка ID обоих сетевых ответов на одном наборе.",
+    "CONTACT-11": "Из контактов и поиска открыты две разные пары. Повтор вернул тот же ID в каждом источнике, поиск не добавил контакт. HTTP 201/200 и тела запросов этих четырёх действий не записаны.",
+    "CONTACT-12": "После удаления тестового контакта сохранились прежний чат, история и возможность отправить новое сообщение. Осталась сверка ответов и доставки в обе стороны в одной попытке.",
+    "CONTACT-14": "«Никого не нашли» при запросе, контакты снова видны после очистки. Осталось состояние полностью пустой учётки.",
+    "CONTACT-15": "Поиск на 360/768/1440 и один переход Tab без переполнения страницы. Остались все состояния, действия и полный клавиатурный маршрут.",
+    "UNREAD-01": "Два чужих сообщения учтены, своё исключено. Осталась полная проверка отдельных чатов.",
+    "UNREAD-02": "GET истории не изменил счётчик. Осталась браузерная предзагрузка.",
+    "UNREAD-05": "Повтор и запоздалый меньший seq не увеличили счётчик в короткой фикстуре. Остались две вкладки, точные seq и прямая сверка курсора.",
+    "UNREAD-08": "Проверена часть отказов и неизменность списка. Остались лишнее поле и валидные 0/5 на требуемой фикстуре.",
+    "UNREAD-09": "Наблюдались 403, 401 и 404. Остались истёкший access и прямая сверка состояния.",
+    "LATER-02": "В UI сохранён будущий срок. Осталась сверка запроса UTC и пресета «Через час».",
+    "LATER-08": "Запись исчезла после Done и reload. Остались повтор Done, новая запись и запоздалый Done прежнего ID.",
+    "LATER-09": "В открытом приложении после свежего GET с due показано напоминание. Осталось совместить таймер срока и polling.",
+    "LATER-10": "После закрытия до срока и открытия после срока показано напоминание. Переход и ответ наблюдались, Done сохранился после reload. HTTP POST/GET/Done этого сеанса не записаны.",
+    "LATER-13": "На 401 сообщении проверены окна context. Отдельно UI загрузил отсутствующую на текущей странице цель. Остались два прогона UI-пагинации и WS-дубль на требуемой фикстуре.",
+    "LATER-14": "Проверены крайние окна API с курсорами и флагами. Остались одиночная история, UI и отрицательные параметры.",
+    "LATER-15": "Save/PATCH/Done не раскрыли запись в проверенных списках и сокете второго аккаунта. Остались непосредственная сверка курсора и полная матрица обеих сторон.",
+    "WEB-01": "Проверена раскладка экрана поиска контактов на трёх ширинах. Остались другие экраны и варианты.",
+    "WEB-02": "Зафиксирован Tab из поиска к кнопке контакта. Остался полный маршрут форм и чата с ошибками и повтором."
+  },
+  "laterReopen": {
+    "dueAt": "2026-11-27T16:04:00Z",
+    "messageId": "2666d052-6e51-4ec1-a2db-6d7cc27b7bfc",
+    "timeline": [
+      {
+        "at": "2026-11-27T16:00:32.042Z",
+        "step": "before-close",
+        "url": "https://staging.tidingm.ru/app/later",
+        "observed": "ЗАПЛАНИРОВАНО; 19:04; exact QA request visible. Time committed using keyboard arrows."
+      },
+      {
+        "at": "2026-11-27T16:00:32.068Z",
+        "step": "app-tab-closed"
+      },
+      {
+        "at": "2026-11-27T16:04:12.442Z",
+        "step": "reopened-after-due",
+        "url": "https://staging.tidingm.ru/app/"
+      },
+      {
+        "at": "2026-11-27T16:04:33.126Z",
+        "step": "reminder-visible-after-reopen",
+        "headingVisible": true,
+        "dueLocal": "19:04"
+      },
+      {
+        "at": "2026-11-27T16:05:04.662Z",
+        "step": "target-opened-from-reminder",
+        "targetCount": 1
+      },
+      {
+        "at": "2026-11-27T16:05:47.160Z",
+        "step": "cold-chat-before-context",
+        "targetInChat": 0,
+        "latestReplyInChat": 1
+      },
+      {
+        "at": "2026-11-27T16:06:01.825Z",
+        "step": "old-target-opened-from-later",
+        "targetInChat": 1
+      },
+      {
+        "at": "2026-11-27T16:06:33.038Z",
+        "step": "done-result",
+        "entryLinkCount": 0
+      },
+      {
+        "at": "2026-11-27T16:06:40.099Z",
+        "step": "after-done-reload",
+        "empty": true,
+        "entryLinkCount": 0
+      }
+    ],
+    "latestPageBeforeReply": {
+      "at": "2026-11-27T16:01:46.884Z",
+      "targetSeq": 1,
+      "firstSeq": 22,
+      "lastSeq": 71
+    },
+    "recipientEntryAbsentFromSenderListWhileActiveAt": "2026-11-27T16:01:47.247Z",
+    "openApp": {
+      "savedHttp": 201,
+      "dueAt": "2026-11-27T15:47:00Z",
+      "dueReadAt": "2026-11-27T15:47:00.172Z",
+      "reminderObservedAt": "2026-11-27T15:48:55.971Z"
+    }
+  },
+  "contacts": {
+    "browser": [
+      {
+        "at": "2026-11-27T16:11:50.860Z",
+        "step": "qa-contact-added",
+        "writeButtons": 1,
+        "removeButtons": 1,
+        "addButtons": 0
+      },
+      {
+        "at": "2026-11-27T16:12:07.318Z",
+        "step": "local-substring",
+        "removeButtons": 1
+      },
+      {
+        "at": "2026-11-27T16:12:29.793Z",
+        "step": "local-substring-uppercase",
+        "removeButtons": 1
+      },
+      {
+        "at": "2026-11-27T16:12:36.155Z",
+        "step": "no-match",
+        "qaWriteButtons": 0
+      },
+      {
+        "at": "2026-11-27T16:12:45.257Z",
+        "step": "clear-restores-contact",
+        "qaRemoveButtons": 1
+      },
+      {
+        "at": "2026-11-27T16:12:45.978Z",
+        "step": "existing-chat-from-contact",
+        "chat": "d51f9178-9835-4e86-b03b-7b91608194d2"
+      },
+      {
+        "at": "2026-11-27T16:12:54.308Z",
+        "step": "qa-contact-removed",
+        "qaRemoveButtons": 0
+      },
+      {
+        "at": "2026-11-27T16:13:05.622Z",
+        "step": "chat-after-contact-delete",
+        "chat": "d51f9178-9835-4e86-b03b-7b91608194d2",
+        "oldReplyCount": 1,
+        "newReplyCount": 1
+      }
+    ],
+    "chatOpening": {
+      "contactChatId": "0a040b6e-7e3a-4d8e-9658-ed97c70a6b9e",
+      "searchChatId": "aa60355f-de7e-4183-ba9c-c8ba00100423",
+      "timestamps": [
+        "2026-11-27T20:39:01.084Z",
+        "2026-11-27T20:39:12.873Z",
+        "2026-11-27T20:39:21.185Z"
+      ],
+      "pathReusedFromContact": true,
+      "pathReusedFromSearch": true,
+      "searchPeerWasNotAdded": true,
+      "temporaryContactRemoved": true,
+      "ownAccountExcludedAt": "2026-11-27T20:38:52.678Z"
+    }
+  },
+  "responsive": [
+    {
+      "at": "2026-11-27T16:14:30.342Z",
+      "page": "contacts-search",
+      "expectedWidth": 360,
+      "innerWidth": 360,
+      "clientWidth": 360,
+      "scrollWidth": 360,
+      "addVisible": true,
+      "writeVisible": true,
+      "visuallyInspected": true
+    },
+    {
+      "at": "2026-11-27T16:14:40.061Z",
+      "page": "contacts-search",
+      "expectedWidth": 768,
+      "innerWidth": 768,
+      "clientWidth": 768,
+      "scrollWidth": 768,
+      "addVisible": true,
+      "writeVisible": true,
+      "visuallyInspected": true
+    },
+    {
+      "at": "2026-11-27T16:15:14.325Z",
+      "page": "contacts-search",
+      "expectedWidth": 1440,
+      "innerWidth": 1440,
+      "clientWidth": 1440,
+      "scrollWidth": 1440,
+      "addVisible": true,
+      "writeVisible": true,
+      "visuallyInspected": true
+    }
+  ],
+  "keyboard": {
+    "at": "2026-11-27T16:15:40.208Z",
+    "action": "Tab from searchbox",
+    "visibleFocusObserved": true
+  },
+  "literalText": [
+    {
+      "at": "2026-11-27T16:09:41.232Z",
+      "phase": "before-reload",
+      "dialog": false,
+      "activeImages": 0,
+      "activeScripts": 0,
+      "literalVariantCounts": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "at": "2026-11-27T16:09:52.198Z",
+      "phase": "after-reload",
+      "dialog": false,
+      "activeImages": 0,
+      "activeScripts": 0,
+      "literalVariantCounts": [
+        1,
+        1,
+        1,
+        1
+      ]
+    }
+  ],
+  "totals": {
+    "Passed": 8,
+    "Failed": 0,
+    "Blocked": 30,
+    "Not run": 53
+  }
+}
