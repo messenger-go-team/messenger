@@ -61,7 +61,11 @@ func newServiceHandler(ready *atomic.Bool, logger *slog.Logger, ws *wsEndpoint, 
 		Name: "chat_active_websocket_connections",
 		Help: "Number of WebSocket connections registered in the Chat hub.",
 	}, func() float64 { return float64(ws.hub.size()) })
-	mux.Handle("GET /metrics", metrics.NewHandler(connections, ws.sendRejections))
+	collectors := []prometheus.Collector{connections, ws.sendRejections}
+	if ws.redis != nil {
+		collectors = append(collectors, ws.redis.Collectors()...)
+	}
+	mux.Handle("GET /metrics", metrics.NewHandler(collectors...))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeHealth(w, r, http.StatusOK, "{\"status\":\"ok\"}\n")
 	})
@@ -75,7 +79,7 @@ func newServiceHandler(ready *atomic.Bool, logger *slog.Logger, ws *wsEndpoint, 
 			})
 			available = err == nil && result.GetStatus() == healthpb.HealthCheckResponse_SERVING
 		}
-		if !available || !ready.Load() {
+		if !available || !ready.Load() || (ws.redis != nil && !ws.redis.Ready()) {
 			writeHealth(w, r, http.StatusServiceUnavailable, "{\"status\":\"not_ready\"}\n")
 			return
 		}
