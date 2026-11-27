@@ -38,6 +38,8 @@ type wsEndpoint struct {
 	historyTimeout time.Duration
 	sendLimiter    *sendLimiter
 	sendRejections prometheus.Counter
+	receiptLimiter *sendLimiter
+	receiptSlots   chan struct{}
 	logger         *slog.Logger
 
 	mu     sync.Mutex
@@ -67,6 +69,8 @@ func newWSEndpoint(cfg config, ready *atomic.Bool, timing wsTiming,
 		history:        history,
 		historyTimeout: cfg.HistoryRPCTimeout,
 		sendLimiter:    newSendLimiter(cfg.SendInterval, cfg.SendBurst, time.Now),
+		receiptLimiter: newSendLimiter(wsReceiptInterval, wsReceiptBurst, time.Now),
+		receiptSlots:   make(chan struct{}, wsReceiptConcurrency),
 		sendRejections: prometheus.NewCounter(prometheus.CounterOpts{
 			Name:        "chat_ws_message_send_rejected_total",
 			Help:        "Number of valid message.send commands rejected by Chat before calling History.",
