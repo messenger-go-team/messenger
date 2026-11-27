@@ -47,7 +47,9 @@ if [[ $origin != http://127.0.0.1:* && $origin != https://127.0.0.1:* ]]; then
     [[ -S $socket ]] || die 'QA rootless socket is unavailable'
     unset DOCKER_CONTEXT DOCKER_TLS_VERIFY DOCKER_CERT_PATH
     export DOCKER_HOST="unix://$socket"
-    docker info --format '{{range .SecurityOptions}}{{println .}}{{end}}' | grep -qx name=rootless \
+    security=$(docker info --format '{{range .SecurityOptions}}{{println .}}{{end}}') \
+        || die 'unable to query the QA Docker daemon'
+    grep -Fxq 'name=rootless' <<<"$security" \
         || die 'the VPS project requires its dedicated rootless Docker daemon'
 fi
 
