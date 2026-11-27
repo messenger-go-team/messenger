@@ -1,0 +1,98 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: api-fixture-only
+    volumes:
+      - ../../docs/qa/api-tests/init.sql:/docker-entrypoint-initdb.d/01-api.sql:ro
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  init:
+    build:
+      context: ../..
+      dockerfile: docs/qa/api-tests/Dockerfile
+      target: go-build
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: '5432'
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: api-fixture-only
+      POSTGRES_SSLMODE: disable
+      AUTH_DATABASE_URL: postgres://postgres:api-fixture-only@postgres:5432/api_auth?sslmode=disable
+      HISTORY_DATABASE_URL: postgres://postgres:api-fixture-only@postgres:5432/api_history?sslmode=disable
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        POSTGRES_DB=api_auth /migrate -service=auth -direction=up
+        POSTGRES_DB=api_history /migrate -service=history -direction=up
+        /api-fixture grants
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  auth:
+    build:
+      context: ../..
+      dockerfile: services/auth/Dockerfile
+    environment:
+      AUTH_DATABASE_URL: postgres://api_auth_runtime:api-auth-runtime-only@postgres:5432/api_auth?sslmode=disable
+      AUTH_INTERNAL_TOKEN: e2e-internal-test-only-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      JWT_SECRET: e2e-jwt-test-only-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  history:
+    build:
+      context: ../..
+      dockerfile: services/history/Dockerfile
+    environment:
+      HISTORY_DATABASE_URL: postgres://api_history_runtime:api-history-runtime-only@postgres:5432/api_history?sslmode=disable
+      AUTH_BASE_URL: http://auth:8080
+      AUTH_INTERNAL_TOKEN: e2e-internal-test-only-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      JWT_SECRET: e2e-jwt-test-only-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  chat:
+    build:
+      context: ../..
+      dockerfile: services/chat/Dockerfile
+    environment:
+      HISTORY_GRPC_ADDR: history:9090
+      JWT_SECRET: e2e-jwt-test-only-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      WS_ALLOWED_ORIGINS: http://e2e-gateway
+    depends_on:
+      history:
+        condition: service_started
+
+  gateway:
+    build:
+      context: ../..
+      dockerfile: qa/e2e/web.Dockerfile
+    ports:
+      - "127.0.0.1::8080"
+    depends_on:
+      - auth
+      - history
+      - chat
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          wget -q -O /dev/null http://auth:8080/readyz &&
+          wget -q -O /dev/null http://history:8080/readyz &&
+          wget -q -O /dev/null http://chat:8080/readyz &&
+          wget -q -O /dev/null http://127.0.0.1:8080/app/
+      interval: 2s
+      timeout: 5s
+      retries: 30
