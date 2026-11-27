@@ -9,6 +9,7 @@ import { AuthContext, type AuthContextValue } from '@/features/auth/auth-context
 import { LaterPage } from '@/features/later/LaterPage'
 import { LaterRemindersProvider } from '@/features/later/LaterRemindersProvider'
 import { expectScrollChainWithinViewport } from '@/test/scrollChain'
+import { expectMainTabs } from '@/test/mainTabs'
 import { server } from '../../../mocks/server'
 import { seedLaterMocks } from '../../../mocks/handlers/later'
 
@@ -71,6 +72,14 @@ describe('LaterPage', () => {
     const auth = await authValue()
     renderLater(auth)
     expect(await screen.findByText('Пока пусто')).toBeInTheDocument()
+  })
+
+  it('shows all main tabs with Важно current', async () => {
+    seedLaterMocks([])
+    const auth = await authValue()
+    renderLater(auth)
+    await screen.findByRole('heading', { name: 'Важно' })
+    expectMainTabs('Важно')
   })
 
   it('keeps the Important list scrollable inside the viewport on mobile (min-h-0 chain)', async () => {

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import type { User } from '@/api/auth'
+import { expectMainTabs } from '@/test/mainTabs'
 import { AuthContext, type AuthContextValue } from '@/features/auth/auth-context'
 import { ProfilePage } from '@/features/profile/ProfilePage'
 
@@ -40,6 +41,11 @@ function renderProfile(logout: AuthContextValue['logout'] = vi.fn(async () => un
 }
 
 describe('ProfilePage', () => {
+  it('shows all main tabs including Важно', () => {
+    renderProfile()
+    expectMainTabs(null)
+  })
+
   it('shows username and logout confirmation dialog', async () => {
     const { user, logout } = renderProfile()
 

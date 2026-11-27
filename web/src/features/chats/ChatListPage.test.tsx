@@ -19,6 +19,7 @@ import { WsProvider } from '@/features/ws/WsProvider'
 import { useWs } from '@/features/ws/useWs'
 import { MockWebSocketServer } from '@/ws/mock/server'
 import { expectScrollChainWithinViewport } from '@/test/scrollChain'
+import { expectMainTabs } from '@/test/mainTabs'
 import { server } from '../../../mocks/server'
 import { addUser } from '../../../mocks/data/auth'
 import { INITIAL_CHAT_ID } from '../../../mocks/data/history'
@@ -515,6 +516,18 @@ describe('ChatListPage', () => {
     expect(listPane?.className ?? '').toMatch(/\bhidden\b/)
     // Split list+thread only at desktop (lg); tablet is list OR thread like Figma.
     expect(listPane?.className ?? '').toMatch(/\blg:flex\b/)
+  })
+
+  it('shows all main tabs with Чаты current on the list and in a thread', async () => {
+    const auth = await authValue()
+    const view = renderChats(auth)
+    await screen.findByRole('heading', { name: 'Чаты' })
+    expectMainTabs('Чаты')
+    view.unmount()
+
+    renderChats(auth, `/chats/${INITIAL_CHAT_ID}`)
+    await screen.findByTestId('chat-thread-scroll')
+    expectMainTabs('Чаты')
   })
 
   it('keeps the chat list scrollable inside the viewport on mobile (min-h-0 chain)', async () => {
