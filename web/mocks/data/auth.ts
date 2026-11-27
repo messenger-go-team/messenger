@@ -11,19 +11,77 @@ interface MockRefreshSession {
   expiresAt: number
 }
 
+const MOCK_PASSWORD = 'correct-horse-battery'
+const ALICE_ID = '00000000-0000-4000-8000-000000000001'
+const BOB_ID = '00000000-0000-4000-8000-000000000002'
+
+/** Именованные логины для удобного поиска в UI; остальное добиваем contact_NN до 50 контактов. */
+const NAMED_DIRECTORY: Array<{ hex: string; username: string }> = [
+  { hex: '101', username: 'carol_3' },
+  { hex: '102', username: 'dave_4' },
+  { hex: '103', username: 'erin_5' },
+  { hex: '104', username: 'frank_6' },
+  { hex: '105', username: 'grace_7' },
+  { hex: '106', username: 'hank_8' },
+  { hex: '107', username: 'ivy_9' },
+  { hex: '108', username: 'jake_10' },
+  { hex: '109', username: 'kate_11' },
+  { hex: '10a', username: 'leo_12' },
+  { hex: '10b', username: 'mia_13' },
+  { hex: '10c', username: 'nina_14' },
+  { hex: '10d', username: 'demo_alpha' },
+  { hex: '10e', username: 'demo_beta' },
+  { hex: '10f', username: 'demo_gamma' },
+  { hex: '110', username: 'demo_delta' },
+  { hex: '111', username: 'demo_echo' },
+]
+
+function directoryUserId(hexSuffix: string): string {
+  return `00000000-0000-4000-8000-${hexSuffix.padStart(12, '0')}`
+}
+
+/**
+ * 49 пользователей каталога + bob в контактах alice = 50.
+ * UUID с 101+, чтобы не пересекаться с id в unit-тестах (003/004/010/…).
+ */
+function buildDirectoryUsers(): Omit<MockUser, 'password'>[] {
+  const named = new Map(NAMED_DIRECTORY.map((entry) => [entry.hex, entry.username]))
+  const users: Omit<MockUser, 'password'>[] = []
+
+  for (let index = 0; index < 49; index += 1) {
+    const hex = (0x101 + index).toString(16)
+    const username = named.get(hex) ?? `contact_${String(index + 1).padStart(2, '0')}`
+    const minute = 10 + index
+    const created_at = `2026-11-01T${String(Math.floor(minute / 60) + 10).padStart(2, '0')}:${String(
+      minute % 60,
+    ).padStart(2, '0')}:00Z`
+
+    users.push({
+      id: directoryUserId(hex),
+      username,
+      created_at,
+    })
+  }
+
+  return users
+}
+
+const directoryUsers = buildDirectoryUsers()
+
 const initialUsers: MockUser[] = [
   {
-    id: '00000000-0000-4000-8000-000000000001',
+    id: ALICE_ID,
     username: 'alice_1',
-    password: 'correct-horse-battery',
+    password: MOCK_PASSWORD,
     created_at: '2026-11-01T10:00:00Z',
   },
   {
-    id: '00000000-0000-4000-8000-000000000002',
+    id: BOB_ID,
     username: 'bob_2',
-    password: 'correct-horse-battery',
+    password: MOCK_PASSWORD,
     created_at: '2026-11-01T10:05:00Z',
   },
+  ...directoryUsers.map((user) => ({ ...user, password: MOCK_PASSWORD })),
 ]
 
 let users: MockUser[] = structuredClone(initialUsers)
@@ -51,6 +109,17 @@ export function resetAuthData(): void {
   users = structuredClone(initialUsers)
   refreshSessions.clear()
   contacts.clear()
+}
+
+/**
+ * Засевает alice ~50 контактами для локальной/телефонной приёмки.
+ * Только browser MSW: в Vitest не вызывается, чтобы контрактные тесты ждали пустой список.
+ */
+export function seedAliceDemoContacts(): void {
+  addContact(ALICE_ID, BOB_ID)
+  for (const user of directoryUsers) {
+    addContact(ALICE_ID, user.id)
+  }
 }
 
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000

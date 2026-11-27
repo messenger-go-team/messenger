@@ -191,7 +191,7 @@ export function ContactsPage() {
     (!searchMatchesCurrent || globalStatus === 'loading' || globalStatus === 'idle')
 
   return (
-    <div className="flex h-svh min-h-0 flex-col overflow-hidden bg-background text-foreground md:flex-row">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground md:flex-row">
       <AppNav
         active="contacts"
         onLogout={() => void logout()}
@@ -222,7 +222,7 @@ export function ContactsPage() {
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
           {searchInvalid ? (
             <p className="px-4 py-6 text-sm text-muted-foreground">{USER_SEARCH_HINT}</p>
           ) : null}

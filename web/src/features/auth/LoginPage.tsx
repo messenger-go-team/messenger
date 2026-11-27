@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/features/auth/useAuth'
 import { isAuthFlowCancelled, messageFromAuthError } from '@/features/auth/authErrors'
+import { dismissVirtualKeyboard } from '@/lib/dismissVirtualKeyboard'
 import { AuthLayout } from '@/features/auth/AuthLayout'
 import { readRememberedUsername, writeRememberedUsername } from '@/features/auth/rememberUsername'
 import { hasFieldErrors, validateCredentials } from '@/features/auth/validation'
@@ -65,6 +66,8 @@ export function LoginPage() {
     try {
       await login({ username, password })
       writeRememberedUsername(username, rememberMe)
+      // iOS: иначе после клавиатуры чаты/табы остаются «по центру» сжатого viewport.
+      dismissVirtualKeyboard()
       void navigate('/', { replace: true })
     } catch (error) {
       if (isAuthFlowCancelled(error)) {

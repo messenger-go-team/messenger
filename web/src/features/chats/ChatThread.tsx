@@ -27,6 +27,7 @@ import { connectionStatusLabel } from '@/features/chats/connectionStatus'
 import { formatChatListTime } from '@/features/chats/formatChatListTime'
 import { resolveMarkReadSeq } from '@/features/chats/markReadSeq'
 import { mergeThreadMessages, type ThreadMessage } from '@/features/chats/mergeThreadMessages'
+import { dismissVirtualKeyboard } from '@/lib/dismissVirtualKeyboard'
 import { MessageLaterMenu } from '@/features/later/MessageLaterMenu'
 import { useOptionalLaterReminders } from '@/features/later/useLaterReminders'
 import { useWs } from '@/features/ws/useWs'
@@ -492,6 +493,8 @@ export function ChatThread({
       // Отправка из окна контекста возвращает ленту к последним сообщениям.
       if (hasMoreAfter) jumpToLatest()
       if (historyStatus === 'empty') setHistoryStatus('ready')
+      // iOS: после скрытия клавиатуры вернуть композер вниз оболочки.
+      dismissVirtualKeyboard()
     } catch {
       setSendError('Не удалось отправить сообщение')
     }
@@ -554,7 +557,7 @@ export function ChatThread({
 
       <div
         ref={listRef}
-        className="relative min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-5 lg:px-6"
+        className="relative min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-4 md:px-5 lg:px-6"
         onScroll={onScroll}
         data-testid="chat-thread-scroll"
       >

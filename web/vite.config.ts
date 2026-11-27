@@ -17,6 +17,10 @@ export default defineConfig(({ command, mode }) => {
     base,
     // public/ содержит MSW worker, который нужен при локальной разработке.
     publicDir: staticBuild ? false : 'public',
+    // Локальный доступ с телефона через ngrok (HTTPS → secure context для MSW/JWT).
+    server: {
+      allowedHosts: ['.ngrok-free.dev', '.ngrok-free.app', '.ngrok.io'],
+    },
     plugins: [
       {
         name: 'validate-build-profile',

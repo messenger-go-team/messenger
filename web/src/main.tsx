@@ -15,8 +15,11 @@ async function enableMocking() {
   }
 
   const { worker } = await import('../mocks/browser')
+  const { seedAliceDemoContacts } = await import('../mocks/data/auth')
 
   await worker.start()
+  // Длинный список контактов для локальной/телефонной приёмки (Vitest этот путь не грузит).
+  seedAliceDemoContacts()
 }
 
 /** Запускает MSW до React render, чтобы первые API-запросы компонентов не ушли в сеть. */

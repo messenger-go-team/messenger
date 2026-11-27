@@ -139,6 +139,27 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /*
+   * iOS Chrome/Safari (#45 phone QA):
+   * - document не скроллится (табы не уезжают с жестом списка);
+   * - #root fixed + height: var(--app-height) из visualViewport — композер
+   *   поднимается/опускается вместе с клавиатурой, в т.ч. после «скрыть».
+   */
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  #root {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: var(--app-height, 100svh);
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
   body {
     @apply bg-background text-foreground;
   }

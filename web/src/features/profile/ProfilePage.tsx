@@ -12,10 +12,10 @@ export function ProfilePage() {
   const letter = user?.username.trim().charAt(0).toUpperCase() || '?'
 
   return (
-    <div className="flex h-svh min-h-0 flex-col overflow-hidden bg-background text-foreground md:flex-row">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground md:flex-row">
       <AppNav active="profile" className="order-last md:order-first" />
 
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-y-contain">
         <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-4">
           <h1 className="text-xl font-semibold tracking-tight">Профиль</h1>
         </header>

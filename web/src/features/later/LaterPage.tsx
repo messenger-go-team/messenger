@@ -172,7 +172,7 @@ function LaterList({
   }
 
   return (
-    <div className="flex h-svh min-h-0 flex-col overflow-hidden bg-background text-foreground md:flex-row">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground md:flex-row">
       <AppNav active="later" onLogout={() => void logout()} className="order-last md:order-first" />
 
       <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-card lg:w-[480px] lg:flex-none lg:border-r lg:border-border">
@@ -180,7 +180,7 @@ function LaterList({
           <h1 className="text-xl font-semibold tracking-tight">Важно</h1>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
           {visibleStatus === 'loading' ? (
             <p className="px-4 py-6 text-sm text-muted-foreground" role="status">
               Загрузка…

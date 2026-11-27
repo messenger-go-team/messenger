@@ -307,7 +307,7 @@ export function ChatListPage() {
     : null
 
   return (
-    <div className="flex h-svh min-h-0 flex-col overflow-hidden bg-background text-foreground md:flex-row">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground md:flex-row">
       {/* Mobile/tablet: hide nav in thread (Figma full-bleed chat). Desktop keeps rail. */}
       <AppNav
         active="chats"
@@ -358,7 +358,7 @@ export function ChatListPage() {
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
           {searching ? (
             <SearchPanel
               status={searchStatus}
