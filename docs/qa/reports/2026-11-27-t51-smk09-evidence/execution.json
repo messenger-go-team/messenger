@@ -1,0 +1,499 @@
+{
+  "runId": "smoke-2026-11-26T23-30-27-923Z-731d8fe-playwright",
+  "method": "Automated headful browser smoke with native Windows focus; real UI/REST/WSS",
+  "sha": "731d8fe624a0a7c75ff8c136213864c9a5d59779",
+  "steps": {
+    "SMK-01": {
+      "status": "Passed",
+      "startedAt": "2026-11-26T23:30:55.702Z",
+      "endedAt": "2026-11-26T23:30:58.332Z",
+      "fact": "Fresh loaded HTML/JS/CSS A/B MATCH expected artifact; same origin REST/WSS and successful current CD"
+    },
+    "SMK-02": {
+      "status": "Passed",
+      "startedAt": "2026-11-26T23:30:58.335Z",
+      "endedAt": "2026-11-26T23:31:00.545Z",
+      "fact": "Separate browser contexts A/B; login200, /me own identity200, refresh cookie, WS101 messenger.v1"
+    },
+    "SMK-03": {
+      "status": "Passed",
+      "startedAt": "2026-11-26T23:31:00.547Z",
+      "endedAt": "2026-11-26T23:31:01.595Z",
+      "fact": "Exact search B; POST200 same AB; pre-deploy M0 shown in A/B"
+    },
+    "SMK-04": {
+      "status": "Passed",
+      "startedAt": "2026-11-26T23:31:01.597Z",
+      "endedAt": "2026-11-26T23:31:02.084Z",
+      "fact": {
+        "message_id": "bcdcbe03-f497-4607-8442-a3470073989a",
+        "seq": 24,
+        "ack": "2026-11-26T23:31:01.827Z",
+        "new": "2026-11-26T23:31:01.781Z"
+      }
+    },
+    "SMK-05": {
+      "status": "Passed",
+      "startedAt": "2026-11-26T23:31:02.086Z",
+      "endedAt": "2026-11-26T23:31:02.250Z",
+      "fact": {
+        "message_id": "29a5bad6-6a21-4dbb-8dbe-4a70f120840d",
+        "seq": 25
+      }
+    },
+    "SMK-06": {
+      "status": "Passed",
+      "startedAt": "2026-11-26T23:31:02.252Z",
+      "endedAt": "2026-11-26T23:31:02.897Z",
+      "fact": "M0/M1/M2 same IDs/seq and one row after real reload"
+    },
+    "SMK-07": {
+      "status": "Passed",
+      "startedAt": "2026-11-26T23:31:02.899Z",
+      "endedAt": "2026-11-26T23:31:31.653Z",
+      "fact": {
+        "S": 25,
+        "source": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages?after_seq=23&limit=100",
+        "automatic": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages?after_seq=25&limit=100",
+        "M3": "12f2a4de-4ce5-4542-876b-03eaae591fe9",
+        "seq": 26
+      }
+    },
+    "SMK-08": {
+      "status": "Passed",
+      "startedAt": "2026-11-26T23:31:31.656Z",
+      "endedAt": "2026-11-26T23:31:32.035Z",
+      "fact": "unread1 before display; M3 once; empty read204; unread0; no message.read"
+    },
+    "SMK-09": {
+      "status": "Passed",
+      "startedAt": "2026-11-26T23:31:32.037Z",
+      "endedAt": "2026-11-26T23:31:39.682Z",
+      "fact": {
+        "L": "2599085e-521b-4ecc-a6d0-9d5e431a0f7a",
+        "activeB": "2026-11-26T23:31:36.157Z",
+        "done": "2026-11-26T23:31:38.881Z",
+        "postB": "2026-11-26T23:31:39.042Z",
+        "BFrames": 0
+      }
+    },
+    "SMK-10": {
+      "status": "Passed",
+      "startedAt": "2026-11-26T23:31:39.684Z",
+      "endedAt": "2026-11-26T23:32:18.914Z",
+      "fact": {
+        "t0": "2026-11-26T23:31:40.000Z",
+        "t1": "2026-11-26T23:32:18.019Z",
+        "seconds": 38.019,
+        "newWS": 0,
+        "refreshCookieAbsent": true,
+        "protectedPages": "login required A/B"
+      }
+    }
+  },
+  "fixture": {
+    "chatID": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+    "m0": {
+      "id": "8b39a79c-2155-4c4a-b1bd-251bf2793663",
+      "seq": 3,
+      "created_at": "2026-11-25T17:32:39.749516Z",
+      "body": "T50 UI 2026-11-25: ответ B → A ✅"
+    },
+    "users": {
+      "a": {
+        "id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+        "username": "qa38_mwqa7f6q_a"
+      },
+      "b": {
+        "id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+        "username": "qa38_mwqa7f6q_b"
+      }
+    }
+  },
+  "nativeFocusEvents": [
+    {
+      "id": "a6c32aaa-ba9b-4631-a8f8-bb26e6f5e911",
+      "role": "setup",
+      "requestedAt": "2026-11-26T23:30:29.664Z",
+      "ok": true,
+      "appliedAt": "2026-11-26T23:30:55.676Z",
+      "windowId": null
+    },
+    {
+      "id": "27122e9b-4d36-42f5-9a2e-5139cc5a7d42",
+      "role": "A",
+      "requestedAt": "2026-11-26T23:31:32.050Z",
+      "ok": true,
+      "appliedAt": "2026-11-26T23:31:33.365Z",
+      "windowId": 591340
+    },
+    {
+      "id": "28e6ce5d-84ac-4588-8e88-88eefc0faaad",
+      "role": "B",
+      "requestedAt": "2026-11-26T23:31:33.379Z",
+      "ok": true,
+      "appliedAt": "2026-11-26T23:31:34.467Z",
+      "windowId": 722400
+    },
+    {
+      "id": "3ba9c880-a41a-4192-bea6-5ea24bf7a004",
+      "role": "A",
+      "requestedAt": "2026-11-26T23:31:34.588Z",
+      "ok": true,
+      "appliedAt": "2026-11-26T23:31:35.769Z",
+      "windowId": 591340
+    },
+    {
+      "id": "c02dbc11-6c0b-4724-8486-35c5df80c61a",
+      "role": "B",
+      "requestedAt": "2026-11-26T23:31:36.008Z",
+      "ok": true,
+      "appliedAt": "2026-11-26T23:31:37.161Z",
+      "windowId": 722400
+    },
+    {
+      "id": "8cb53c3b-cdfb-4246-8131-1651d8972514",
+      "role": "A",
+      "requestedAt": "2026-11-26T23:31:37.233Z",
+      "ok": true,
+      "appliedAt": "2026-11-26T23:31:38.332Z",
+      "windowId": 591340
+    },
+    {
+      "id": "d8b867ba-f2f7-405c-b1db-d454b511250f",
+      "role": "B",
+      "requestedAt": "2026-11-26T23:31:38.888Z",
+      "ok": true,
+      "appliedAt": "2026-11-26T23:31:39.521Z",
+      "windowId": 722400
+    }
+  ],
+  "browser": "158.0.8127.37",
+  "startedAt": "2026-11-26T23:30:55.701Z",
+  "startAssets": {
+    "A": {
+      "/app/index.html": {
+        "sha256": "847160dc14129727ccb520bea7645a942f1d116c9d0377bb7aebb942d541daf3",
+        "at": "2026-11-26T23:30:55.857Z",
+        "phase": "start"
+      },
+      "/app/assets/index-DF-66hO3.css": {
+        "sha256": "e714043d172858217c0479ad7cdb28d88773dffd7c8c13f9f063335ce8cbdd47",
+        "at": "2026-11-26T23:30:55.919Z",
+        "phase": "start"
+      },
+      "/app/assets/index-DmWDrCWx.js": {
+        "sha256": "beee9eff0d096b4df5858a722efe3c3cadd929015c1a15c5883cc61341967535",
+        "at": "2026-11-26T23:30:56.093Z",
+        "phase": "start"
+      }
+    },
+    "B": {
+      "/app/index.html": {
+        "sha256": "847160dc14129727ccb520bea7645a942f1d116c9d0377bb7aebb942d541daf3",
+        "at": "2026-11-26T23:30:55.852Z",
+        "phase": "start"
+      },
+      "/app/assets/index-DF-66hO3.css": {
+        "sha256": "e714043d172858217c0479ad7cdb28d88773dffd7c8c13f9f063335ce8cbdd47",
+        "at": "2026-11-26T23:30:55.933Z",
+        "phase": "start"
+      },
+      "/app/assets/index-DmWDrCWx.js": {
+        "sha256": "beee9eff0d096b4df5858a722efe3c3cadd929015c1a15c5883cc61341967535",
+        "at": "2026-11-26T23:30:56.091Z",
+        "phase": "start"
+      }
+    }
+  },
+  "startCD": {
+    "checkedAt": "2026-11-26T23:30:58.332Z",
+    "id": 45887263448,
+    "sha": "731d8fe624a0a7c75ff8c136213864c9a5d59779",
+    "url": "https://github.com/messenger-go-team/messenger/actions/runs/45887263448",
+    "backendSource": "Successful automated CD with matching frontend artifact; no independent SSH runtime inspection in this test"
+  },
+  "M1": {
+    "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+    "client_msg_id": "2665c764-c300-4fab-bac7-60e3fcc90425",
+    "message_id": "bcdcbe03-f497-4607-8442-a3470073989a",
+    "seq": 24,
+    "created_at": "2026-11-26T23:31:01.580909Z",
+    "ackAt": "2026-11-26T23:31:01.827Z",
+    "newAt": "2026-11-26T23:31:01.781Z"
+  },
+  "M2": {
+    "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+    "client_msg_id": "f89624ad-0091-42be-a81d-321b3585e14b",
+    "message_id": "29a5bad6-6a21-4dbb-8dbe-4a70f120840d",
+    "seq": 25,
+    "created_at": "2026-11-26T23:31:02.026486Z",
+    "ackAt": "2026-11-26T23:31:02.226Z",
+    "newAt": "2026-11-26T23:31:02.222Z"
+  },
+  "S": 25,
+  "cursorSource": {
+    "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages?after_seq=23&limit=100",
+    "method": "GET",
+    "status": 200,
+    "requestAt": "2026-11-26T23:31:30.180Z",
+    "at": "2026-11-26T23:31:30.202Z",
+    "emptyBody": false,
+    "body": {
+      "messages": [
+        {
+          "id": "bcdcbe03-f497-4607-8442-a3470073989a",
+          "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+          "seq": 24,
+          "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+          "body": "smoke-2026-11-26T23-30-27-923Z-731d8fe-playwright M1 A → B ✅",
+          "created_at": "2026-11-26T23:31:01.580909Z"
+        },
+        {
+          "id": "29a5bad6-6a21-4dbb-8dbe-4a70f120840d",
+          "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+          "seq": 25,
+          "sender_id": "3b3fb785-51e0-4eff-98eb-6cd7f4ed13a1",
+          "body": "smoke-2026-11-26T23-30-27-923Z-731d8fe-playwright M2 B → A ✅",
+          "created_at": "2026-11-26T23:31:02.026486Z"
+        }
+      ],
+      "next_before_seq": 24,
+      "next_after_seq": 25,
+      "has_more_before": true,
+      "has_more_after": false
+    },
+    "completedAt": "2026-11-26T23:31:30.205Z"
+  },
+  "breakAt": "2026-11-26T23:31:30.263Z",
+  "M3": {
+    "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+    "client_msg_id": "3ff3966b-5ee4-44e8-a79f-c9b6c47f6775",
+    "message_id": "12f2a4de-4ce5-4542-876b-03eaae591fe9",
+    "seq": 26,
+    "created_at": "2026-11-26T23:31:30.247108Z",
+    "ackAt": "2026-11-26T23:31:30.467Z"
+  },
+  "onlineAt": "2026-11-26T23:31:30.495Z",
+  "recovery": {
+    "url": "/chats/845dae1a-862f-4bb9-9cc6-030b64280a70/messages?after_seq=25&limit=100",
+    "method": "GET",
+    "status": 200,
+    "requestAt": "2026-11-26T23:31:31.496Z",
+    "at": "2026-11-26T23:31:31.519Z",
+    "emptyBody": false,
+    "body": {
+      "messages": [
+        {
+          "id": "12f2a4de-4ce5-4542-876b-03eaae591fe9",
+          "chat_id": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+          "seq": 26,
+          "sender_id": "9237aebb-c124-4dcd-b676-1c5f02d4c8eb",
+          "body": "smoke-2026-11-26T23-30-27-923Z-731d8fe-playwright M3 offline ✅",
+          "created_at": "2026-11-26T23:31:30.247108Z"
+        }
+      ],
+      "next_before_seq": 26,
+      "next_after_seq": 26,
+      "has_more_before": true,
+      "has_more_after": false
+    },
+    "completedAt": "2026-11-26T23:31:31.523Z"
+  },
+  "focusEmulation": "disabled before SMK-09; real native Windows focus events",
+  "laterObservationAt": "2026-11-26T23:31:32.047Z",
+  "initialLaterBFocus": {
+    "calledAt": "2026-11-26T23:31:33.379Z",
+    "focusAt": "2026-11-26T23:31:33.500Z",
+    "response": {
+      "url": "/later",
+      "method": "GET",
+      "status": 200,
+      "requestAt": "2026-11-26T23:31:33.503Z",
+      "at": "2026-11-26T23:31:33.528Z",
+      "emptyBody": false,
+      "body": {
+        "server_time": "2026-11-26T23:31:33.325613Z",
+        "entries": []
+      },
+      "completedAt": "2026-11-26T23:31:33.535Z"
+    }
+  },
+  "L": "2599085e-521b-4ecc-a6d0-9d5e431a0f7a",
+  "saveCompletedAt": "2026-11-26T23:31:36.005Z",
+  "activeLaterBFocus": {
+    "calledAt": "2026-11-26T23:31:36.008Z",
+    "focusAt": "2026-11-26T23:31:36.126Z",
+    "response": {
+      "url": "/later",
+      "method": "GET",
+      "status": 200,
+      "requestAt": "2026-11-26T23:31:36.132Z",
+      "at": "2026-11-26T23:31:36.157Z",
+      "emptyBody": false,
+      "body": {
+        "server_time": "2026-11-26T23:31:35.955789Z",
+        "entries": []
+      },
+      "completedAt": "2026-11-26T23:31:36.159Z"
+    }
+  },
+  "activeLaterB": {
+    "url": "/later",
+    "method": "GET",
+    "status": 200,
+    "requestAt": "2026-11-26T23:31:36.132Z",
+    "at": "2026-11-26T23:31:36.157Z",
+    "emptyBody": false,
+    "body": {
+      "server_time": "2026-11-26T23:31:35.955789Z",
+      "entries": []
+    },
+    "completedAt": "2026-11-26T23:31:36.159Z"
+  },
+  "activeLaterTiming": {
+    "saveCompletedAt": "2026-11-26T23:31:36.005Z",
+    "focusCalledAt": "2026-11-26T23:31:36.008Z",
+    "focusAt": "2026-11-26T23:31:36.126Z",
+    "requestAt": "2026-11-26T23:31:36.132Z",
+    "responseAt": "2026-11-26T23:31:36.157Z",
+    "completedAt": "2026-11-26T23:31:36.159Z",
+    "requestDelayMs": 127,
+    "responseDelayMs": 154
+  },
+  "doneAt": "2026-11-26T23:31:38.881Z",
+  "postLaterBFocus": {
+    "calledAt": "2026-11-26T23:31:38.888Z",
+    "focusAt": "2026-11-26T23:31:39.017Z",
+    "response": {
+      "url": "/later",
+      "method": "GET",
+      "status": 200,
+      "requestAt": "2026-11-26T23:31:39.025Z",
+      "at": "2026-11-26T23:31:39.042Z",
+      "emptyBody": false,
+      "body": {
+        "server_time": "2026-11-26T23:31:38.84098Z",
+        "entries": []
+      },
+      "completedAt": "2026-11-26T23:31:39.044Z"
+    }
+  },
+  "postLaterB": {
+    "url": "/later",
+    "method": "GET",
+    "status": 200,
+    "requestAt": "2026-11-26T23:31:39.025Z",
+    "at": "2026-11-26T23:31:39.042Z",
+    "emptyBody": false,
+    "body": {
+      "server_time": "2026-11-26T23:31:38.84098Z",
+      "entries": []
+    },
+    "completedAt": "2026-11-26T23:31:39.044Z"
+  },
+  "laterSocketB": {
+    "openedAt": "2026-11-26T23:31:31.450Z",
+    "observationStartedAt": "2026-11-26T23:31:32.047Z",
+    "throughDoneAt": "2026-11-26T23:31:38.881Z",
+    "sameSocket": true,
+    "noReload": true
+  },
+  "logoutActionA": "2026-11-26T23:31:39.745Z",
+  "logoutA": "2026-11-26T23:31:39.830Z",
+  "closedSocketA": {
+    "openedAt": "2026-11-26T23:31:02.612Z",
+    "closedAt": "2026-11-26T23:31:39.806Z"
+  },
+  "logoutActionB": "2026-11-26T23:31:39.895Z",
+  "logoutB": "2026-11-26T23:31:39.988Z",
+  "closedSocketB": {
+    "openedAt": "2026-11-26T23:31:31.450Z",
+    "closedAt": "2026-11-26T23:31:39.969Z"
+  },
+  "t0": "2026-11-26T23:31:40.000Z",
+  "t1": "2026-11-26T23:32:18.019Z",
+  "observationSeconds": 38.019,
+  "heartbeat": {
+    "before": {
+      "A": {
+        "ticks": 376,
+        "last": 1795735899915,
+        "visibility": "visible",
+        "online": true,
+        "x": 0,
+        "width": 636
+      },
+      "B": {
+        "ticks": 437,
+        "last": 1795735899917,
+        "visibility": "visible",
+        "online": true,
+        "x": 640,
+        "width": 636
+      }
+    },
+    "after": {
+      "A": {
+        "ticks": 757,
+        "last": 1795735938020,
+        "visibility": "visible",
+        "online": true
+      },
+      "B": {
+        "ticks": 818,
+        "last": 1795735938019,
+        "visibility": "visible",
+        "online": true
+      }
+    }
+  },
+  "finishAssets": {
+    "A": {
+      "/app/index.html": {
+        "sha256": "847160dc14129727ccb520bea7645a942f1d116c9d0377bb7aebb942d541daf3",
+        "at": "2026-11-26T23:32:18.623Z",
+        "phase": "finish"
+      },
+      "/app/assets/index-DF-66hO3.css": {
+        "sha256": "e714043d172858217c0479ad7cdb28d88773dffd7c8c13f9f063335ce8cbdd47",
+        "at": "2026-11-26T23:32:18.690Z",
+        "phase": "finish"
+      },
+      "/app/assets/index-DmWDrCWx.js": {
+        "sha256": "beee9eff0d096b4df5858a722efe3c3cadd929015c1a15c5883cc61341967535",
+        "at": "2026-11-26T23:32:18.775Z",
+        "phase": "finish"
+      }
+    },
+    "B": {
+      "/app/index.html": {
+        "sha256": "847160dc14129727ccb520bea7645a942f1d116c9d0377bb7aebb942d541daf3",
+        "at": "2026-11-26T23:32:18.621Z",
+        "phase": "finish"
+      },
+      "/app/assets/index-DF-66hO3.css": {
+        "sha256": "e714043d172858217c0479ad7cdb28d88773dffd7c8c13f9f063335ce8cbdd47",
+        "at": "2026-11-26T23:32:18.682Z",
+        "phase": "finish"
+      },
+      "/app/assets/index-DmWDrCWx.js": {
+        "sha256": "beee9eff0d096b4df5858a722efe3c3cadd929015c1a15c5883cc61341967535",
+        "at": "2026-11-26T23:32:18.757Z",
+        "phase": "finish"
+      }
+    }
+  },
+  "finishCD": {
+    "checkedAt": "2026-11-26T23:32:19.825Z",
+    "id": 45887263448,
+    "sha": "731d8fe624a0a7c75ff8c136213864c9a5d59779",
+    "url": "https://github.com/messenger-go-team/messenger/actions/runs/45887263448",
+    "backendSource": "Successful automated CD with matching frontend artifact; no independent SSH runtime inspection in this test"
+  },
+  "finalVersionCheckAt": "2026-11-26T23:32:19.826Z",
+  "verdict": "Passed",
+  "endedAt": "2026-11-26T23:32:19.826Z",
+  "durationSeconds": 84.125,
+  "driverSHA256": "d6561d39fce0dcb38b36a89c764371793c7686e5740e17210bd2cb0701fdc75e"
+}
