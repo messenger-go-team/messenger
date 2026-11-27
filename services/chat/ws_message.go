@@ -55,7 +55,7 @@ func (ws *wsEndpoint) handleWSCommand(ctx context.Context, socket *socketSession
 		ws.replyWSError(socket, cmd, problem)
 		return
 	}
-	if cmd.kind == wsDeliveredType || cmd.kind == wsReadType {
+	if isWSReceiptType(cmd.kind) {
 		ws.handleWSReceipt(ctx, socket, cmd)
 		return
 	}

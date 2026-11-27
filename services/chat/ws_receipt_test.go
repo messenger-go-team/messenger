@@ -443,3 +443,143 @@ func TestWSReceiptFanoutSurvivesInitiatorDisconnect(t *testing.T) {
 		readTestReceipt(t, conn, receiptTestUpdate{wsReadType, 3}, fanoutBob, id)
 	}
 }
+
+func TestWSReceiptsDoNotDelayMessageAck(t *testing.T) {
+	const receiptChat = "20000000-0000-4000-8000-00000000002a"
+	for _, stage := range []string{"AdvanceReceipt", "GetChatMembers"} {
+		t.Run(stage, func(t *testing.T) {
+			held, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			releaseRPC := sync.OnceFunc(func() { close(release) })
+			hold := sync.OnceFunc(func() {
+				close(held)
+				<-release
+				close(finished)
+			})
+			saved := make(chan struct{}, 1)
+			var advances atomic.Int32
+			history := startTestHistoryRPC(t, receiptTestServer{
+				membershipTestServer: membershipTestServer{members: func(_ context.Context, req *historyv1.GetChatMembersRequest) (*historyv1.GetChatMembersResponse, error) {
+					if stage == "GetChatMembers" && req.GetChatId() == receiptChat {
+						hold()
+					}
+					return &historyv1.GetChatMembersResponse{UserIds: []string{fanoutAlice, fanoutBob}}, nil
+				}},
+				advance: func(context.Context, *historyv1.AdvanceReceiptRequest) (*historyv1.AdvanceReceiptResponse, error) {
+					advances.Add(1)
+					if stage == "AdvanceReceipt" {
+						hold()
+					}
+					return &historyv1.AdvanceReceiptResponse{LastDeliveredSeq: 1, LastReadSeq: 1}, nil
+				},
+				save: func(context.Context, *historyv1.SaveMessageRequest) (*historyv1.SaveMessageResponse, error) {
+					saved <- struct{}{}
+					return &historyv1.SaveMessageResponse{
+						MessageId: sendTestMessageID, Seq: 1, CreatedAt: timestamppb.Now(),
+					}, nil
+				},
+			})
+			ws, url := startTestWSEndpoint(t, defaultWSTiming(), history)
+			ws.historyTimeout = 8 * time.Second
+			ws.receiptSlots = make(chan struct{}, 1)
+			t.Cleanup(releaseRPC)
+			conn, _ := dialTestUser(t, url, fanoutAlice)
+			other, _ := dialTestUser(t, url, fanoutBob)
+			waitForConnections(t, ws, 2)
+
+			payload := map[string]any{"chat_id": receiptChat, "seq": 1}
+			sendTestReceipt(t, conn, wsDeliveredType, payload)
+			select {
+			case <-held:
+			case <-time.After(3 * time.Second):
+				t.Fatalf("%s was not reached", stage)
+			}
+			for range wsReceiptQueueSize {
+				sendTestReceipt(t, conn, wsReadType, payload)
+			}
+			id := sendTestReceipt(t, conn, wsReadType, payload)
+			readTestReceiptError(t, conn, id, "temporarily_unavailable", true)
+
+			// The other socket has queue space and a fresh user budget but
+			// cannot start another receipt workflow while the slot is occupied.
+			id = sendTestReceipt(t, other, wsReadType, payload)
+			readTestReceiptError(t, other, id, "temporarily_unavailable", true)
+			if got := advances.Load(); got != 1 {
+				t.Fatalf("oversubscribed History with %d receipt calls", got)
+			}
+
+			id = newWSEventID()
+			sendTestMessage(t, conn, id, sendTestClientID, "send while a receipt waits")
+			select {
+			case <-saved:
+			case <-time.After(2 * time.Second):
+				t.Fatalf("SaveMessage waited behind blocked %s", stage)
+			}
+			var ack wsAckPayload
+			if got := readTestEvent(t, conn, "message.ack", &ack); got != id || ack.MessageID != sendTestMessageID {
+				t.Fatalf("wrong ack: %s %+v", got, ack)
+			}
+			select {
+			case <-finished:
+				t.Fatalf("%s finished before the ack assertion", stage)
+			default:
+			}
+		})
+	}
+}
+
+func TestWSReceiptBudgetIsSharedAcrossTabsAndSeparateFromSend(t *testing.T) {
+	var advances atomic.Int32
+	history := startTestHistoryRPC(t, receiptTestServer{
+		membershipTestServer: membershipTestServer{members: func(context.Context, *historyv1.GetChatMembersRequest) (*historyv1.GetChatMembersResponse, error) {
+			return &historyv1.GetChatMembersResponse{UserIds: []string{fanoutAlice, fanoutBob}}, nil
+		}},
+		advance: func(context.Context, *historyv1.AdvanceReceiptRequest) (*historyv1.AdvanceReceiptResponse, error) {
+			advances.Add(1)
+			return &historyv1.AdvanceReceiptResponse{LastDeliveredSeq: 2, LastReadSeq: 2}, nil
+		},
+		save: func(context.Context, *historyv1.SaveMessageRequest) (*historyv1.SaveMessageResponse, error) {
+			return &historyv1.SaveMessageResponse{MessageId: sendTestMessageID, Seq: 3, CreatedAt: timestamppb.Now()}, nil
+		},
+	})
+	ws, url := startTestWSEndpoint(t, defaultWSTiming(), history)
+	ws.receiptLimiter = newSendLimiter(time.Minute, 2, time.Now)
+	ws.sendLimiter = newSendLimiter(time.Minute, 1, time.Now)
+
+	alice, _ := dialTestUser(t, url, fanoutAlice)
+	bob1, _ := dialTestUser(t, url, fanoutBob)
+	bob2, _ := dialTestUser(t, url, fanoutBob)
+	waitForConnections(t, ws, 3)
+	payload := map[string]any{"chat_id": fanoutChat, "seq": 1}
+	update := receiptTestUpdate{wsReadType, 2}
+	for _, tab := range []*websocket.Conn{bob1, bob2} {
+		id := sendTestReceipt(t, tab, wsReadType, payload)
+		for _, recipient := range []*websocket.Conn{alice, bob1, bob2} {
+			readTestReceipt(t, recipient, update, fanoutBob, id)
+		}
+	}
+
+	if err := bob1.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitForConnections(t, ws, 2)
+	reconnected, _ := dialTestUser(t, url, fanoutBob)
+	waitForConnections(t, ws, 3)
+	id := sendTestReceipt(t, reconnected, wsReadType, payload)
+	readTestReceiptError(t, reconnected, id, "temporarily_unavailable", true)
+	if got := advances.Load(); got != 2 {
+		t.Fatalf("rate limited repeat reached History: %d total calls", got)
+	}
+
+	// A second account has its own receipt budget.
+	id = sendTestReceipt(t, alice, wsReadType, payload)
+	for _, recipient := range []*websocket.Conn{alice, bob2, reconnected} {
+		readTestReceipt(t, recipient, update, fanoutAlice, id)
+	}
+
+	id = newWSEventID()
+	sendTestMessage(t, reconnected, id, sendTestClientID, "receipts used a separate budget")
+	var ack wsAckPayload
+	if got := readTestEvent(t, reconnected, "message.ack", &ack); got != id || ack.MessageID != sendTestMessageID {
+		t.Fatalf("wrong ack after hitting receipt budget: %s %+v", got, ack)
+	}
+}

@@ -38,6 +38,10 @@ type wsCommand struct {
 	seq         int64
 }
 
+func isWSReceiptType(kind string) bool {
+	return kind == wsDeliveredType || kind == wsReadType
+}
+
 func validWSUUID(value string) bool {
 	return value != "00000000-0000-0000-0000-000000000000" && wsUUIDPattern.MatchString(value)
 }
@@ -121,7 +125,7 @@ func parseWSCommand(raw []byte) (wsCommand, string) {
 		return cmd, ""
 	}
 
-	if cmd.kind == wsDeliveredType || cmd.kind == wsReadType {
+	if isWSReceiptType(cmd.kind) {
 		cmd.chatID = strings.ToLower(wsString(payload["chat_id"]))
 		seq := string(bytes.TrimSpace(payload["seq"]))
 		if len(payload) != 2 || !validWSUUID(cmd.chatID) || !wsIntegerPattern.MatchString(seq) {

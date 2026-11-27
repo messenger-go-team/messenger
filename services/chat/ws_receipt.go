@@ -4,10 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	historyv1 "github.com/messenger-go-team/messenger/api/gen/history/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+)
+
+const (
+	wsReceiptQueueSize = 4
+	wsReceiptInterval  = 50 * time.Millisecond
+	wsReceiptBurst     = 24
+	// Keep receipt workflows below History's 16-connection shared pool.
+	wsReceiptConcurrency = 8
 )
 
 type wsReceiptPayload struct {
@@ -21,6 +30,19 @@ func (ws *wsEndpoint) handleWSReceipt(ctx context.Context, socket *socketSession
 		ws.replyWSError(socket, cmd, "temporarily_unavailable")
 		return
 	}
+	// Both new advances and repeats consume the same receipt budget.
+	if ws.receiptLimiter.take(socket.userID) > 0 {
+		ws.replyWSError(socket, cmd, "temporarily_unavailable")
+		return
+	}
+	select {
+	case ws.receiptSlots <- struct{}{}:
+		defer func() { <-ws.receiptSlots }()
+	default:
+		ws.replyWSError(socket, cmd, "temporarily_unavailable")
+		return
+	}
+
 	kind := historyv1.ReceiptKind_RECEIPT_KIND_DELIVERED
 	if cmd.kind == wsReadType {
 		kind = historyv1.ReceiptKind_RECEIPT_KIND_READ
