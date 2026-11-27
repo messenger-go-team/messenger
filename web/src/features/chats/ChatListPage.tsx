@@ -328,11 +328,12 @@ export function ChatListPage() {
           <Button
             type="button"
             size="icon"
-            className="rounded-full"
+            // Figma 415:8511 — solid primary circle, white +
+            className="size-10 rounded-full bg-primary bg-none from-transparent to-transparent text-white hover:opacity-90"
             aria-label="Новый чат"
             onClick={() => focusSearch()}
           >
-            <Plus className="size-5" />
+            <Plus className="size-5" strokeWidth={2.5} />
           </Button>
         </header>
 
@@ -352,7 +353,7 @@ export function ChatListPage() {
                 setQuery(event.target.value)
                 setOpenError(null)
               }}
-              className="h-10 rounded-full border-transparent bg-muted pl-9"
+              className="h-10 rounded-full border-transparent bg-muted pl-9 focus-visible:border-border focus-visible:bg-card"
               autoComplete="off"
             />
           </div>
@@ -489,12 +490,13 @@ function ChatsPanel({
           const selected = chat.id === selectedChatId
 
           return (
-            <li key={chat.id} className="border-b border-border">
+            <li key={chat.id}>
               <Link
                 to={`/chats/${chat.id}`}
                 className={cn(
-                  'flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/60',
-                  selected && 'bg-accent',
+                  // Figma 415:8501 — мягкий muted-фон выбранной строки (не solid primary)
+                  'mx-2 flex items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-muted/80',
+                  selected && 'bg-muted',
                 )}
               >
                 <InitialAvatar username={name} />
@@ -502,13 +504,13 @@ function ChatsPanel({
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate font-semibold">{name}</span>
                     {time ? (
-                      <span className="shrink-0 text-xs text-muted-foreground">{time}</span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground">{time}</span>
                     ) : null}
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm text-muted-foreground">{preview}</span>
                     {chat.unread_count > 0 ? (
-                      <span className="inline-flex min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
+                      <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-medium text-white">
                         {chat.unread_count}
                       </span>
                     ) : null}

@@ -190,7 +190,7 @@ describe('MessageLaterMenu', () => {
       let submit = screen.getByRole('menuitem', { name: 'Просто сохранить' })
       if (panel === 'picker') {
         await user.keyboard('{ArrowUp}{Enter}')
-        await user.tab()
+        // Focus starts on date → time → «Выбрать» (no «Назад» in Figma).
         await user.tab()
         await user.tab()
         submit = screen.getByRole('button', { name: 'Выбрать' })

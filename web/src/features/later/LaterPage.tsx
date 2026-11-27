@@ -1,4 +1,5 @@
 import { useId, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router'
 import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { Bell, ChevronDown, ChevronUp } from 'lucide-react'
@@ -313,82 +314,6 @@ function LaterList({
                                 </AlertDialog.Root>
                               </div>
                             </div>
-
-                            {reschedulingId === entry.id ? (
-                              <div
-                                className="mt-3 space-y-3 rounded-lg border border-border bg-muted/30 p-3"
-                                aria-label="Перенести срок"
-                              >
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                  <div className="space-y-1">
-                                    <label
-                                      htmlFor={dateId}
-                                      className="text-xs text-muted-foreground"
-                                    >
-                                      Дата
-                                    </label>
-                                    <Input
-                                      id={dateId}
-                                      type="date"
-                                      value={picker.date}
-                                      onChange={(event) =>
-                                        setPicker((value) => ({
-                                          ...value,
-                                          date: event.target.value,
-                                        }))
-                                      }
-                                    />
-                                  </div>
-                                  <div className="space-y-1">
-                                    <label
-                                      htmlFor={timeId}
-                                      className="text-xs text-muted-foreground"
-                                    >
-                                      Время
-                                    </label>
-                                    <Input
-                                      id={timeId}
-                                      type="time"
-                                      value={picker.time}
-                                      onChange={(event) =>
-                                        setPicker((value) => ({
-                                          ...value,
-                                          time: event.target.value,
-                                        }))
-                                      }
-                                    />
-                                  </div>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    disabled={rescheduleBusy}
-                                    onClick={submitPicker}
-                                  >
-                                    Сохранить срок
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    disabled={rescheduleBusy}
-                                    onClick={() => void submitReschedule(null)}
-                                  >
-                                    Без срока
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="ghost"
-                                    disabled={rescheduleBusy}
-                                    onClick={() => setReschedulingId(null)}
-                                  >
-                                    Отмена
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : null}
                           </li>
                         ))}
                       </ul>
@@ -406,6 +331,88 @@ function LaterList({
           Выберите напоминание, чтобы открыть сообщение в чате
         </p>
       </main>
+
+      {reschedulingId
+        ? createPortal(
+            <>
+              <button
+                type="button"
+                aria-label="Закрыть"
+                className="fixed inset-0 z-40 border-0 bg-slate-900/25 backdrop-blur-[2px]"
+                disabled={rescheduleBusy}
+                onClick={() => setReschedulingId(null)}
+              />
+              <div
+                role="dialog"
+                aria-label="Перенести срок"
+                aria-modal="true"
+                className="fixed top-1/2 left-1/2 z-50 w-[min(100%-2rem,214px)] -translate-x-1/2 -translate-y-1/2 space-y-3 rounded-xl border border-border bg-card p-3 shadow-lg"
+              >
+                <p className="border-b border-border pb-2 text-sm font-medium">Напомнить</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label htmlFor={dateId} className="text-xs text-muted-foreground">
+                      Дата
+                    </label>
+                    <Input
+                      id={dateId}
+                      type="date"
+                      value={picker.date}
+                      className="h-9 rounded-md px-2"
+                      onChange={(event) =>
+                        setPicker((value) => ({ ...value, date: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label htmlFor={timeId} className="text-xs text-muted-foreground">
+                      Время
+                    </label>
+                    <Input
+                      id={timeId}
+                      type="time"
+                      value={picker.time}
+                      className="h-9 rounded-md px-2"
+                      onChange={(event) =>
+                        setPicker((value) => ({ ...value, time: event.target.value }))
+                      }
+                    />
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={rescheduleBusy}
+                  onClick={submitPicker}
+                >
+                  Выбрать
+                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="flex-1"
+                    disabled={rescheduleBusy}
+                    onClick={() => void submitReschedule(null)}
+                  >
+                    Без срока
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="flex-1"
+                    disabled={rescheduleBusy}
+                    onClick={() => setReschedulingId(null)}
+                  >
+                    Отмена
+                  </Button>
+                </div>
+              </div>
+            </>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }

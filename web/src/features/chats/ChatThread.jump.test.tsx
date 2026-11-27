@@ -125,14 +125,22 @@ describe('ChatThread jump to message', () => {
     expect(screen.getByRole('button', { name: 'К последним сообщениям' })).toBeInTheDocument()
   })
 
-  it('removes the highlight after a short delay', async () => {
-    renderThread(await authValue(), { focusMessageId: messageId(20) })
-    await waitFor(() => expect(bubble(20)).toHaveAttribute('data-highlighted', 'true'))
+  it(
+    'keeps the highlight for several seconds after scroll, then clears it',
+    async () => {
+      renderThread(await authValue(), { focusMessageId: messageId(20) })
+      await waitFor(() => expect(bubble(20)).toHaveAttribute('data-highlighted', 'true'))
 
-    await waitFor(() => expect(bubble(20)).not.toHaveAttribute('data-highlighted'), {
-      timeout: 4000,
-    })
-  })
+      // HIGHLIGHT_MS = 4500: через ~3 с кольцо ещё на месте, затем снимается.
+      await new Promise((r) => setTimeout(r, 3000))
+      expect(bubble(20)).toHaveAttribute('data-highlighted', 'true')
+
+      await waitFor(() => expect(bubble(20)).not.toHaveAttribute('data-highlighted'), {
+        timeout: 4000,
+      })
+    },
+    12_000,
+  )
 
   it('tells the parent the one-shot focus was consumed', async () => {
     const onFocusConsumed = vi.fn()

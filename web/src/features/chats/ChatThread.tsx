@@ -16,7 +16,7 @@ import {
   LoaderCircle,
   MessageCircle,
   RotateCcw,
-  SendHorizontal,
+  ArrowUp,
 } from 'lucide-react'
 import { ApiError } from '@/api/client'
 import { getMessageContext, getMessageHistory, markChatRead, type Message } from '@/api/history'
@@ -35,7 +35,8 @@ import { cn } from '@/lib/utils'
 
 const HISTORY_PAGE_SIZE = 50
 const MAX_BODY_LENGTH = 4096
-const HIGHLIGHT_MS = 2500
+/** Сколько держать подсветку после scrollIntoView; снятие анимируется CSS ~1s. */
+const HIGHLIGHT_MS = 4500
 const MESSAGE_UNAVAILABLE_NOTICE = 'Сообщение недоступно'
 
 type HistoryStatus = 'loading' | 'ready' | 'error' | 'empty'
@@ -646,23 +647,19 @@ export function ChatThread({
               ) : null}
               <div
                 className={cn(
-                  'max-w-[min(100%,28rem)] rounded-2xl px-3 py-2 text-sm shadow-sm transition-shadow',
+                  // Figma 426:22954 in / 426:22952 out — ~18px corners, tail ~4px
+                  'max-w-[min(100%,30rem)] rounded-[18px] px-3 py-2 text-sm',
+                  'transition-[box-shadow] duration-1000 ease-out',
                   message.mine
-                    ? 'rounded-br-md bg-primary text-primary-foreground'
-                    : 'rounded-bl-md bg-muted text-foreground',
+                    ? 'rounded-br-[4px] bg-accent text-foreground'
+                    : 'rounded-bl-[4px] border border-border bg-card text-foreground',
                   message.status === 'failed' && 'ring-2 ring-destructive/60',
                   message.status === 'sending' && 'opacity-80',
                   message.id && message.id === highlightedId && 'ring-2 ring-primary',
-                  'group-hover/bubble:shadow-md',
                 )}
               >
                 <p className="whitespace-pre-wrap break-words">{message.body}</p>
-                <div
-                  className={cn(
-                    'mt-1 flex items-center justify-end gap-1.5 text-[11px]',
-                    message.mine ? 'text-primary-foreground/80' : 'text-muted-foreground',
-                  )}
-                >
+                <div className="mt-1 flex items-center justify-end gap-1.5 text-[11px] text-muted-foreground">
                   {message.createdAt && message.status !== 'sending' ? (
                     <time dateTime={message.createdAt}>
                       {formatChatListTime(message.createdAt)}
@@ -726,17 +723,32 @@ export function ChatThread({
           placeholder="Сообщение"
           maxLength={MAX_BODY_LENGTH}
           autoComplete="off"
-          className="min-h-11 flex-1 rounded-full border-transparent bg-muted px-4"
+          // Idle 415:8451 muted; typed/focus 415:8545 card + border
+          className={cn(
+            'min-h-11 flex-1 rounded-full px-4',
+            draft.trim()
+              ? 'border-border bg-card'
+              : 'border-transparent bg-muted focus-visible:border-border focus-visible:bg-card',
+          )}
           aria-invalid={Boolean(sendError)}
         />
         <Button
           type="submit"
           size="icon"
-          className="size-11 rounded-full"
+          // Active: brand cyan + glow; idle: pale circle + muted arrow (Figma composer)
+          className={cn(
+            'size-11 rounded-full border-0 bg-none from-transparent to-transparent shadow-none disabled:opacity-100',
+            draft.trim() && client
+              ? 'bg-[var(--brand-button-to)] text-white shadow-[0_4px_16px_color-mix(in_oklab,var(--brand-button-to)_55%,transparent)] hover:opacity-95'
+              : 'bg-[#e8eef2] text-[#8fa0b0]',
+          )}
           disabled={!draft.trim() || !client}
           aria-label="Отправить"
         >
-          <SendHorizontal className="size-4" />
+          <ArrowUp
+            className="size-5"
+            strokeWidth={draft.trim() && client ? 2.5 : 2}
+          />
         </Button>
       </form>
       {sendError ? (

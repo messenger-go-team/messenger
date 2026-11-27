@@ -104,7 +104,7 @@ export function MessageLaterMenu({
       const nextPlacement: Placement =
         spaceBelow >= MENU_ESTIMATE_PX || spaceBelow >= spaceAbove ? 'below' : 'above'
       setPlacement(nextPlacement)
-      setCoords(placePanel(rect, nextPlacement, next === 'picker' ? 256 : 224))
+      setCoords(placePanel(rect, nextPlacement, next === 'picker' ? 214 : 216))
     }
     setPanel(next)
   }
@@ -114,7 +114,7 @@ export function MessageLaterMenu({
     const update = () => {
       const rect = triggerRef.current?.getBoundingClientRect()
       if (!rect) return
-      setCoords(placePanel(rect, placement, panel === 'picker' ? 256 : 224))
+      setCoords(placePanel(rect, placement, panel === 'picker' ? 214 : 216))
     }
     update()
     window.addEventListener('scroll', update, true)
@@ -211,144 +211,149 @@ export function MessageLaterMenu({
   const floating =
     panel !== 'closed' && coords
       ? createPortal(
-          <div
-            ref={floatingRef}
-            className="fixed z-50"
-            style={{ top: coords.top, left: coords.left }}
-            aria-busy={busy}
-            data-placement={placement}
-          >
-            {panel === 'menu' ? (
-              <div
-                ref={menuRef}
-                role="menu"
-                aria-label="Вернуться позже"
-                className="w-56 rounded-lg border border-border bg-card py-1 shadow-md"
-                onKeyDown={onMenuKeyDown}
-              >
-                <p className="px-3 py-2 text-xs font-medium text-muted-foreground">
-                  Вернуться позже
-                </p>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                  aria-disabled={busy}
-                  onClick={() => void persist(null, 'Сохранено без срока')}
+          <>
+            {/* Figma Shadow — серый dim+blur только под выбором времени. */}
+            {panel === 'picker' ? (
+              <button
+                type="button"
+                aria-label="Закрыть"
+                className="fixed inset-0 z-40 border-0 bg-slate-900/25 backdrop-blur-[2px]"
+                onClick={() => closePanel(true)}
+              />
+            ) : null}
+            <div
+              ref={floatingRef}
+              className="fixed z-50"
+              style={{ top: coords.top, left: coords.left }}
+              aria-busy={busy}
+              data-placement={placement}
+            >
+              {panel === 'menu' ? (
+                <div
+                  ref={menuRef}
+                  role="menu"
+                  aria-label="Вернуться позже"
+                  // Figma Dropdown Menu later ≈ 216×148, radius ~8–12
+                  className="w-[216px] overflow-hidden rounded-xl border border-border bg-card py-1 shadow-md"
+                  onKeyDown={onMenuKeyDown}
                 >
-                  <Bookmark className="size-4 shrink-0" aria-hidden />
-                  Просто сохранить
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                  aria-disabled={busy}
-                  onClick={() => void persist(dueAtInOneHour(), 'Напомним через час')}
-                >
-                  <Clock className="size-4 shrink-0" aria-hidden />
-                  Через 1 час
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                  aria-disabled={busy}
-                  onClick={() => void persist(dueAtEvening(), 'Напомним вечером')}
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <Moon className="size-4 shrink-0" aria-hidden />
-                    Вечером
-                  </span>
-                  <span className="text-xs text-muted-foreground">{eveningHint()}</span>
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                  aria-disabled={busy}
-                  onClick={() => {
-                    if (saving.current) return
-                    setPicker(defaultPickerValues())
-                    openPanel('picker')
+                  <p className="border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground">
+                    Вернуться позже
+                  </p>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent"
+                    aria-disabled={busy}
+                    onClick={() => void persist(null, 'Сохранено без срока')}
+                  >
+                    <Bookmark className="size-4 shrink-0" aria-hidden />
+                    Просто сохранить
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent"
+                    aria-disabled={busy}
+                    onClick={() => void persist(dueAtInOneHour(), 'Напомним через час')}
+                  >
+                    <Clock className="size-4 shrink-0" aria-hidden />
+                    Через 1 час
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent"
+                    aria-disabled={busy}
+                    onClick={() => void persist(dueAtEvening(), 'Напомним вечером')}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <Moon className="size-4 shrink-0" aria-hidden />
+                      Вечером
+                    </span>
+                    <span className="text-xs text-muted-foreground">{eveningHint()}</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 border-t border-border px-3 py-1.5 text-left text-sm hover:bg-accent"
+                    aria-disabled={busy}
+                    onClick={() => {
+                      if (saving.current) return
+                      setPicker(defaultPickerValues())
+                      openPanel('picker')
+                    }}
+                  >
+                    <Calendar className="size-4 shrink-0" aria-hidden />
+                    Выбрать время
+                  </button>
+                  {error ? (
+                    <p className="px-3 py-2 text-xs text-destructive" role="alert">
+                      {error}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {panel === 'picker' ? (
+                <div
+                  // Figma Time picker ≈ 214×166: дата‖время, outline «Выбрать»
+                  className="w-[214px] space-y-3 overflow-hidden rounded-xl border border-border bg-card p-3 shadow-md"
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Escape') return
+                    event.preventDefault()
+                    closePanel(true)
                   }}
                 >
-                  <Calendar className="size-4 shrink-0" aria-hidden />
-                  Выбрать время
-                </button>
-                {error ? (
-                  <p className="px-3 py-2 text-xs text-destructive" role="alert">
-                    {error}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-
-            {panel === 'picker' ? (
-              <div
-                className="w-64 space-y-3 rounded-lg border border-border bg-card p-3 shadow-md"
-                onKeyDown={(event) => {
-                  if (event.key !== 'Escape') return
-                  event.preventDefault()
-                  closePanel(true)
-                }}
-              >
-                <p className="text-sm font-medium">Напомнить</p>
-                <div className="space-y-1">
-                  <label htmlFor={dateId} className="text-xs text-muted-foreground">
-                    Дата
-                  </label>
-                  <Input
-                    id={dateId}
-                    type="date"
-                    value={picker.date}
-                    onChange={(event) =>
-                      setPicker((value) => ({ ...value, date: event.target.value }))
-                    }
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label htmlFor={timeId} className="text-xs text-muted-foreground">
-                    Время
-                  </label>
-                  <Input
-                    id={timeId}
-                    type="time"
-                    value={picker.time}
-                    onChange={(event) =>
-                      setPicker((value) => ({ ...value, time: event.target.value }))
-                    }
-                  />
-                </div>
-                <div className="flex gap-2">
+                  <p className="border-b border-border pb-2 text-sm font-medium">Напомнить</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label htmlFor={dateId} className="text-xs text-muted-foreground">
+                        Дата
+                      </label>
+                      <Input
+                        id={dateId}
+                        type="date"
+                        value={picker.date}
+                        className="h-9 rounded-md px-2"
+                        onChange={(event) =>
+                          setPicker((value) => ({ ...value, date: event.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label htmlFor={timeId} className="text-xs text-muted-foreground">
+                        Время
+                      </label>
+                      <Input
+                        id={timeId}
+                        type="time"
+                        value={picker.time}
+                        className="h-9 rounded-md px-2"
+                        onChange={(event) =>
+                          setPicker((value) => ({ ...value, time: event.target.value }))
+                        }
+                      />
+                    </div>
+                  </div>
                   <Button
                     type="button"
                     variant="outline"
-                    className="flex-1"
-                    aria-disabled={busy}
-                    onClick={() => {
-                      if (!saving.current) openPanel('menu')
-                    }}
-                  >
-                    Назад
-                  </Button>
-                  <Button
-                    type="button"
-                    className="flex-1"
+                    className="w-full"
                     aria-disabled={busy}
                     onClick={submitPicker}
                   >
                     Выбрать
                   </Button>
+                  {error ? (
+                    <p className="text-xs text-destructive" role="alert">
+                      {error}
+                    </p>
+                  ) : null}
                 </div>
-                {error ? (
-                  <p className="text-xs text-destructive" role="alert">
-                    {error}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-          </div>,
+              ) : null}
+            </div>
+          </>,
           document.body,
         )
       : null

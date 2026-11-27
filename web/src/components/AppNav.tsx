@@ -80,7 +80,8 @@ function NavItem({
 }) {
   const className = cn(
     // Figma tablet hit 44×44; mobile tabs slightly larger
-    'inline-flex size-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent md:size-11 lg:size-10',
+    // Figma 415:8407 — soft accent chip behind active icon
+    'inline-flex size-11 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent md:size-11 lg:size-10',
     active && 'bg-accent text-foreground',
   )
 
