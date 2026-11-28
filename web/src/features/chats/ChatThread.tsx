@@ -494,7 +494,7 @@ export function ChatThread({
       // Отправка из окна контекста возвращает ленту к последним сообщениям.
       if (hasMoreAfter) jumpToLatest()
       if (historyStatus === 'empty') setHistoryStatus('ready')
-      // Touch: свернуть virtual keyboard. Desktop: фокус в композере сохраняем (Enter → снова печатать).
+      // Close the on-screen keyboard while keeping focus for repeated keyboard sends.
       dismissVirtualKeyboardAfterSend()
     } catch {
       setSendError('Не удалось отправить сообщение')
@@ -743,10 +743,7 @@ export function ChatThread({
           disabled={!draft.trim() || !client}
           aria-label="Отправить"
         >
-          <ArrowUp
-            className="size-5"
-            strokeWidth={draft.trim() && client ? 2.5 : 2}
-          />
+          <ArrowUp className="size-5" strokeWidth={draft.trim() && client ? 2.5 : 2} />
         </Button>
       </form>
       {sendError ? (

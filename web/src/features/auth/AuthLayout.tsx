@@ -11,9 +11,7 @@ interface AuthLayoutProps {
 /** Общая оболочка экранов входа и регистрации по макету Tiding (#42 / Figma OAuth 129:3450). */
 export function AuthLayout({ title, footer, children }: AuthLayoutProps) {
   return (
-    <main
-      className="flex h-full min-h-0 justify-center overflow-y-auto overscroll-y-contain bg-[var(--auth-surface)] px-4 py-8 font-auth md:py-12 lg:py-16"
-    >
+    <main className="flex h-full min-h-0 justify-center overflow-y-auto overscroll-y-contain bg-[var(--auth-surface)] px-4 py-8 font-auth md:py-12 lg:py-16">
       {/* Desktop OAuth column = 448px (Figma 129:3445 / 129:3450) */}
       <div className="flex w-full max-w-[448px] flex-col items-center gap-10">
         <header className="flex w-full max-w-[272px] flex-col items-center gap-2 text-center">

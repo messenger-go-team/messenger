@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter, Route, Routes } from 'react-router'
@@ -67,6 +67,83 @@ function renderLater(auth: AuthContextValue) {
 }
 
 describe('LaterPage', () => {
+  it('keeps keyboard focus and invalid dates inside the reschedule dialog', async () => {
+    seedLaterMocks([
+      {
+        id: '98fcaed4-d453-4cba-b561-4100fe7aa314',
+        message: MESSAGE,
+        due_at: null,
+        created_at: '2026-11-14T15:00:00Z',
+        updated_at: '2026-11-14T15:00:00Z',
+      },
+    ])
+    const user = userEvent.setup()
+    renderLater(await authValue())
+    const trigger = await screen.findByRole('button', { name: 'Перенести' })
+    trigger.focus()
+    await user.keyboard('{Enter}')
+
+    const dialog = screen.getByRole('dialog', { name: 'Перенести срок' })
+    const date = within(dialog).getByLabelText('Дата')
+    await waitFor(() => expect(date).toHaveFocus())
+    fireEvent.change(date, { target: { value: '' } })
+    await user.click(within(dialog).getByRole('button', { name: 'Выбрать' }))
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Проверьте дату и время.')
+
+    date.focus()
+    await user.tab()
+    expect(dialog.contains(document.activeElement)).toBe(true)
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(trigger).toHaveFocus())
+    expect(dialog).not.toBeInTheDocument()
+  })
+
+  it('keeps the dialog open during PATCH so Done cannot race its response', async () => {
+    const entry = {
+      id: '98fcaed4-d453-4cba-b561-4100fe7aa314',
+      message: MESSAGE,
+      due_at: null,
+      created_at: '2026-11-14T15:00:00Z',
+      updated_at: '2026-11-14T15:00:00Z',
+    }
+    seedLaterMocks([entry])
+    let markStarted!: () => void
+    const requestStarted = new Promise<void>((resolve) => {
+      markStarted = resolve
+    })
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(
+      http.patch('/later/:id', async () => {
+        markStarted()
+        await pending
+        return HttpResponse.json({
+          entry: { ...entry, status: 'unscheduled' },
+          server_time: '2026-11-14T15:00:00Z',
+        })
+      }),
+    )
+    const user = userEvent.setup()
+    renderLater(await authValue())
+    const trigger = await screen.findByRole('button', { name: 'Перенести' })
+    await user.click(trigger)
+    const dialog = screen.getByRole('dialog', { name: 'Перенести срок' })
+    try {
+      await user.click(within(dialog).getByRole('button', { name: 'Без срока' }))
+      await requestStarted
+      await user.keyboard('{Escape}')
+      expect(dialog).toBeInTheDocument()
+      expect(within(dialog).getByRole('button', { name: 'Отмена' })).toBeDisabled()
+      expect(screen.queryByRole('button', { name: 'Готово' })).not.toBeInTheDocument()
+    } finally {
+      release()
+    }
+    await waitFor(() => expect(dialog).not.toBeInTheDocument())
+    await waitFor(() => expect(trigger).toHaveFocus())
+  })
+
   it('shows empty Important state', async () => {
     seedLaterMocks([])
     const auth = await authValue()

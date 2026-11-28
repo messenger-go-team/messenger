@@ -27,18 +27,7 @@ export function syncShellAfterKeyboard(): void {
   syncShellToVisualViewport()
 }
 
-/**
- * Десктоп / трекпад с физической клавиатурой: после Enter фокус в композере
- * должен остаться (две отправки подряд без клика по полю).
- */
-export function prefersPhysicalKeyboard(): boolean {
-  return window.matchMedia('(hover: hover) and (pointer: fine)').matches
-}
-
-/**
- * Снимает фокус с поля и синхронизирует оболочку (отправка / успешный логин).
- * На physical keyboard не вызывается после send — см. dismissVirtualKeyboardAfterSend.
- */
+/** Снимает фокус и синхронизирует оболочку после скрытия клавиатуры. */
 export function dismissVirtualKeyboard(): void {
   const active = document.activeElement
   if (active instanceof HTMLElement) {
@@ -52,15 +41,15 @@ export function dismissVirtualKeyboard(): void {
   })
 }
 
-/**
- * После send: на touch/virtual keyboard — blur+sync; на desktop — только sync, фокус остаётся.
- */
 export function dismissVirtualKeyboardAfterSend(): void {
-  if (prefersPhysicalKeyboard()) {
-    syncShellToVisualViewport()
+  const viewport = window.visualViewport
+  // Android's default mode shrinks the visual viewport. A touch pointer or pinch zoom
+  // alone does not mean the on-screen keyboard is open.
+  if (viewport?.scale === 1 && Math.round(viewport.height) < window.innerHeight) {
+    dismissVirtualKeyboard()
     return
   }
-  dismissVirtualKeyboard()
+  syncShellToVisualViewport()
 }
 
 /**

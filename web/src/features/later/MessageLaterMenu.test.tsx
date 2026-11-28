@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -114,9 +114,13 @@ describe('MessageLaterMenu', () => {
     trigger.focus()
     await user.keyboard('{Enter}')
     await user.click(screen.getByRole('menuitem', { name: 'Выбрать время' }))
-    expect(screen.getByLabelText('Дата')).toHaveFocus()
+    const dialog = screen.getByRole('dialog', { name: 'Напомнить' })
+    await waitFor(() => expect(within(dialog).getByLabelText('Дата')).toHaveFocus())
+    within(dialog).getByLabelText('Дата').focus()
+    await user.tab()
+    expect(dialog.contains(document.activeElement)).toBe(true)
     await user.keyboard('{Escape}')
-    expect(trigger).toHaveFocus()
+    await waitFor(() => expect(trigger).toHaveFocus())
     expect(screen.queryByRole('menu', { name: 'Вернуться позже' })).not.toBeInTheDocument()
     expect(screen.queryByText('Напомнить')).not.toBeInTheDocument()
   })
@@ -190,6 +194,7 @@ describe('MessageLaterMenu', () => {
       let submit = screen.getByRole('menuitem', { name: 'Просто сохранить' })
       if (panel === 'picker') {
         await user.keyboard('{ArrowUp}{Enter}')
+        await waitFor(() => expect(screen.getByLabelText('Дата')).toHaveFocus())
         // Focus starts on date → time → «Выбрать» (no «Назад» in Figma).
         await user.tab()
         await user.tab()

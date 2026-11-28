@@ -3,13 +3,13 @@ import {
   dismissVirtualKeyboard,
   dismissVirtualKeyboardAfterSend,
   installKeyboardShellSync,
-  prefersPhysicalKeyboard,
   syncShellToVisualViewport,
 } from './dismissVirtualKeyboard'
 
 describe('dismissVirtualKeyboard', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
     vi.useRealTimers()
     document.documentElement.style.removeProperty('--app-height')
     document.getElementById('root')?.remove()
@@ -58,49 +58,28 @@ describe('dismissVirtualKeyboard', () => {
     input.remove()
   })
 
-  it('prefersPhysicalKeyboard follows fine pointer + hover media', () => {
-    Object.defineProperty(window, 'matchMedia', {
-      writable: true,
-      configurable: true,
-      value: (query: string) => ({
-        matches: query === '(hover: hover) and (pointer: fine)',
-        media: query,
-        onchange: null,
-        addListener: () => {},
-        removeListener: () => {},
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        dispatchEvent: () => false,
-      }),
-    })
-    expect(prefersPhysicalKeyboard()).toBe(true)
-  })
+  it.each([
+    { height: 667, scale: 1, keepsFocus: true },
+    { height: 390, scale: 1, keepsFocus: false },
+    { height: 390, scale: 2, keepsFocus: true },
+  ])(
+    'handles Enter with viewport height $height and scale $scale',
+    ({ height, scale, keepsFocus }) => {
+      vi.stubGlobal('innerHeight', 667)
+      vi.stubGlobal('visualViewport', { height, scale, offsetTop: 0 })
+      // A touchscreen with no on-screen keyboard must still accept repeated keyboard sends.
+      vi.stubGlobal('matchMedia', () => ({ matches: false }))
+      const input = document.createElement('input')
+      document.body.appendChild(input)
+      input.focus()
+      vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
 
-  it('dismissVirtualKeyboardAfterSend keeps focus on desktop media', () => {
-    Object.defineProperty(window, 'matchMedia', {
-      writable: true,
-      configurable: true,
-      value: (query: string) => ({
-        matches: query === '(hover: hover) and (pointer: fine)',
-        media: query,
-        onchange: null,
-        addListener: () => {},
-        removeListener: () => {},
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        dispatchEvent: () => false,
-      }),
-    })
-    const input = document.createElement('input')
-    document.body.appendChild(input)
-    input.focus()
-    vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+      dismissVirtualKeyboardAfterSend()
 
-    dismissVirtualKeyboardAfterSend()
-
-    expect(document.activeElement).toBe(input)
-    input.remove()
-  })
+      expect(document.activeElement === input).toBe(keepsFocus)
+      input.remove()
+    },
+  )
 
   it('installKeyboardShellSync updates height on focusout after keyboard hide', () => {
     vi.useFakeTimers()
