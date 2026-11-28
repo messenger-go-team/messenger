@@ -1,0 +1,13 @@
+# Install as /etc/ssh/sshd_config.d/95-messenger-qa.conf, owned by root.
+Match User messenger-qa
+    AuthorizedKeysFile /etc/ssh/authorized_keys/messenger-qa
+    AuthorizedKeysCommand none
+    TrustedUserCAKeys none
+    AuthenticationMethods publickey
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PermitTTY no
+    PermitUserRC no
+    DisableForwarding yes
+    ForceCommand /usr/local/libexec/messenger-qa-ssh
+Match all

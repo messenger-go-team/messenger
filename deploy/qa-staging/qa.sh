@@ -107,10 +107,11 @@ SQL
 
 # Serialize changes to this project. Release can run while a browser request is held.
 case $action in
-    status|inspect-chat|inspect-auth|auth-check|gate-log|wait-locks|burst) ;;
+    status|inspect-chat|inspect-auth|auth-check|auth-log-check|gate-log|wait-locks|burst) ;;
     *)
-        env_dir=$(cd -- "$(dirname -- "$env_file")" && pwd -P)
-        exec 9>"$env_dir/.$project.lock"
+        lock_dir=${QA_LOCK_DIR:-$(dirname -- "$env_file")}
+        lock_dir=$(cd -- "$lock_dir" && pwd -P)
+        exec 9>"$lock_dir/.$project.lock"
         flock -n 9 || die 'another QA control command is running'
         ;;
 esac
@@ -124,9 +125,24 @@ case $action in
         compose up -d --no-build
         ready
         ;;
+    start)
+        [[ $# == 0 ]] || die 'usage: start'
+        compose up -d --no-build --pull never
+        ready
+        ;;
+    stop)
+        [[ $# == 0 ]] || die 'usage: stop'
+        compose stop
+        printf 'STOPPED %s %s\n' "$revision" "$origin"
+        ;;
     status)
         [[ $# == 0 ]] || die 'usage: status'
-        compose ps
+        compose ps --all
+        running=$(compose ps --status running -q)
+        if [[ -z $running ]]; then
+            printf 'STOPPED %s %s\n' "$revision" "$origin"
+            exit 0
+        fi
         ctl state
         sql <<'SQL'
 SELECT operation, chat_id, mode, until_at, until_at > clock_timestamp() AS active
@@ -314,6 +330,28 @@ SQL
         [[ $# == 1 ]] || die 'usage: auth-check USER'
         is_uuid "$1"
         compose exec -T faults /usr/local/bin/qa-faults auth-check "$1"
+        ;;
+    auth-log-check)
+        [[ $# == 0 ]] || die 'usage: auth-log-check (disposable password, access JWT and refresh token on stdin)'
+        labels=(password access refresh)
+        samples=()
+        for label in "${labels[@]}"; do
+            IFS= read -r -n 4097 -t 15 sample || die "expected $label on stdin"
+            [[ -n $sample && ${#sample} -le 4096 ]] || die "invalid $label sample"
+            samples+=("$sample")
+        done
+        logs=$(compose logs --no-color --no-log-prefix --since 15m --tail 2000 auth 2>&1) \
+            || die 'unable to read QA Auth logs'
+        found=0
+        for i in "${!labels[@]}"; do
+            if [[ $logs == *"${samples[$i]}"* ]]; then
+                printf '%s: found in QA Auth logs\n' "${labels[$i]}"
+                found=1
+            else
+                printf '%s: absent from scanned QA Auth logs\n' "${labels[$i]}"
+            fi
+        done
+        exit "$found"
         ;;
     inspect-auth)
         [[ $# == 1 ]] || die 'usage: inspect-auth USER'

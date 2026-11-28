@@ -1,10 +1,10 @@
 # QA-staging для T50
 
-QA управляет отдельным Docker Compose-проектом `messenger-qa-staging` под
-Linux-пользователем `messenger-qa`. Стек содержит веб-клиент, Nginx, Auth, History,
-Chat и собственный PostgreSQL. По умолчанию Nginx отдаёт обычные API и WSS
-напрямую. Тестовый прокси включается для выбранного профиля браузера или
-протокольного соединения. Команды управления доступны из QA-учётки на VPS.
+QA управляет отдельным Docker Compose-проектом `messenger-qa-staging` через
+ограниченные SSH-команды Linux-пользователя `messenger-qa`. Стек содержит
+веб-клиент, Nginx, Auth, History, Chat и собственный PostgreSQL. По умолчанию
+Nginx отдаёт обычные API и WSS напрямую. Тестовый прокси включается для
+выбранного профиля браузера или протокольного соединения.
 [Критерии T50](https://github.com/messenger-go-team/messenger/issues/50).
 
 ## Администратору VPS. Сделать один раз
@@ -12,55 +12,82 @@ Chat и собственный PostgreSQL. По умолчанию Nginx отд�
 1. Выделите DNS-имя и свободный loopback-порт, например `19080`.
    Создайте пользователя `messenger-qa` с собственным rootless Docker и
    включите запуск пользовательского сервиса после выхода из SSH.
-   Можно использовать тот же VPS или отдельную VM. Для общего VPS проверьте,
-   что учётка QA не входит в `sudo` или `docker` и не имеет доступа к системному
-   Docker-сокету, пользователю общего staging и его данным.
+   Установите доверенные бинарники Docker в `/opt/messenger-qa-rootless/bin`.
+   Для общего VPS проверьте, что учётка QA не входит в `sudo` или `docker`
+   и не имеет доступа к сокетам общего staging и системного Docker.
    [Как организован rootless Docker в проекте](../staging-actions.md).
-2. Установите **публичный** SSH-ключ QA в `authorized_keys` пользователя
-   `messenger-qa`. QA нужен вход только в эту учётку. Установите Git, Bash,
-   OpenSSL и Docker Compose v2 в доступный ей PATH. Под этой учёткой
-   клонируйте репозиторий в `~/messenger` и переключитесь на утверждённый
-   SHA, включающий каталог `deploy/qa-staging`.
-3. Из корня checkout выполните команды под пользователем `messenger-qa`.
-   Подставьте своё DNS-имя и порт.
+2. Под `root` подготовьте чистый checkout утверждённого SHA в
+   `/opt/messenger-qa-controller`. Каталог, скрипты, Compose-файлы и Git
+   должны принадлежать `root` и не давать `messenger-qa` права записи.
+   Создайте отдельные каталоги настроек и Docker CLI:
 
    ```bash
-   bash deploy/qa-staging/qa.sh configure https://qa-messenger.example.org 19080
-   bash deploy/qa-staging/qa.sh up
+   install -d -o root -g messenger-qa -m 0750 /etc/messenger-qa /etc/messenger-qa/docker-client
    ```
 
-   `configure` создаёт отдельные случайные секреты в
-   `deploy/qa-staging/.env` с правами 0600. `up` собирает фронтенд и бэкенд
-   из чистого checkout одного SHA. Используйте пустой PostgreSQL проекта.
-4. Настройте TLS на внешнем Nginx и добавьте отдельный виртуальный хост по
-   [шаблону](edge-nginx.conf.example). Если внешний Nginx в контейнере,
-   проверьте, что он достигает loopback хоста через host network или другое
-   уже используемое на VPS соединение с хостом. Проверьте конфигурацию
-   `nginx -t`, затем выполните reload. Откройте `/app/login` и
-   `/revision.txt` через HTTPS и проверьте WSS `/ws` под одноразовой учёткой.
-5. Передайте QA адрес HTTPS, SSH-хост, имя пользователя и SHA. Попросите
-   QA самостоятельно выполнить `status`, `seed` и `restart-chat`. Затем QA
-   ведёт прогоны. Обращение к администратору нужно при проблеме с DNS/TLS,
-   потерянном техническом доступе, неисправности rootless Docker либо
-   недоступности VPS.
+   Для первого запуска настройте отдельные случайные секреты. На уже
+   работающем QA-staging перенесите его действующий `.env` в
+   `/etc/messenger-qa/staging.env`, сохранив секреты и том.
 
-Для смены версии остановите прогон. Проверьте checkout и назначьте его SHA
-в `QA_REVISION` файла `.env`, затем выполните `qa.sh up`. Зафиксируйте новый SHA
-для следующих прогонов. `up` сохраняет текущий QA-том, `reset --confirm`
-создаёт пустой том на текущей сборке. Общий staging обслуживается своими
-инструментами.
+   ```bash
+   cd /opt/messenger-qa-controller
+   QA_ENV_FILE=/etc/messenger-qa/staging.env bash deploy/qa-staging/qa.sh configure https://qa-messenger.example.org 19080
+   chown root:messenger-qa /etc/messenger-qa/staging.env
+   chmod 0640 /etc/messenger-qa/staging.env
+   ```
+
+3. Соберите и запустите Compose под `messenger-qa` из доверенного checkout.
+   Имя проекта сохраняет существующую сеть и том с тестовыми данными.
+
+   ```bash
+   controller=/opt/messenger-qa-controller
+   qa_uid=$(id -u messenger-qa)
+   runuser -u messenger-qa -- env -i \
+     PATH=/opt/messenger-qa-rootless/bin:/usr/sbin:/usr/bin:/bin \
+     HOME="$controller" DOCKER_CONFIG=/etc/messenger-qa/docker-client \
+     QA_ENV_FILE=/etc/messenger-qa/staging.env QA_LOCK_DIR="/run/user/$qa_uid" \
+     GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$controller" \
+     COMPOSE_PARALLEL_LIMIT=1 bash "$controller/deploy/qa-staging/qa.sh" up
+   ```
+
+4. Установите [SSH-обработчик](qa-ssh.sh) как
+   `/usr/local/libexec/messenger-qa-ssh` с владельцем `root` и правами 0755.
+   В `/etc/ssh/authorized_keys/messenger-qa` поместите **публичный** ключ
+   тестера с опцией `restrict`. Файл и его родительский каталог должны
+   принадлежать `root`. Закройте прежние интерактивные сеансы QA и
+   установите для этой учётки оболочку `/bin/dash`, которая не читает
+   пользовательские startup-файлы для команды SSH. Установите
+   [SSH-конфигурацию](sshd-qa.conf.example) как
+   `/etc/ssh/sshd_config.d/95-messenger-qa.conf`. Проверьте `sshd -t` и
+   эффективные настройки через `sshd -T -C user=messenger-qa,host=localhost,addr=127.0.0.1`.
+   После reload проверьте разрешённую команду и отказ интерактивному входу
+   и произвольной команде.
+5. Настройте TLS на внешнем Nginx по [шаблону](edge-nginx.conf.example).
+   Если внешний Nginx в контейнере, проверьте доступ к loopback VPS.
+   Выполните `nginx -t`, затем reload. Откройте `/app/login` и
+   `/revision.txt` через HTTPS, проверьте WSS `/ws` под одноразовой учёткой.
+   Передайте QA адрес, SSH-хост, имя пользователя и SHA.
+
+Для обновления согласуйте окно, переключите доверенный checkout на нужный SHA,
+измените `QA_REVISION` в `/etc/messenger-qa/staging.env` и выполните
+административный `up` из шага 3. Если менялся SSH-обработчик, обновите
+его установленную копию. `qa start` запускает уже собранные образы, а
+`qa stop` останавливает проект с сохранением его PostgreSQL.
 
 ## Тестеру. Данные, прогон и восстановление
 
-Подключитесь к выделенной учётке `messenger-qa` и выполняйте из
-`~/messenger`. Ниже `qa` означает эту функцию в вашей SSH-сессии:
+Команды отправляются через SSH с вашим собственным ключом. Запустите эту
+функцию на своём компьютере, подставив адрес QA-staging:
 
 ```bash
-cd ~/messenger
-qa() { bash deploy/qa-staging/qa.sh "$@"; }
+qa() { ssh -T -o HostKeyAlgorithms=ssh-ed25519 messenger-qa@qa-messenger.example.org "$@"; }
 qa status
 qa seed later01 2
 ```
+
+Если `status` показывает `STOPPED`, вызовите `qa start`.
+После прогона `qa stop` освободит ресурсы, сохранив тестовую БД для
+следующего запуска.
 
 `seed` создаёт A, B, постороннего C, чат A–B и заданное число сообщений
 от B. Код набора из 4–14 строчных букв или цифр должен быть новым. Для
@@ -93,7 +120,7 @@ qa seed later01 2
 | LATER-16/17 | На свежих наборах сохраните Later-запись под A, который ещё не отправлял сообщений, и выполните `qa delete-message MESSAGE`, `qa delete-chat CHAT` или `qa revoke CHAT USER`. Проверьте исчезновение после обновления, отсутствие напоминания и 404 при действии из ещё открытого списка, как описано в кейсе. |
 | LATER-18 | Сохраните активную запись, выполните `qa revoke CHAT USER`, проверьте, что она скрыта. Выполните `qa restore CHAT USER` и проверьте, что вернулась та же запись и состояние вычислено по свежему `server_time`. |
 | AUTH-08 | Войдите под одноразовой учёткой, сохраните тестовую cookie приватно, выполните `qa expire-refresh USER`. Повтор с тестовой cookie должен дать 401. Команда истекает активные refresh-сессии указанной учётки. Гонку двух запросов с одним действующим refresh проверяйте отдельно на новой сессии. |
-| AUTH-13 | `qa auth-check USER` проверяет закрытый маршрут снаружи, статусы запросов из внутренней сети и форму UserSummary. `qa inspect-auth USER` выводит признаки хеширования и сроки без значений хешей. Логи Auth сверяйте приватно на одноразовом потоке. |
+| AUTH-13 | `qa auth-check USER` проверяет закрытый маршрут снаружи, статусы запросов из внутренней сети и форму UserSummary. `qa inspect-auth USER` выводит признаки хеширования и сроки без значений хешей. Для проверки логов используйте `qa auth-log-check`. Передайте на stdin три строки с одноразового потока: пароль, access JWT и refresh-токен. Команда проверяет до 2000 строк Auth за последние 15 минут и выводит только признаки совпадений. |
 
 Границу exp и поля JWT в `AUTH-06` проверяйте протокольным клиентом и
 [тестом Auth с управляемыми часами](../../services/auth/internal/auth/service_boundaries_test.go).
