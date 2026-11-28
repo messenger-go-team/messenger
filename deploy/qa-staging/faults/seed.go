@@ -94,8 +94,8 @@ func seedRun(args []string) error {
 	if len(args) == 2 {
 		var err error
 		count, err = strconv.Atoi(args[1])
-		if err != nil || count < 0 || count > 250 {
-			return fmt.Errorf("message count must be 0–250")
+		if err != nil || count < 0 || count > 401 {
+			return fmt.Errorf("message count must be 0–401")
 		}
 	}
 

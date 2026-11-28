@@ -34,12 +34,14 @@ type rule struct {
 	Client  string    `json:"client_msg_id,omitempty"`
 	Until   time.Time `json:"until"`
 	Matches int       `json:"matches"`
+	Limit   int       `json:"limit,omitempty"`
 	stop    chan struct{}
 }
 
 type faults struct {
-	mu    sync.Mutex
-	rules map[string]*rule
+	mu      sync.Mutex
+	rules   map[string]*rule
+	viewers map[string]map[chan frame]struct{}
 }
 
 func expectedRule(q url.Values) (*rule, error) {
@@ -58,6 +60,19 @@ func expectedRule(q url.Values) (*rule, error) {
 	case "drop-ack", "drop-new", "drop-both":
 		if r.Chat == "" || r.User == "" {
 			return nil, errors.New("WS rule needs a chat and a viewer")
+		}
+	case "hold-ack", "hold-new", "repeat-new":
+		if r.Chat == "" || r.User == "" {
+			return nil, errors.New("WS rule needs a chat and a viewer")
+		}
+		r.Limit = 1
+	case "fail-later":
+		if r.User == "" || r.Chat != "" || r.Client != "" {
+			return nil, errors.New("Later rule needs only a viewer")
+		}
+		r.Limit, err = strconv.Atoi(q.Get("count"))
+		if err != nil || r.Limit < 1 || r.Limit > 10 {
+			return nil, errors.New("count must be 1–10")
 		}
 	case "no-pong", "slow-reader":
 		if r.User == "" || r.Chat != "" || r.Client != "" {
@@ -102,6 +117,7 @@ func (f *faults) control() http.Handler {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("POST /replay-new", f.replayNew)
 	mux.HandleFunc("GET /state", func(w http.ResponseWriter, req *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
@@ -116,7 +132,7 @@ func (f *faults) match(kind, chat, user, client string, once bool) (time.Time, <
 	defer f.mu.Unlock()
 	r := f.rules[kind]
 	if r == nil || !time.Now().Before(r.Until) || r.Chat != chat || r.User != user ||
-		(r.Client != "" && r.Client != client) || (once && r.Matches > 0) {
+		(r.Client != "" && r.Client != client) || (once && r.Matches > 0) || (r.Limit > 0 && r.Matches >= r.Limit) {
 		return time.Time{}, nil, false
 	}
 	r.Matches++
@@ -144,11 +160,25 @@ func (f *faults) skipExtraRead(chat, user string) bool {
 	return r.Matches > 1
 }
 
-func (f *faults) history() http.Handler {
-	target := &url.URL{Scheme: "http", Host: "history:8080"}
+func (f *faults) history(target *url.URL) http.Handler {
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	proxy.ModifyResponse = func(res *http.Response) error {
 		req := res.Request
+		if req.Method == http.MethodGet && req.URL.Path == "/later" && res.StatusCode == http.StatusOK {
+			user := subject(strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer "))
+			if _, _, ok := f.match("fail-later", "", user, "", false); ok {
+				const body = `{"code":"service_unavailable","message":"QA Later unavailable"}`
+				_ = res.Body.Close()
+				res.Body = io.NopCloser(strings.NewReader(body))
+				res.ContentLength = int64(len(body))
+				res.StatusCode = http.StatusServiceUnavailable
+				res.Status = "503 Service Unavailable"
+				res.Header.Set("Content-Type", "application/json")
+				res.Header.Set("Content-Length", strconv.Itoa(len(body)))
+				res.Header.Del("Content-Encoding")
+				res.Header.Set("Cache-Control", "no-store")
+			}
+		}
 		if req.Method == http.MethodPost && res.StatusCode == http.StatusNoContent {
 			if p := readPath.FindStringSubmatch(req.URL.Path); p != nil {
 				user := subject(strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer "))
@@ -196,17 +226,23 @@ func (f *faults) history() http.Handler {
 	})
 }
 
-func (f *faults) dropFrame(user string, data []byte) bool {
-	var event struct {
-		Type    string `json:"type"`
-		Payload struct {
-			Chat   string `json:"chat_id"`
-			Client string `json:"client_msg_id"`
-		} `json:"payload"`
-	}
+type messageEvent struct {
+	Type    string `json:"type"`
+	Payload struct {
+		Chat   string `json:"chat_id"`
+		Client string `json:"client_msg_id"`
+	} `json:"payload"`
+}
+
+func parseMessageEvent(data []byte) messageEvent {
+	var event messageEvent
 	if json.Unmarshal(data, &event) != nil {
-		return false
+		return messageEvent{}
 	}
+	return event
+}
+
+func (f *faults) dropFrame(user string, event messageEvent) bool {
 	var kind string
 	switch event.Type {
 	case "message.ack":
@@ -274,7 +310,7 @@ func (f *faults) websocket(w http.ResponseWriter, req *http.Request) {
 	})
 
 	done := make(chan struct{}, 2)
-	go relay(back, front, nil, done)
+	go relay(back, front, done)
 	go func() {
 		if slow {
 			timer := time.NewTimer(time.Until(until))
@@ -287,7 +323,7 @@ func (f *faults) websocket(w http.ResponseWriter, req *http.Request) {
 				return
 			}
 		}
-		relay(front, back, func(data []byte) bool { return f.dropFrame(user, data) }, done)
+		f.relayToViewer(front, back, user, done)
 	}()
 	<-done
 }
@@ -308,20 +344,14 @@ func transferControls(from, to *websocket.Conn, skipPing func() bool) {
 	})
 }
 
-func relay(to, from *websocket.Conn, drop func([]byte) bool, done chan<- struct{}) {
+func relay(to, from *websocket.Conn, done chan<- struct{}) {
 	defer func() { done <- struct{}{} }()
 	for {
 		kind, data, err := from.ReadMessage()
 		if err != nil {
 			return
 		}
-		if kind == websocket.TextMessage && drop != nil && drop(data) {
-			continue
-		}
-		if err := to.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
-			return
-		}
-		if err := to.WriteMessage(kind, data); err != nil {
+		if err := writeFrame(to, frame{kind: kind, data: data}); err != nil {
 			return
 		}
 	}
@@ -348,7 +378,7 @@ func main() {
 	f := &faults{rules: make(map[string]*rule)}
 	public := http.NewServeMux()
 	public.HandleFunc("GET /ws", f.websocket)
-	public.Handle("/", f.history())
+	public.Handle("/", f.history(&url.URL{Scheme: "http", Host: "history:8080"}))
 
 	errs := make(chan error, 2)
 	for port, handler := range map[int]http.Handler{8080: public, 8081: f.control()} {

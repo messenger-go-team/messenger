@@ -11,7 +11,7 @@ command_text=${SSH_ORIGINAL_COMMAND:-}
 [[ ${#command_text} -le 256 && $command_text =~ ^[A-Za-z0-9_\ -]+$ ]] || usage
 IFS=' ' read -r -a args <<<"$command_text"
 case ${args[0]:-} in
-    status|start|stop|seed|restart-chat|reset|clear|slow-profile|burst|arm|release|gate|release-gate|gate-log|wait-locks|revoke|restore|delete-message|delete-chat|storage-down|storage-up|expire-refresh|inspect-chat|inspect-auth|auth-check|auth-log-check) ;;
+    status|start|stop|seed|restart-chat|reset|clear|slow-profile|burst|replay-new|arm|release|gate|release-gate|gate-log|wait-locks|revoke|restore|delete-message|delete-chat|storage-down|storage-up|expire-refresh|inspect-chat|inspect-auth|auth-check|auth-log-check) ;;
     *) usage ;;
 esac
 

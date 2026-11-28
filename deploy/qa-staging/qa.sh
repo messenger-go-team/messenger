@@ -181,11 +181,36 @@ SQL
         [[ $2 =~ ^qa50_[a-z0-9]{4,14}_[abc]$ ]] || die 'expected a seed username'
         compose exec -T faults /usr/local/bin/qa-faults burst "$1" "$2" "$origin"
         ;;
+    replay-new)
+        [[ $# == 3 ]] || die 'usage: replay-new CHAT VIEWER MESSAGE'
+        is_uuid "$1"
+        is_uuid "$2"
+        is_uuid "$3"
+        event=$(sql -At --set chat="$1" --set person="$2" --set message="$3" <<'SQL'
+SELECT json_build_object(
+    'type', 'message.new', 'id', gen_random_uuid(), 'ts', clock_timestamp(),
+    'payload', json_build_object(
+        'chat_id', m.chat_id, 'client_msg_id', m.client_msg_id, 'message_id', m.id,
+        'seq', m.seq, 'created_at', m.created_at, 'sender_id', m.sender_id, 'body', m.body))
+FROM history.messages m
+JOIN history.chat_members cm ON cm.chat_id = m.chat_id AND cm.user_id = :'person'::uuid
+WHERE m.id = :'message'::uuid AND m.chat_id = :'chat'::uuid;
+SQL
+)
+        [[ -n $event ]] || die 'message is missing or the viewer is not a chat member'
+        compose exec -T gateway wget -qO- --post-data="$event" "http://faults:8081/replay-new?user=$2" \
+            || die 'replay failed: open exactly one proxied socket for the viewer'
+        ;;
     arm)
         [[ $# -ge 1 ]] || die 'usage: arm RULE CHAT USER [SECONDS [CLIENT_MSG_ID]]'
-        kind=$1
+        kind=$1 count=0
         shift
         case $kind in
+            fail-later)
+                [[ $# -ge 1 && $# -le 3 ]] || die 'usage: arm fail-later USER [SECONDS [COUNT]]'
+                chat='' user=$1 seconds=${2:-45} client='' count=${3:-1}
+                [[ $count =~ ^([1-9]|10)$ ]] || die 'count must be 1-10'
+                ;;
             no-pong|slow-reader)
                 [[ $# -ge 1 && $# -le 2 ]] || die 'usage: arm no-pong|slow-reader USER [SECONDS]'
                 chat='' user=$1 seconds=${2:-90} client=''
@@ -195,7 +220,7 @@ SQL
                 chat=$1 user=$2 seconds=${3:-45} client=''
                 is_uuid "$chat"
                 ;;
-            drop-ack|drop-new|drop-both)
+            drop-ack|drop-new|drop-both|hold-ack|hold-new|repeat-new)
                 [[ $# -ge 2 && $# -le 4 ]] || die 'usage: arm RULE CHAT USER [SECONDS [CLIENT_MSG_ID]]'
                 chat=$1 user=$2 seconds=${3:-45} client=${4:-}
                 is_uuid "$chat"
@@ -205,10 +230,10 @@ SQL
         esac
         is_uuid "$user"
         [[ $seconds =~ ^[0-9]{1,3}$ ]] && (( 10#$seconds >= 1 && 10#$seconds <= 180 )) || die 'seconds must be 1-180'
-        ctl "arm?kind=$kind&chat=$chat&user=$user&seconds=$((10#$seconds))&client=$client" post
+        ctl "arm?kind=$kind&chat=$chat&user=$user&seconds=$((10#$seconds))&client=$client&count=$count" post
         ;;
     release)
-        [[ $# == 1 && $1 =~ ^(hold-read|drop-read|block-history|skip-extra-read|drop-ack|drop-new|drop-both|no-pong|slow-reader|all)$ ]] || die 'expected a rule or all'
+        [[ $# == 1 && $1 =~ ^(hold-read|drop-read|block-history|skip-extra-read|drop-ack|drop-new|drop-both|hold-ack|hold-new|repeat-new|fail-later|no-pong|slow-reader|all)$ ]] || die 'expected a rule or all'
         ctl "release?kind=$1" post
         ;;
     clear)
