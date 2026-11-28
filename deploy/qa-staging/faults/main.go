@@ -68,7 +68,7 @@ func expectedRule(q url.Values) (*rule, error) {
 		r.Limit = 1
 	case "fail-later":
 		if r.User == "" || r.Chat != "" || r.Client != "" {
-			return nil, errors.New("Later rule needs only a viewer")
+			return nil, errors.New("rule for /later needs only a viewer")
 		}
 		r.Limit, err = strconv.Atoi(q.Get("count"))
 		if err != nil || r.Limit < 1 || r.Limit > 10 {
