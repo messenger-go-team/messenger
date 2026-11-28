@@ -29,6 +29,19 @@ func run(ctx context.Context, cfg config, logger *slog.Logger) error {
 	}
 	var ready atomic.Bool
 	ws := newWSEndpoint(cfg, &ready, defaultWSTiming(), historyv1.NewHistoryServiceClient(history), logger)
+	if cfg.RedisURL != "" {
+		broker, err := newRedisBroker(redisBrokerConfig{URL: cfg.RedisURL, Prefix: cfg.RedisPrefix}, ws.hub, logger)
+		if err != nil {
+			_ = listener.Close()
+			return fmt.Errorf("create Redis broker: %w", err)
+		}
+		defer func() {
+			if err := broker.Close(); err != nil {
+				logger.Warn("could not close Redis broker")
+			}
+		}()
+		ws.setRedisBroker(broker)
+	}
 	handler := newServiceHandler(&ready, logger, ws, healthpb.NewHealthClient(history))
 	server := newHTTPServer(cfg, handler, logger)
 	return serve(ctx, server, listener, ws, cfg.ShutdownTimeout, logger)
