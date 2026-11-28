@@ -1,0 +1,8 @@
+**
+!web/**
+web/node_modules
+web/dist
+web/.env*
+!web/.env.staging
+!deploy/qa-staging/nginx.conf
+!deploy/nginx/snippets/auth-locations.conf
