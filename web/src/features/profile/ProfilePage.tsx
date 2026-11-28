@@ -1,6 +1,7 @@
 import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { Link } from 'react-router'
-import { ArrowLeft, LogOut, MessageCircle, User, Users } from 'lucide-react'
+import { LogOut } from 'lucide-react'
+import { AppNav } from '@/components/AppNav'
 import { buttonVariants } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/useAuth'
 import { cn } from '@/lib/utils'
@@ -11,45 +12,11 @@ export function ProfilePage() {
   const letter = user?.username.trim().charAt(0).toUpperCase() || '?'
 
   return (
-    <div className="flex h-svh min-h-0 overflow-hidden bg-background text-foreground">
-      <nav
-        aria-label="Основная навигация"
-        className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-border bg-muted/40 py-3"
-      >
-        <div className="flex flex-col items-center gap-3">
-          <Link
-            to="/"
-            className="inline-flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent"
-            aria-label="Чаты"
-          >
-            <MessageCircle className="size-5" />
-          </Link>
-          <Link
-            to="/contacts"
-            className="inline-flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent"
-            aria-label="Контакты"
-          >
-            <Users className="size-5" />
-          </Link>
-        </div>
-        <span
-          className="inline-flex size-10 items-center justify-center rounded-lg bg-accent text-foreground"
-          aria-current="page"
-          aria-label="Профиль"
-        >
-          <User className="size-5" />
-        </span>
-      </nav>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground md:flex-row">
+      <AppNav active="profile" className="order-last md:order-first" />
 
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-y-contain">
         <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-4">
-          <Link
-            to="/"
-            className="inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent md:hidden"
-            aria-label="Назад"
-          >
-            <ArrowLeft className="size-5" />
-          </Link>
           <h1 className="text-xl font-semibold tracking-tight">Профиль</h1>
         </header>
 

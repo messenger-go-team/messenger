@@ -16,7 +16,7 @@ import {
   LoaderCircle,
   MessageCircle,
   RotateCcw,
-  SendHorizontal,
+  ArrowUp,
 } from 'lucide-react'
 import { ApiError } from '@/api/client'
 import { getMessageContext, getMessageHistory, markChatRead, type Message } from '@/api/history'
@@ -27,6 +27,7 @@ import { connectionStatusLabel } from '@/features/chats/connectionStatus'
 import { formatChatListTime } from '@/features/chats/formatChatListTime'
 import { resolveMarkReadSeq } from '@/features/chats/markReadSeq'
 import { mergeThreadMessages, type ThreadMessage } from '@/features/chats/mergeThreadMessages'
+import { dismissVirtualKeyboardAfterSend } from '@/lib/dismissVirtualKeyboard'
 import { MessageLaterMenu } from '@/features/later/MessageLaterMenu'
 import { useOptionalLaterReminders } from '@/features/later/useLaterReminders'
 import { useWs } from '@/features/ws/useWs'
@@ -34,7 +35,8 @@ import { cn } from '@/lib/utils'
 
 const HISTORY_PAGE_SIZE = 50
 const MAX_BODY_LENGTH = 4096
-const HIGHLIGHT_MS = 2500
+/** Сколько держать подсветку после scrollIntoView; снятие анимируется CSS ~1s. */
+const HIGHLIGHT_MS = 2250
 const MESSAGE_UNAVAILABLE_NOTICE = 'Сообщение недоступно'
 
 type HistoryStatus = 'loading' | 'ready' | 'error' | 'empty'
@@ -492,6 +494,8 @@ export function ChatThread({
       // Отправка из окна контекста возвращает ленту к последним сообщениям.
       if (hasMoreAfter) jumpToLatest()
       if (historyStatus === 'empty') setHistoryStatus('ready')
+      // Close the on-screen keyboard while keeping focus for repeated keyboard sends.
+      dismissVirtualKeyboardAfterSend()
     } catch {
       setSendError('Не удалось отправить сообщение')
     }
@@ -510,10 +514,10 @@ export function ChatThread({
       className="flex h-full min-h-0 w-full flex-col bg-background"
       aria-label={`Чат с ${title}`}
     >
-      <header className="flex items-center gap-3 border-b border-border px-3 py-3 md:px-5">
+      <header className="flex items-center gap-3 border-b border-border px-3 py-3 md:px-5 lg:px-6">
         <Link
           to="/"
-          className="inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent md:hidden"
+          className="inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent lg:hidden"
           aria-label="К списку чатов"
         >
           <ArrowLeft className="size-5" />
@@ -554,7 +558,7 @@ export function ChatThread({
 
       <div
         ref={listRef}
-        className="min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-6"
+        className="relative min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-4 md:px-5 lg:px-6"
         onScroll={onScroll}
         data-testid="chat-thread-scroll"
       >
@@ -643,23 +647,21 @@ export function ChatThread({
               ) : null}
               <div
                 className={cn(
-                  'max-w-[min(100%,28rem)] rounded-2xl px-3 py-2 text-sm shadow-sm transition-shadow',
+                  // Figma Message / Bubble: pad 12/16/20, gap 8, max 480
+                  'flex max-w-[min(100%,480px)] flex-col gap-2 pt-3 pr-4 pb-5 pl-4 text-sm',
+                  'transition-[box-shadow] duration-1000 ease-out',
                   message.mine
-                    ? 'rounded-br-md bg-primary text-primary-foreground'
-                    : 'rounded-bl-md bg-muted text-foreground',
+                    ? // bubbles out: gradient, radius 16 16 4 16, без stroke (только shadow)
+                      'rounded-tl-[16px] rounded-tr-[16px] rounded-br-[4px] rounded-bl-[16px] border-0 bg-gradient-to-b from-[#E0F7F9] to-[#D1F2F4] text-foreground shadow-[0_4px_12px_rgba(56,189,248,0.15)]'
+                    : // bubbles in: white, radius 16 16 16 4, без stroke
+                      'rounded-tl-[16px] rounded-tr-[16px] rounded-br-[16px] rounded-bl-[4px] border-0 bg-card text-foreground shadow-[0_1px_3px_rgba(0,0,0,0.04)]',
                   message.status === 'failed' && 'ring-2 ring-destructive/60',
                   message.status === 'sending' && 'opacity-80',
                   message.id && message.id === highlightedId && 'ring-2 ring-primary',
-                  'group-hover/bubble:shadow-md',
                 )}
               >
                 <p className="whitespace-pre-wrap break-words">{message.body}</p>
-                <div
-                  className={cn(
-                    'mt-1 flex items-center justify-end gap-1.5 text-[11px]',
-                    message.mine ? 'text-primary-foreground/80' : 'text-muted-foreground',
-                  )}
-                >
+                <div className="flex items-center justify-end gap-1.5 text-[11px] text-muted-foreground">
                   {message.createdAt && message.status !== 'sending' ? (
                     <time dateTime={message.createdAt}>
                       {formatChatListTime(message.createdAt)}
@@ -708,7 +710,8 @@ export function ChatThread({
 
       <form
         onSubmit={send}
-        className="flex items-end gap-2 border-t border-border bg-card px-3 py-3 md:px-5"
+        // Figma Composer ~72 hug: input 40 + вертикальные отступы
+        className="flex items-center gap-2 border-t border-border bg-card px-3 py-4 md:px-5 lg:px-6"
       >
         <label htmlFor={composerId} className="sr-only">
           Сообщение
@@ -720,20 +723,27 @@ export function ChatThread({
             setDraft(event.target.value)
             setSendError(null)
           }}
-          placeholder="Написать сообщение"
+          placeholder="Сообщение"
           maxLength={MAX_BODY_LENGTH}
           autoComplete="off"
-          className="min-h-11 flex-1 rounded-full border-transparent bg-muted px-4"
+          // Figma Input: h 40; focus — border #94A3B8, без ring/glow
+          className="h-10 min-h-10 flex-1 rounded-lg border border-border bg-card px-4 py-0 focus:border-[#94A3B8] focus:ring-0 focus-visible:border-[#94A3B8] focus-visible:ring-0 focus-visible:ring-offset-0"
           aria-invalid={Boolean(sendError)}
         />
         <Button
           type="submit"
           size="icon"
-          className="size-11 rounded-full"
+          // Active: brand cyan + glow; idle: pale circle + muted arrow
+          className={cn(
+            'size-10 shrink-0 rounded-full border-0 bg-none from-transparent to-transparent shadow-none disabled:opacity-100',
+            draft.trim() && client
+              ? 'bg-[var(--brand-button-to)] text-white shadow-[0_4px_16px_color-mix(in_oklab,var(--brand-button-to)_55%,transparent)] hover:opacity-95'
+              : 'bg-[#e8eef2] text-[#8fa0b0]',
+          )}
           disabled={!draft.trim() || !client}
           aria-label="Отправить"
         >
-          <SendHorizontal className="size-4" />
+          <ArrowUp className="size-5" strokeWidth={draft.trim() && client ? 2.5 : 2} />
         </Button>
       </form>
       {sendError ? (

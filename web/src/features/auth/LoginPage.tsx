@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/features/auth/useAuth'
 import { isAuthFlowCancelled, messageFromAuthError } from '@/features/auth/authErrors'
+import { dismissVirtualKeyboard } from '@/lib/dismissVirtualKeyboard'
 import { AuthLayout } from '@/features/auth/AuthLayout'
 import { readRememberedUsername, writeRememberedUsername } from '@/features/auth/rememberUsername'
 import { hasFieldErrors, validateCredentials } from '@/features/auth/validation'
@@ -65,6 +66,8 @@ export function LoginPage() {
     try {
       await login({ username, password })
       writeRememberedUsername(username, rememberMe)
+      // iOS: иначе после клавиатуры чаты/табы остаются «по центру» сжатого viewport.
+      dismissVirtualKeyboard()
       void navigate('/', { replace: true })
     } catch (error) {
       if (isAuthFlowCancelled(error)) {
@@ -153,7 +156,8 @@ export function LoginPage() {
               ) : null}
             </div>
 
-            <div className="flex items-center justify-between gap-3">
+            {/* Figma 129:3455: Checkbox 20h + «Забыли пароль» 12/16 right-aligned */}
+            <div className="flex h-5 items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Checkbox
                   id={rememberId}
@@ -162,13 +166,16 @@ export function LoginPage() {
                   disabled={submitting}
                   className="size-5"
                 />
-                <Label htmlFor={rememberId} className="cursor-pointer text-sm font-medium">
+                <Label
+                  htmlFor={rememberId}
+                  className="cursor-pointer text-sm leading-5 font-medium"
+                >
                   Запомнить меня
                 </Label>
               </div>
               <Link
                 to="/forgot-password"
-                className="text-xs leading-4 tracking-[0.024px] text-primary hover:underline"
+                className="shrink-0 text-xs leading-4 tracking-[0.024px] text-primary hover:underline"
               >
                 Забыли пароль
               </Link>

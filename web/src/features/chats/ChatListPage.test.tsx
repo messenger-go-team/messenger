@@ -18,6 +18,8 @@ import { ChatListPage } from '@/features/chats/ChatListPage'
 import { WsProvider } from '@/features/ws/WsProvider'
 import { useWs } from '@/features/ws/useWs'
 import { MockWebSocketServer } from '@/ws/mock/server'
+import { expectScrollChainWithinViewport } from '@/test/scrollChain'
+import { expectMainTabs } from '@/test/mainTabs'
 import { server } from '../../../mocks/server'
 import { addUser } from '../../../mocks/data/auth'
 import { INITIAL_CHAT_ID } from '../../../mocks/data/history'
@@ -502,6 +504,48 @@ describe('ChatListPage', () => {
     release()
     expect(await screen.findByText('bob_2')).toBeInTheDocument()
     expect(screen.queryByText('Загрузка чатов…')).not.toBeInTheDocument()
+  })
+
+  it('keeps list and thread as separate panes with a back control when a chat is open', async () => {
+    const auth = await authValue()
+    renderChats(auth, `/chats/${INITIAL_CHAT_ID}`)
+
+    expect(await screen.findByRole('link', { name: 'К списку чатов' })).toBeInTheDocument()
+    const chatsHeading = screen.getByRole('heading', { name: 'Чаты' })
+    const listPane = chatsHeading.closest('aside')
+    expect(listPane?.className ?? '').toMatch(/\bhidden\b/)
+    // Split list+thread only at desktop (lg); tablet is list OR thread like Figma.
+    expect(listPane?.className ?? '').toMatch(/\blg:flex\b/)
+  })
+
+  it('shows all main tabs with Чаты current on the list and in a thread', async () => {
+    const auth = await authValue()
+    const view = renderChats(auth)
+    await screen.findByRole('heading', { name: 'Чаты' })
+    expectMainTabs('Чаты')
+    view.unmount()
+
+    renderChats(auth, `/chats/${INITIAL_CHAT_ID}`)
+    await screen.findByTestId('chat-thread-scroll')
+    expectMainTabs('Чаты')
+  })
+
+  it('keeps the chat list scrollable inside the viewport on mobile (min-h-0 chain)', async () => {
+    const auth = await authValue()
+    renderChats(auth)
+
+    const listPane = (await screen.findByRole('heading', { name: 'Чаты' })).closest('aside')!
+    expectScrollChainWithinViewport(listPane.querySelector('.overflow-y-auto')!)
+  })
+
+  it('keeps the thread composer inside the viewport on mobile (min-h-0 chain)', async () => {
+    const auth = await authValue()
+    renderChats(auth, `/chats/${INITIAL_CHAT_ID}`)
+
+    const scroller = await screen.findByTestId('chat-thread-scroll')
+    expectScrollChainWithinViewport(scroller)
+    // sr-only статусы absolute: без relative они растягивают документ, и страница уезжает.
+    expect(scroller).toHaveClass('relative')
   })
 
   it('shows error with retry when list fails', async () => {

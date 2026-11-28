@@ -15,8 +15,27 @@ async function enableMocking() {
   }
 
   const { worker } = await import('../mocks/browser')
+  const { seedAliceDemoContacts } = await import('../mocks/data/auth')
+  const { findHistoryMessage } = await import('../mocks/data/history')
+  const { seedLaterMocks } = await import('../mocks/handlers/later')
 
   await worker.start()
+  // Длинный список контактов для локальной/телефонной приёмки (Vitest этот путь не грузит).
+  seedAliceDemoContacts()
+  // Due-напоминание для пути «Открыть» → чат → подсветка (#45 phone AC).
+  const target = findHistoryMessage('20000000-0000-4000-8000-000000000003')
+  if (target) {
+    const now = new Date().toISOString()
+    seedLaterMocks([
+      {
+        id: '30000000-0000-4000-8000-000000000001',
+        message: target,
+        due_at: '2020-01-01T00:00:00.000Z',
+        created_at: now,
+        updated_at: now,
+      },
+    ])
+  }
 }
 
 /** Запускает MSW до React render, чтобы первые API-запросы компонентов не ушли в сеть. */

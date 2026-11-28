@@ -25,7 +25,7 @@ describe('RegisterPage', () => {
 
     await screen.findByLabelText('Логин')
 
-    await user.type(screen.getByLabelText('Логин'), 'carol_3')
+    await user.type(screen.getByLabelText('Логин'), 'newbie_99')
     await user.type(screen.getByLabelText('Пароль'), 'correct-horse-battery')
     await user.type(screen.getByLabelText('Повторите пароль'), 'correct-horse-battery')
     await user.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))

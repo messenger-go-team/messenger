@@ -6,13 +6,13 @@ import {
   useRef,
   useState,
   type FormEvent,
-  type ReactNode,
 } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
-import { Bell, LogOut, MessageCircle, Plus, Search, User, Users } from 'lucide-react'
+import { MessageCircle, Plus, Search } from 'lucide-react'
 import type { UserSummary } from '@/api/auth'
 import { searchUsers } from '@/api/auth'
 import { createPersonalChat, type ChatListItem } from '@/api/history'
+import { AppNav } from '@/components/AppNav'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/features/auth/useAuth'
@@ -63,7 +63,6 @@ export function ChatListPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const searchId = useId()
-  const chatsNavActive = location.pathname === '/' || location.pathname.startsWith('/chats/')
   const mountedRef = useRef(true)
 
   const [chats, setChats] = useState<ChatListItem[]>([])
@@ -308,43 +307,20 @@ export function ChatListPage() {
     : null
 
   return (
-    <div className="flex h-svh min-h-0 overflow-hidden bg-background text-foreground">
-      <nav
-        aria-label="Основная навигация"
-        className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-border bg-muted/40 py-3"
-      >
-        <div className="flex flex-col items-center gap-3">
-          <NavIcon label="Важно" to="/later">
-            <Bell className="size-5" />
-          </NavIcon>
-          <NavIcon label="Чаты" active={chatsNavActive} to="/">
-            <MessageCircle className="size-5" />
-          </NavIcon>
-          <NavIcon label="Контакты" to="/contacts">
-            <Users className="size-5" />
-          </NavIcon>
-        </div>
-        <div className="flex flex-col items-center gap-2">
-          <NavIcon label="Профиль" to="/profile">
-            <User className="size-5" />
-          </NavIcon>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Выйти"
-            title="Выйти"
-            onClick={() => void logout()}
-          >
-            <LogOut className="size-4" />
-          </Button>
-        </div>
-      </nav>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground md:flex-row">
+      {/* Mobile/tablet: hide nav in thread (Figma full-bleed chat). Desktop keeps rail. */}
+      <AppNav
+        active="chats"
+        onLogout={() => void logout()}
+        className={cn('order-last md:order-first', chatId && 'max-lg:hidden')}
+      />
 
       <aside
         className={cn(
-          'min-w-0 flex-1 max-w-[344px] flex-col border-r border-border bg-card',
-          chatId ? 'hidden md:flex' : 'flex',
+          'relative z-10 min-h-0 min-w-0 flex-1 flex-col bg-card',
+          // Tablet: full width after rail. Desktop: narrow list + split.
+          'lg:max-w-[380px] lg:border-r lg:border-border',
+          chatId ? 'hidden lg:flex' : 'flex',
         )}
       >
         <header className="flex items-center justify-between gap-3 px-4 pt-5 pb-3">
@@ -352,37 +328,44 @@ export function ChatListPage() {
           <Button
             type="button"
             size="icon"
-            className="rounded-full"
+            // Figma 415:8511 — solid primary circle, white +
+            className="size-10 rounded-full bg-primary bg-none from-transparent to-transparent text-white hover:opacity-90"
             aria-label="Новый чат"
             onClick={() => focusSearch()}
           >
-            <Plus className="size-5" />
+            <Plus className="size-5" strokeWidth={2.5} />
           </Button>
         </header>
 
-        <div className="px-4 pb-3">
+        <div className="flex w-full flex-col gap-1 self-stretch px-4 pb-3">
           <label htmlFor={searchId} className="sr-only">
             Поиск по логину
           </label>
-          <div className="relative">
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          {/* Figma Input: 312×40 stretch; filled/focus — white, border #94A3B8, radius 12 */}
+          <div className="relative h-10 w-full self-stretch">
+            <Search className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               id={searchId}
               role="searchbox"
               aria-label="Поиск по логину"
-              placeholder="Поиск по логину"
+              placeholder="найти"
               value={query}
               onChange={(event) => {
                 setQuery(event.target.value)
                 setOpenError(null)
               }}
-              className="h-10 rounded-full border-transparent bg-muted pl-9"
+              className={cn(
+                'h-10 min-h-9 w-full gap-2 rounded-[12px] border bg-card py-2.5 pr-4 pl-10',
+                // Focus: только border 1px solid #94A3B8, без ring/glow
+                'focus:border-[#94A3B8] focus:ring-0 focus-visible:border-[#94A3B8] focus-visible:ring-0 focus-visible:ring-offset-0',
+                query.trim() ? 'border-[#94A3B8]' : 'border-border',
+              )}
               autoComplete="off"
             />
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
           {searching ? (
             <SearchPanel
               status={searchStatus}
@@ -414,8 +397,9 @@ export function ChatListPage() {
 
       <main
         className={cn(
-          'min-w-0 flex-1 bg-background',
-          chatId ? 'flex' : 'hidden items-center justify-center md:flex',
+          'min-h-0 min-w-0 flex-1 bg-background',
+          // Empty «Выберите чат» only on desktop split (Figma tablet = list OR thread).
+          chatId ? 'flex' : 'hidden items-center justify-center lg:flex',
         )}
       >
         {chatId ? (
@@ -512,12 +496,17 @@ function ChatsPanel({
           const selected = chat.id === selectedChatId
 
           return (
-            <li key={chat.id} className="border-b border-border">
+            <li
+              key={chat.id}
+              // Figma Separator h=0 между Chat Item — hairline на всю ширину
+              className="border-b border-border last:border-b-0"
+            >
               <Link
                 to={`/chats/${chat.id}`}
                 className={cn(
-                  'flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/60',
-                  selected && 'bg-accent',
+                  // Figma Chat Item: 12/16 pad, gap 12, h 76; idle #FFF, hover #E2E8F0 (= --border)
+                  'flex h-[76px] items-center gap-3 bg-card px-4 py-3 transition-colors hover:bg-border',
+                  selected && 'bg-border hover:bg-border',
                 )}
               >
                 <InitialAvatar username={name} />
@@ -525,13 +514,13 @@ function ChatsPanel({
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate font-semibold">{name}</span>
                     {time ? (
-                      <span className="shrink-0 text-xs text-muted-foreground">{time}</span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground">{time}</span>
                     ) : null}
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm text-muted-foreground">{preview}</span>
                     {chat.unread_count > 0 ? (
-                      <span className="inline-flex min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
+                      <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-medium text-white">
                         {chat.unread_count}
                       </span>
                     ) : null}
@@ -674,45 +663,5 @@ function InitialAvatar({ username }: { username: string }) {
     >
       {letter}
     </span>
-  )
-}
-
-function NavIcon({
-  children,
-  label,
-  to,
-  active = false,
-  disabled = false,
-}: {
-  children: ReactNode
-  label: string
-  to?: string
-  active?: boolean
-  disabled?: boolean
-}) {
-  const className = cn(
-    'inline-flex size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors',
-    active && 'bg-accent text-foreground',
-    disabled && 'opacity-40',
-  )
-
-  if (disabled || !to) {
-    return (
-      <span className={className} aria-label={label} title={label}>
-        {children}
-      </span>
-    )
-  }
-
-  return (
-    <Link
-      to={to}
-      className={className}
-      aria-label={label}
-      title={label}
-      aria-current={active ? 'page' : undefined}
-    >
-      {children}
-    </Link>
   )
 }

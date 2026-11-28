@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter, Route, Routes } from 'react-router'
@@ -8,6 +8,8 @@ import { login } from '@/api/auth'
 import { AuthContext, type AuthContextValue } from '@/features/auth/auth-context'
 import { LaterPage } from '@/features/later/LaterPage'
 import { LaterRemindersProvider } from '@/features/later/LaterRemindersProvider'
+import { expectScrollChainWithinViewport } from '@/test/scrollChain'
+import { expectMainTabs } from '@/test/mainTabs'
 import { server } from '../../../mocks/server'
 import { seedLaterMocks } from '../../../mocks/handlers/later'
 
@@ -65,11 +67,135 @@ function renderLater(auth: AuthContextValue) {
 }
 
 describe('LaterPage', () => {
+  it('keeps keyboard focus and invalid dates inside the reschedule dialog', async () => {
+    seedLaterMocks([
+      {
+        id: '98fcaed4-d453-4cba-b561-4100fe7aa314',
+        message: MESSAGE,
+        due_at: null,
+        created_at: '2026-11-14T15:00:00Z',
+        updated_at: '2026-11-14T15:00:00Z',
+      },
+    ])
+    const user = userEvent.setup()
+    renderLater(await authValue())
+    const trigger = await screen.findByRole('button', { name: 'Перенести' })
+    trigger.focus()
+    await user.keyboard('{Enter}')
+
+    const dialog = screen.getByRole('dialog', { name: 'Перенести срок' })
+    const date = within(dialog).getByLabelText('Дата')
+    await waitFor(() => expect(date).toHaveFocus())
+    fireEvent.change(date, { target: { value: '' } })
+    await user.click(within(dialog).getByRole('button', { name: 'Выбрать' }))
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Проверьте дату и время.')
+
+    date.focus()
+    await user.tab()
+    expect(dialog.contains(document.activeElement)).toBe(true)
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(trigger).toHaveFocus())
+    expect(dialog).not.toBeInTheDocument()
+  })
+
+  it('keeps the dialog open during PATCH so Done cannot race its response', async () => {
+    const entry = {
+      id: '98fcaed4-d453-4cba-b561-4100fe7aa314',
+      message: MESSAGE,
+      due_at: null,
+      created_at: '2026-11-14T15:00:00Z',
+      updated_at: '2026-11-14T15:00:00Z',
+    }
+    seedLaterMocks([entry])
+    let markStarted!: () => void
+    const requestStarted = new Promise<void>((resolve) => {
+      markStarted = resolve
+    })
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(
+      http.patch('/later/:id', async () => {
+        markStarted()
+        await pending
+        return HttpResponse.json({
+          entry: { ...entry, status: 'unscheduled' },
+          server_time: '2026-11-14T15:00:00Z',
+        })
+      }),
+    )
+    const user = userEvent.setup()
+    renderLater(await authValue())
+    const trigger = await screen.findByRole('button', { name: 'Перенести' })
+    await user.click(trigger)
+    const dialog = screen.getByRole('dialog', { name: 'Перенести срок' })
+    try {
+      await user.click(within(dialog).getByRole('button', { name: 'Без срока' }))
+      await requestStarted
+      await user.keyboard('{Escape}')
+      expect(dialog).toBeInTheDocument()
+      expect(within(dialog).getByRole('button', { name: 'Отмена' })).toBeDisabled()
+      expect(screen.queryByRole('button', { name: 'Готово' })).not.toBeInTheDocument()
+    } finally {
+      release()
+    }
+    await waitFor(() => expect(dialog).not.toBeInTheDocument())
+    await waitFor(() => expect(trigger).toHaveFocus())
+  })
+
   it('shows empty Important state', async () => {
     seedLaterMocks([])
     const auth = await authValue()
     renderLater(auth)
     expect(await screen.findByText('Пока пусто')).toBeInTheDocument()
+  })
+
+  it('shows all main tabs with Важно current', async () => {
+    seedLaterMocks([])
+    const auth = await authValue()
+    renderLater(auth)
+    await screen.findByRole('heading', { name: 'Важно' })
+    expectMainTabs('Важно')
+  })
+
+  it('keeps the Important list scrollable inside the viewport on mobile (min-h-0 chain)', async () => {
+    seedLaterMocks([])
+    const auth = await authValue()
+    renderLater(auth)
+
+    const pane = (await screen.findByRole('heading', { name: 'Важно' })).closest('section')!
+    expectScrollChainWithinViewport(pane.querySelector('.overflow-y-auto')!)
+  })
+
+  it('lifts the reminder toast above the mobile tab bar and keeps md+ position', async () => {
+    seedLaterMocks([
+      {
+        id: '98fcaed4-d453-4cba-b561-4100fe7aa314',
+        message: MESSAGE,
+        due_at: '2020-01-01T00:00:00.000Z',
+        created_at: '2026-11-14T15:00:00Z',
+        updated_at: '2026-11-14T15:00:00Z',
+      },
+    ])
+    const auth = await authValue()
+    renderLater(auth)
+
+    const toast = (await screen.findByRole('region', { name: 'Напоминание' })).parentElement!
+    const toastClasses = toast.className.split(/\s+/)
+    const navClasses = screen
+      .getByRole('navigation', { name: 'Основная навигация' })
+      .className.split(/\s+/)
+
+    // Отступ toast на mobile = высота нижнего tab bar (без префикса брейкпоинта) + safe-area.
+    const barHeight = navClasses.find((name) => /^h-\[\d+px\]$/.test(name))?.match(/\d+/)?.[0]
+    expect(barHeight).toBeDefined()
+    expect(toastClasses).toContain(`bottom-[calc(${barHeight}px+env(safe-area-inset-bottom,0px))]`)
+    expect(toastClasses).not.toContain('bottom-0')
+    // С md навигация в боковом rail: toast остаётся карточкой справа внизу.
+    expect(toastClasses).toEqual(
+      expect.arrayContaining(['md:bottom-4', 'md:right-4', 'md:inset-x-auto', 'md:w-[328px]']),
+    )
   })
 
   it('uses the shared reminders provider: one GET /later for provider and page', async () => {
@@ -211,7 +337,7 @@ describe('LaterPage', () => {
     await userEvent.type(within(panel).getByLabelText('Дата'), '2099-01-02')
     await userEvent.clear(within(panel).getByLabelText('Время'))
     await userEvent.type(within(panel).getByLabelText('Время'), '10:30')
-    await userEvent.click(within(panel).getByRole('button', { name: 'Сохранить срок' }))
+    await userEvent.click(within(panel).getByRole('button', { name: 'Выбрать' }))
     expect(await screen.findByRole('heading', { name: 'Запланировано' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Без срока' })).not.toBeInTheDocument()
   })
@@ -357,7 +483,7 @@ describe('LaterPage', () => {
     const panel = screen.getByLabelText('Перенести срок')
     await userEvent.clear(within(panel).getByLabelText('Дата'))
     await userEvent.type(within(panel).getByLabelText('Дата'), '2099-02-05')
-    await userEvent.click(within(panel).getByRole('button', { name: 'Сохранить срок' }))
+    await userEvent.click(within(panel).getByRole('button', { name: 'Выбрать' }))
     await screen.findByText('Пятнадцатое февраля')
     const first = screen.getByText('Пятнадцатое февраля')
     const second = screen.getByText('Десятое февраля')

@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/features/auth/useAuth'
 import { isAuthFlowCancelled, messageFromAuthError } from '@/features/auth/authErrors'
+import { dismissVirtualKeyboard } from '@/lib/dismissVirtualKeyboard'
 import { AuthLayout } from '@/features/auth/AuthLayout'
 import { hasFieldErrors, validateCredentials } from '@/features/auth/validation'
 
@@ -66,6 +67,7 @@ export function RegisterPage() {
     setSubmitting(true)
     try {
       await register({ username, password })
+      dismissVirtualKeyboard()
       void navigate('/', { replace: true })
     } catch (error) {
       if (isAuthFlowCancelled(error)) {

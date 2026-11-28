@@ -1,9 +1,6 @@
 <svg width="88" height="88" viewBox="0 0 88 88" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="88" height="88" fill="#9C9B9B"/>
 <g id="Logo">
-<rect x="-160" y="-150" width="1293" height="1076" rx="16" fill="white"/>
 <g id="logo">
-<rect x="-19.5" y="-19.5" width="127" height="127" rx="4.5" stroke="#9747FF" stroke-dasharray="10 5"/>
 <g id="Logo=Default" clip-path="url(#clip0_30_179)">
 <g id="Mask group">
 <mask id="mask0_30_179" style="mask-type:luminance" maskUnits="userSpaceOnUse" x="0" y="0" width="88" height="88">

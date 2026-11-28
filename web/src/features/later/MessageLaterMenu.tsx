@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Bookmark, Calendar, Clock, MoreVertical, Moon } from 'lucide-react'
+import { Dialog } from '@base-ui/react/dialog'
+import { Bookmark, Calendar, Clock, MoreVertical, Moon, X } from 'lucide-react'
 import { saveForLater } from '@/api/later'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +13,10 @@ type Panel = 'closed' | 'menu' | 'picker'
 type Placement = 'above' | 'below'
 
 const MENU_ESTIMATE_PX = 280
+
+/** Hover/focus ряда: Figma 426:22967 — серо-голубой muted, не cyan accent. */
+const menuItemClass =
+  'mx-1 flex w-[calc(100%-0.5rem)] items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground hover:bg-muted focus:bg-muted focus:outline-none'
 
 type MenuCloser = (returnFocus: boolean) => void
 
@@ -77,8 +82,10 @@ export function MessageLaterMenu({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [noticeCoords, setNoticeCoords] = useState<{ top: number; left: number } | null>(null)
   const [picker, setPicker] = useState(defaultPickerValues)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const dateRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const floatingRef = useRef<HTMLDivElement>(null)
   const panelId = useRef<symbol | null>(null)
@@ -104,7 +111,7 @@ export function MessageLaterMenu({
       const nextPlacement: Placement =
         spaceBelow >= MENU_ESTIMATE_PX || spaceBelow >= spaceAbove ? 'below' : 'above'
       setPlacement(nextPlacement)
-      setCoords(placePanel(rect, nextPlacement, next === 'picker' ? 256 : 224))
+      setCoords(placePanel(rect, nextPlacement, next === 'picker' ? 214 : 216))
     }
     setPanel(next)
   }
@@ -114,7 +121,7 @@ export function MessageLaterMenu({
     const update = () => {
       const rect = triggerRef.current?.getBoundingClientRect()
       if (!rect) return
-      setCoords(placePanel(rect, placement, panel === 'picker' ? 256 : 224))
+      setCoords(placePanel(rect, placement, panel === 'picker' ? 214 : 216))
     }
     update()
     window.addEventListener('scroll', update, true)
@@ -129,10 +136,7 @@ export function MessageLaterMenu({
     if (panel === 'menu') {
       menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
     }
-    if (panel === 'picker') {
-      document.getElementById(dateId)?.focus()
-    }
-  }, [panel, dateId])
+  }, [panel])
 
   useEffect(() => {
     const id = instanceId.current
@@ -184,10 +188,24 @@ export function MessageLaterMenu({
       reminders?.replaceEntry(saved.entry, saved.server_time)
       // This response can arrive after dismissal or after another panel opens.
       if (panelId.current === submittedPanel) {
-        closePanel(floatingRef.current?.contains(document.activeElement) ?? false)
+        closePanel(
+          panel === 'menu' && (floatingRef.current?.contains(document.activeElement) ?? false),
+        )
+      }
+      const rect = triggerRef.current?.getBoundingClientRect()
+      const noticeWidth = 192
+      if (rect) {
+        // Держим тост справа от триггера / в viewport — не наезжает на список чатов.
+        const left = Math.min(Math.max(rect.left, 12), window.innerWidth - noticeWidth - 12)
+        setNoticeCoords({ top: rect.bottom + 8, left })
+      } else {
+        setNoticeCoords(null)
       }
       setNotice(successText)
-      window.setTimeout(() => setNotice(null), 2500)
+      window.setTimeout(() => {
+        setNotice(null)
+        setNoticeCoords(null)
+      }, 2500)
     } catch {
       if (panelId.current === submittedPanel) {
         setError('Не удалось сохранить. Повторите попытку.')
@@ -208,146 +226,81 @@ export function MessageLaterMenu({
     void persist(local.toISOString(), 'Напоминание сохранено')
   }
 
-  const floating =
-    panel !== 'closed' && coords
+  const menu =
+    panel === 'menu' && coords
       ? createPortal(
           <div
             ref={floatingRef}
             className="fixed z-50"
-            style={{ top: coords.top, left: coords.left }}
+            style={coords}
             aria-busy={busy}
             data-placement={placement}
           >
-            {panel === 'menu' ? (
-              <div
-                ref={menuRef}
-                role="menu"
-                aria-label="Вернуться позже"
-                className="w-56 rounded-lg border border-border bg-card py-1 shadow-md"
-                onKeyDown={onMenuKeyDown}
+            <div
+              ref={menuRef}
+              role="menu"
+              aria-label="Вернуться позже"
+              // Figma Dropdown Menu later ≈ 216×148, radius ~8–12
+              className="w-[216px] overflow-hidden rounded-xl border border-border bg-card py-1 shadow-md"
+              onKeyDown={onMenuKeyDown}
+            >
+              <p className="border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground">
+                Вернуться позже
+              </p>
+              <button
+                type="button"
+                role="menuitem"
+                className={menuItemClass}
+                aria-disabled={busy}
+                onClick={() => void persist(null, 'Сохранено без срока')}
               >
-                <p className="px-3 py-2 text-xs font-medium text-muted-foreground">
-                  Вернуться позже
-                </p>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                  aria-disabled={busy}
-                  onClick={() => void persist(null, 'Сохранено без срока')}
-                >
-                  <Bookmark className="size-4 shrink-0" aria-hidden />
-                  Просто сохранить
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                  aria-disabled={busy}
-                  onClick={() => void persist(dueAtInOneHour(), 'Напомним через час')}
-                >
-                  <Clock className="size-4 shrink-0" aria-hidden />
-                  Через 1 час
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                  aria-disabled={busy}
-                  onClick={() => void persist(dueAtEvening(), 'Напомним вечером')}
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <Moon className="size-4 shrink-0" aria-hidden />
-                    Вечером
-                  </span>
-                  <span className="text-xs text-muted-foreground">{eveningHint()}</span>
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                  aria-disabled={busy}
-                  onClick={() => {
-                    if (saving.current) return
-                    setPicker(defaultPickerValues())
-                    openPanel('picker')
-                  }}
-                >
-                  <Calendar className="size-4 shrink-0" aria-hidden />
-                  Выбрать время
-                </button>
-                {error ? (
-                  <p className="px-3 py-2 text-xs text-destructive" role="alert">
-                    {error}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-
-            {panel === 'picker' ? (
-              <div
-                className="w-64 space-y-3 rounded-lg border border-border bg-card p-3 shadow-md"
-                onKeyDown={(event) => {
-                  if (event.key !== 'Escape') return
-                  event.preventDefault()
-                  closePanel(true)
+                <Bookmark className="size-4 shrink-0" aria-hidden />
+                Просто сохранить
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className={menuItemClass}
+                aria-disabled={busy}
+                onClick={() => void persist(dueAtInOneHour(), 'Напомним через час')}
+              >
+                <Clock className="size-4 shrink-0" aria-hidden />
+                Через 1 час
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className={cn(menuItemClass, 'justify-between')}
+                aria-disabled={busy}
+                onClick={() => void persist(dueAtEvening(), 'Напомним вечером')}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Moon className="size-4 shrink-0" aria-hidden />
+                  Вечером
+                </span>
+                <span className="text-xs text-muted-foreground">{eveningHint()}</span>
+              </button>
+              <div className="my-1 border-t border-border" role="separator" />
+              <button
+                type="button"
+                role="menuitem"
+                className={menuItemClass}
+                aria-disabled={busy}
+                onClick={() => {
+                  if (saving.current) return
+                  setPicker(defaultPickerValues())
+                  openPanel('picker')
                 }}
               >
-                <p className="text-sm font-medium">Напомнить</p>
-                <div className="space-y-1">
-                  <label htmlFor={dateId} className="text-xs text-muted-foreground">
-                    Дата
-                  </label>
-                  <Input
-                    id={dateId}
-                    type="date"
-                    value={picker.date}
-                    onChange={(event) =>
-                      setPicker((value) => ({ ...value, date: event.target.value }))
-                    }
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label htmlFor={timeId} className="text-xs text-muted-foreground">
-                    Время
-                  </label>
-                  <Input
-                    id={timeId}
-                    type="time"
-                    value={picker.time}
-                    onChange={(event) =>
-                      setPicker((value) => ({ ...value, time: event.target.value }))
-                    }
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1"
-                    aria-disabled={busy}
-                    onClick={() => {
-                      if (!saving.current) openPanel('menu')
-                    }}
-                  >
-                    Назад
-                  </Button>
-                  <Button
-                    type="button"
-                    className="flex-1"
-                    aria-disabled={busy}
-                    onClick={submitPicker}
-                  >
-                    Выбрать
-                  </Button>
-                </div>
-                {error ? (
-                  <p className="text-xs text-destructive" role="alert">
-                    {error}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
+                <Calendar className="size-4 shrink-0" aria-hidden />
+                Выбрать время
+              </button>
+              {error ? (
+                <p className="px-3 py-2 text-xs text-destructive" role="alert">
+                  {error}
+                </p>
+              ) : null}
+            </div>
           </div>,
           document.body,
         )
@@ -390,16 +343,98 @@ export function MessageLaterMenu({
         <MoreVertical className="size-4" />
       </button>
 
-      {floating}
+      {menu}
 
-      {notice ? (
-        <p
-          className="absolute top-8 left-1/2 z-20 w-48 -translate-x-1/2 rounded-md border border-border bg-card px-2 py-1 text-xs text-muted-foreground shadow"
-          role="status"
-        >
-          {notice}
-        </p>
-      ) : null}
+      <Dialog.Root
+        open={panel === 'picker'}
+        onOpenChange={(open) => {
+          if (!open) closePanel(false)
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Backdrop className="fixed inset-0 z-40 bg-slate-900/25 backdrop-blur-[2px]" />
+          <Dialog.Popup
+            initialFocus={dateRef}
+            finalFocus={triggerRef}
+            style={coords ?? undefined}
+            aria-busy={busy}
+            className="fixed z-50 max-h-[calc(var(--app-height,100dvh)-1rem)] w-[214px] space-y-3 overflow-y-auto rounded-xl border border-border bg-card p-3 shadow-md"
+          >
+            <div className="flex items-center justify-between gap-2 border-b border-border pb-2">
+              <Dialog.Title className="text-sm font-medium">Напомнить</Dialog.Title>
+              <Dialog.Close
+                render={
+                  <Button type="button" variant="ghost" size="icon-sm" aria-label="Закрыть" />
+                }
+              >
+                <X className="size-4" aria-hidden />
+              </Dialog.Close>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label htmlFor={dateId} className="text-xs text-muted-foreground">
+                  Дата
+                </label>
+                <Input
+                  ref={dateRef}
+                  id={dateId}
+                  type="date"
+                  value={picker.date}
+                  className="h-9 rounded-md px-2"
+                  onChange={(event) =>
+                    setPicker((value) => ({ ...value, date: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor={timeId} className="text-xs text-muted-foreground">
+                  Время
+                </label>
+                <Input
+                  id={timeId}
+                  type="time"
+                  value={picker.time}
+                  className="h-9 rounded-md px-2"
+                  onChange={(event) =>
+                    setPicker((value) => ({ ...value, time: event.target.value }))
+                  }
+                />
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              aria-disabled={busy}
+              onClick={submitPicker}
+            >
+              Выбрать
+            </Button>
+            {error ? (
+              <p className="text-xs text-destructive" role="alert">
+                {error}
+              </p>
+            ) : null}
+          </Dialog.Popup>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {notice
+        ? createPortal(
+            <p
+              className="pointer-events-none fixed z-[60] w-48 rounded-md border border-border bg-card px-2 py-1 text-xs text-muted-foreground shadow-md"
+              style={
+                noticeCoords
+                  ? { top: noticeCoords.top, left: noticeCoords.left }
+                  : { top: 16, right: 16 }
+              }
+              role="status"
+            >
+              {notice}
+            </p>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }

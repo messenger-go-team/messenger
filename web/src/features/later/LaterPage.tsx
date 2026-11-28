@@ -1,9 +1,11 @@
-import { useId, useMemo, useState } from 'react'
+import { useId, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { AlertDialog } from '@base-ui/react/alert-dialog'
-import { ArrowLeft, Bell, ChevronDown, ChevronUp, MessageCircle, User, Users } from 'lucide-react'
+import { Dialog } from '@base-ui/react/dialog'
+import { Bell, ChevronDown, ChevronUp } from 'lucide-react'
 import { ApiError } from '@/api/client'
 import { completeLater, rescheduleLater, type LaterEntry, type LaterStatus } from '@/api/later'
+import { AppNav } from '@/components/AppNav'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/features/auth/useAuth'
@@ -80,6 +82,7 @@ function LaterList({
   status: LaterRemindersStatus
   loadError: string | null
 }) {
+  const { logout } = useAuth()
   const { refresh, removeEntry, replaceEntry } = useLaterReminders()
   const [actionError, setActionError] = useState<string | null>(null)
   const [completingId, setCompletingId] = useState<string | null>(null)
@@ -91,6 +94,9 @@ function LaterList({
   })
   const [picker, setPicker] = useState({ date: '', time: '' })
   const [rescheduleBusy, setRescheduleBusy] = useState(false)
+  const [rescheduleError, setRescheduleError] = useState<string | null>(null)
+  const rescheduleTriggerId = useRef('')
+  const headingRef = useRef<HTMLHeadingElement>(null)
   const dateId = useId()
   const timeId = useId()
 
@@ -133,16 +139,18 @@ function LaterList({
     }
   }
 
-  function startReschedule(entry: LaterEntry) {
+  function startReschedule(entry: LaterEntry, triggerId: string) {
+    rescheduleTriggerId.current = triggerId
     setActionError(null)
+    setRescheduleError(null)
     setPicker(valuesFromDueAt(entry.due_at))
     setReschedulingId(entry.id)
   }
 
   async function submitReschedule(dueAt: string | null) {
-    if (!accessToken || !reschedulingId) return
+    if (!accessToken || !reschedulingId || rescheduleBusy) return
     setRescheduleBusy(true)
-    setActionError(null)
+    setRescheduleError(null)
     try {
       const result = await rescheduleLater(accessToken, reschedulingId, toDueAtPayload(dueAt))
       replaceEntry(result.entry, result.server_time)
@@ -153,7 +161,7 @@ function LaterList({
         setReschedulingId(null)
         setActionError(MESSAGE_UNAVAILABLE)
       } else {
-        setActionError('Не удалось перенести срок. Повторите попытку.')
+        setRescheduleError('Не удалось перенести срок. Повторите попытку.')
       }
     } finally {
       setRescheduleBusy(false)
@@ -163,63 +171,24 @@ function LaterList({
   function submitPicker() {
     const local = new Date(`${picker.date}T${picker.time}:00`)
     if (Number.isNaN(local.getTime())) {
-      setActionError('Проверьте дату и время.')
+      setRescheduleError('Проверьте дату и время.')
       return
     }
     void submitReschedule(local.toISOString())
   }
 
   return (
-    <div className="flex h-svh min-h-0 overflow-hidden bg-background text-foreground">
-      <nav
-        aria-label="Основная навигация"
-        className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-border bg-muted/40 py-3"
-      >
-        <div className="flex flex-col items-center gap-3">
-          <span
-            className="inline-flex size-10 items-center justify-center rounded-lg bg-accent text-foreground"
-            aria-current="page"
-            aria-label="Важно"
-          >
-            <Bell className="size-5" />
-          </span>
-          <Link
-            to="/"
-            className="inline-flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent"
-            aria-label="Чаты"
-          >
-            <MessageCircle className="size-5" />
-          </Link>
-          <Link
-            to="/contacts"
-            className="inline-flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent"
-            aria-label="Контакты"
-          >
-            <Users className="size-5" />
-          </Link>
-        </div>
-        <Link
-          to="/profile"
-          className="inline-flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent"
-          aria-label="Профиль"
-        >
-          <User className="size-5" />
-        </Link>
-      </nav>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground md:flex-row">
+      <AppNav active="later" onLogout={() => void logout()} className="order-last md:order-first" />
 
-      <section className="flex min-w-0 flex-1 flex-col bg-card md:max-w-[420px] md:border-r md:border-border lg:max-w-[480px]">
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-card lg:w-[480px] lg:flex-none lg:border-r lg:border-border">
         <header className="flex items-center gap-3 px-4 pt-5 pb-3">
-          <Link
-            to="/"
-            className="inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent md:hidden"
-            aria-label="К чатам"
-          >
-            <ArrowLeft className="size-5" />
-          </Link>
-          <h1 className="text-xl font-semibold tracking-tight">Важно</h1>
+          <h1 ref={headingRef} tabIndex={-1} className="text-xl font-semibold tracking-tight">
+            Важно
+          </h1>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
           {visibleStatus === 'loading' ? (
             <p className="px-4 py-6 text-sm text-muted-foreground" role="status">
               Загрузка…
@@ -310,8 +279,12 @@ function LaterList({
                                   type="button"
                                   variant="outline"
                                   size="sm"
+                                  id={`later-reschedule-${entry.id}`}
+                                  aria-haspopup="dialog"
                                   disabled={rescheduleBusy || completingId === entry.id}
-                                  onClick={() => startReschedule(entry)}
+                                  onClick={(event) =>
+                                    startReschedule(entry, event.currentTarget.id)
+                                  }
                                 >
                                   Перенести
                                 </Button>
@@ -352,82 +325,6 @@ function LaterList({
                                 </AlertDialog.Root>
                               </div>
                             </div>
-
-                            {reschedulingId === entry.id ? (
-                              <div
-                                className="mt-3 space-y-3 rounded-lg border border-border bg-muted/30 p-3"
-                                aria-label="Перенести срок"
-                              >
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                  <div className="space-y-1">
-                                    <label
-                                      htmlFor={dateId}
-                                      className="text-xs text-muted-foreground"
-                                    >
-                                      Дата
-                                    </label>
-                                    <Input
-                                      id={dateId}
-                                      type="date"
-                                      value={picker.date}
-                                      onChange={(event) =>
-                                        setPicker((value) => ({
-                                          ...value,
-                                          date: event.target.value,
-                                        }))
-                                      }
-                                    />
-                                  </div>
-                                  <div className="space-y-1">
-                                    <label
-                                      htmlFor={timeId}
-                                      className="text-xs text-muted-foreground"
-                                    >
-                                      Время
-                                    </label>
-                                    <Input
-                                      id={timeId}
-                                      type="time"
-                                      value={picker.time}
-                                      onChange={(event) =>
-                                        setPicker((value) => ({
-                                          ...value,
-                                          time: event.target.value,
-                                        }))
-                                      }
-                                    />
-                                  </div>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    disabled={rescheduleBusy}
-                                    onClick={submitPicker}
-                                  >
-                                    Сохранить срок
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    disabled={rescheduleBusy}
-                                    onClick={() => void submitReschedule(null)}
-                                  >
-                                    Без срока
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="ghost"
-                                    disabled={rescheduleBusy}
-                                    onClick={() => setReschedulingId(null)}
-                                  >
-                                    Отмена
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : null}
                           </li>
                         ))}
                       </ul>
@@ -440,11 +337,105 @@ function LaterList({
         </div>
       </section>
 
-      <main className="hidden min-w-0 flex-1 items-center justify-center bg-muted/20 md:flex">
+      <main className="hidden min-w-0 flex-1 items-center justify-center bg-muted/20 lg:flex">
         <p className="max-w-sm px-6 text-center text-sm text-muted-foreground">
           Выберите напоминание, чтобы открыть сообщение в чате
         </p>
       </main>
+
+      <Dialog.Root
+        open={reschedulingId !== null}
+        onOpenChange={(open, details) => {
+          if (open) return
+          // Keep "Done" unreachable until this PATCH settles so a late reply cannot reinsert the entry.
+          if (rescheduleBusy) {
+            details.cancel()
+            return
+          }
+          setReschedulingId(null)
+          setRescheduleError(null)
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Backdrop className="fixed inset-0 z-40 bg-slate-900/25 backdrop-blur-[2px]" />
+          <Dialog.Popup
+            finalFocus={() => {
+              // Moving to another group remounts the row. A deleted row has no trigger to restore.
+              const trigger = document.getElementById(rescheduleTriggerId.current)
+              return trigger instanceof HTMLButtonElement && !trigger.disabled
+                ? trigger
+                : headingRef.current
+            }}
+            aria-busy={rescheduleBusy}
+            className="fixed top-1/2 left-1/2 z-50 max-h-[calc(var(--app-height,100dvh)-1rem)] w-[min(calc(100%-2rem),214px)] -translate-x-1/2 -translate-y-1/2 space-y-3 overflow-y-auto rounded-xl border border-border bg-card p-3 shadow-lg"
+          >
+            <Dialog.Title className="border-b border-border pb-2 text-sm font-medium">
+              Перенести срок
+            </Dialog.Title>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label htmlFor={dateId} className="text-xs text-muted-foreground">
+                  Дата
+                </label>
+                <Input
+                  id={dateId}
+                  type="date"
+                  value={picker.date}
+                  className="h-9 rounded-md px-2"
+                  onChange={(event) =>
+                    setPicker((value) => ({ ...value, date: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor={timeId} className="text-xs text-muted-foreground">
+                  Время
+                </label>
+                <Input
+                  id={timeId}
+                  type="time"
+                  value={picker.time}
+                  className="h-9 rounded-md px-2"
+                  onChange={(event) =>
+                    setPicker((value) => ({ ...value, time: event.target.value }))
+                  }
+                />
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={rescheduleBusy}
+              onClick={submitPicker}
+            >
+              Выбрать
+            </Button>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                className="flex-1"
+                disabled={rescheduleBusy}
+                onClick={() => void submitReschedule(null)}
+              >
+                Без срока
+              </Button>
+              <Dialog.Close
+                disabled={rescheduleBusy}
+                render={<Button type="button" variant="ghost" className="flex-1" />}
+              >
+                Отмена
+              </Dialog.Close>
+            </div>
+            {rescheduleError ? (
+              <p className="text-xs text-destructive" role="alert">
+                {rescheduleError}
+              </p>
+            ) : null}
+          </Dialog.Popup>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   )
 }
