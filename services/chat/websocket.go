@@ -33,6 +33,7 @@ type wsEndpoint struct {
 	hub            *connectionHub
 	presenceRPC    *presenceBatcher
 	broker         Broker
+	redis          *redisBroker
 	typing         typingTracker
 	history        historyv1.HistoryServiceClient
 	historyTimeout time.Duration
@@ -91,6 +92,13 @@ func newWSEndpoint(cfg config, ready *atomic.Bool, timing wsTiming,
 			},
 		},
 	}
+}
+
+// setRedisBroker is called before the HTTP server or hub starts serving.
+func (ws *wsEndpoint) setRedisBroker(b *redisBroker) {
+	ws.redis = b
+	ws.broker = b
+	ws.hub.localUserChanged = b.SetLocalUser
 }
 
 func (ws *wsEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
