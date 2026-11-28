@@ -1,0 +1,2114 @@
+{
+  "runID": "t50-later-6d837bf9",
+  "started": "2026-11-25T17:07:20.330Z",
+  "ended": "2026-11-25T17:08:20.468Z",
+  "tool": "Bruno CLI 4.3.0 / Node.js 24.16.0",
+  "contractSnapshot": "3996be72b2d895feb11bb4858d46d73c4be06f12",
+  "contractHashes": {
+    "auth": "7c9330b2a23c1d6abeed1d2d96648ee85487f66ef1d950f1ade60829fdecaef3",
+    "history": "da3fe970ff8324b1a2cb39b205ce6816859ba834cb33e23313723787a14c708a"
+  },
+  "summary": {
+    "totalRequests": 93,
+    "passedRequests": 93,
+    "failedRequests": 0,
+    "errorRequests": 0,
+    "skippedRequests": 0,
+    "skippedByBail": 0,
+    "totalAssertions": 0,
+    "passedAssertions": 0,
+    "failedAssertions": 0,
+    "totalTests": 279,
+    "passedTests": 279,
+    "failedTests": 0,
+    "totalPreRequestTests": 0,
+    "passedPreRequestTests": 0,
+    "failedPreRequestTests": 0,
+    "totalPostResponseTests": 0,
+    "passedPostResponseTests": 0,
+    "failedPostResponseTests": 0
+  },
+  "wsSeedChecks": [
+    {
+      "id": "UPGRADE-a",
+      "status": "pass"
+    },
+    {
+      "id": "UPGRADE-b",
+      "status": "pass"
+    },
+    {
+      "id": "UPGRADE-c",
+      "status": "pass"
+    },
+    {
+      "id": "ACK-CORRELATION-a",
+      "status": "pass"
+    },
+    {
+      "id": "NEW-CONTENT-a-a",
+      "status": "pass"
+    },
+    {
+      "id": "NEW-CONTENT-a-b",
+      "status": "pass"
+    },
+    {
+      "id": "ACK-CORRELATION-b",
+      "status": "pass"
+    },
+    {
+      "id": "NEW-CONTENT-b-a",
+      "status": "pass"
+    },
+    {
+      "id": "NEW-CONTENT-b-b",
+      "status": "pass"
+    },
+    {
+      "id": "REPEAT-SAME-MESSAGE",
+      "status": "pass"
+    },
+    {
+      "id": "REPEAT-NEW-ATTEMPT-ID",
+      "status": "pass"
+    },
+    {
+      "id": "FOREIGN-FORBIDDEN",
+      "status": "pass"
+    },
+    {
+      "id": "C-NO-ACK-OR-NEW",
+      "status": "pass"
+    },
+    {
+      "id": "FOREIGN-NO-NEW-TO-MEMBERS",
+      "status": "pass"
+    },
+    {
+      "id": "VALID-TEXT-EVENTS",
+      "status": "pass"
+    },
+    {
+      "id": "SOCKETS-OPEN-DURING-OBSERVATION",
+      "status": "pass"
+    }
+  ],
+  "manifest": {
+    "a": {
+      "id": "1c67b221-8b07-43ee-8ff0-2d9f8988cb9a"
+    },
+    "b": {
+      "id": "fcfb8a90-e931-406d-afec-f938bdf1c67c"
+    },
+    "c": {
+      "id": "dbfa515a-b727-4d50-8831-e24885f866f2"
+    },
+    "chatID": "de119a3c-f74f-4a3c-840a-68f29f9bd172",
+    "commands": {
+      "m1": {
+        "type": "message.send",
+        "id": "244873d7-33be-450b-8b33-55a874274ccb",
+        "ts": "2026-11-25T17:07:44.899Z",
+        "payload": {
+          "chat_id": "de119a3c-f74f-4a3c-840a-68f29f9bd172",
+          "client_msg_id": "cf46edeb-8e67-49fa-8987-53c674fd9c20",
+          "body": "T50 6d837bf9 M1 A to B"
+        }
+      },
+      "m2": {
+        "type": "message.send",
+        "id": "e340be64-4a6c-4f82-891e-5a9d7d5197ac",
+        "ts": "2026-11-25T17:07:44.899Z",
+        "payload": {
+          "chat_id": "de119a3c-f74f-4a3c-840a-68f29f9bd172",
+          "client_msg_id": "85240f13-320f-4b35-86e4-61c0e1d224d5",
+          "body": "T50 6d837bf9 M2 B to A"
+        }
+      },
+      "foreign": {
+        "type": "message.send",
+        "id": "338891cc-8539-45e9-a5a3-303d34b622b6",
+        "ts": "2026-11-25T17:07:44.899Z",
+        "payload": {
+          "chat_id": "de119a3c-f74f-4a3c-840a-68f29f9bd172",
+          "client_msg_id": "597a98d9-ae81-43c6-b705-231e00af4cf9",
+          "body": "T50 forbidden C message"
+        }
+      },
+      "repeat": {
+        "type": "message.send",
+        "id": "9586a7e6-481f-4452-ae00-194ede682ca1",
+        "ts": "2026-11-25T17:07:45.806Z",
+        "payload": {
+          "chat_id": "de119a3c-f74f-4a3c-840a-68f29f9bd172",
+          "client_msg_id": "cf46edeb-8e67-49fa-8987-53c674fd9c20",
+          "body": "T50 6d837bf9 M1 A to B"
+        }
+      }
+    },
+    "m1": {
+      "id": "653582d7-9838-4ed8-a110-fa1b35ce2ace",
+      "seq": 1
+    },
+    "m2": {
+      "id": "5f3f9c2e-fae6-483f-8950-3a84e7a8cd97",
+      "seq": 2
+    }
+  },
+  "requests": [
+    {
+      "id": "REGISTER-a",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/auth/register",
+      "httpStatus": 201,
+      "tests": [
+        {
+          "name": "REGISTER-a HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "REGISTER-a OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "REGISTER-a semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LOGIN-a",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/auth/login",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "LOGIN-a HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LOGIN-a OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LOGIN-a semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "ME-a",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/me",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "ME-a HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "ME-a OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "ME-a semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "REGISTER-b",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/auth/register",
+      "httpStatus": 201,
+      "tests": [
+        {
+          "name": "REGISTER-b HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "REGISTER-b OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "REGISTER-b semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LOGIN-b",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/auth/login",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "LOGIN-b HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LOGIN-b OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LOGIN-b semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "ME-b",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/me",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "ME-b HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "ME-b OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "ME-b semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "REGISTER-c",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/auth/register",
+      "httpStatus": 201,
+      "tests": [
+        {
+          "name": "REGISTER-c HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "REGISTER-c OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "REGISTER-c semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LOGIN-c",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/auth/login",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "LOGIN-c HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LOGIN-c OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LOGIN-c semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "ME-c",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/me",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "ME-c HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "ME-c OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "ME-c semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "CHAT-CREATE",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/chats/personal",
+      "httpStatus": 201,
+      "tests": [
+        {
+          "name": "CHAT-CREATE HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "CHAT-CREATE OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "CHAT-CREATE semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "B-UNREAD-INITIAL",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "B-UNREAD-INITIAL HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "B-UNREAD-INITIAL OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "B-UNREAD-INITIAL semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "WS-SEED-AND-HISTORY",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats/de119a3c-f74f-4a3c-840a-68f29f9bd172/messages?after_seq=0",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "WS-SEED-AND-HISTORY HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "WS-SEED-AND-HISTORY OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "WS-SEED-AND-HISTORY semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LATER-EMPTY-A",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "LATER-EMPTY-A HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LATER-EMPTY-A OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LATER-EMPTY-A semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LATER-SAVE-A",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 201,
+      "tests": [
+        {
+          "name": "LATER-SAVE-A HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LATER-SAVE-A OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LATER-SAVE-A semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "B-PRIVATE-ACTIVE-LIST",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "B-PRIVATE-ACTIVE-LIST HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "B-PRIVATE-ACTIVE-LIST OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "B-PRIVATE-ACTIVE-LIST semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "B-UNREAD-AFTER-SAVE",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "B-UNREAD-AFTER-SAVE HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "B-UNREAD-AFTER-SAVE OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "B-UNREAD-AFTER-SAVE semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LATER-REPEAT-A",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "LATER-REPEAT-A HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LATER-REPEAT-A OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LATER-REPEAT-A semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LATER-PATCH-A",
+      "status": "pass",
+      "method": "PATCH",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "LATER-PATCH-A HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LATER-PATCH-A OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LATER-PATCH-A semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "B-PRIVATE-AFTER-PATCH",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "B-PRIVATE-AFTER-PATCH HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "B-PRIVATE-AFTER-PATCH OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "B-PRIVATE-AFTER-PATCH semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "B-UNREAD-AFTER-PATCH",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "B-UNREAD-AFTER-PATCH HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "B-UNREAD-AFTER-PATCH OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "B-UNREAD-AFTER-PATCH semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LATER-PATCH-NULL",
+      "status": "pass",
+      "method": "PATCH",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "LATER-PATCH-NULL HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LATER-PATCH-NULL OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LATER-PATCH-NULL semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LATER-SNAPSHOT",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "LATER-SNAPSHOT HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LATER-SNAPSHOT OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LATER-SNAPSHOT semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-22",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later?unexpected=1",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-22 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-22 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-22 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-22",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-22 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-22 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-22 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-24",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later?limit=1",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-24 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-24 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-24 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-24",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-24 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-24 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-24 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-26",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later?x=%ZZ",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-26 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-26 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-26 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-26",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-26 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-26 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-26 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-28",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later?x=%",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-28 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-28 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-28 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-28",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-28 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-28 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-28 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-30",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later?&",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-30 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-30 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-30 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-30",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-30 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-30 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-30 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "AUTH-BEFORE-QUERY-32",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later?x=%ZZ",
+      "httpStatus": 401,
+      "tests": [
+        {
+          "name": "AUTH-BEFORE-QUERY-32 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "AUTH-BEFORE-QUERY-32 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "AUTH-BEFORE-QUERY-32 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-33",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later?unexpected=1",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-33 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-33 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-33 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-33",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-33 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-33 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-33 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-35",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later?limit=1",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-35 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-35 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-35 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-35",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-35 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-35 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-35 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-37",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later?x=%ZZ",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-37 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-37 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-37 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-37",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-37 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-37 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-37 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-39",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later?x=%",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-39 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-39 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-39 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-39",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-39 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-39 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-39 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-41",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later?&",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-41 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-41 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-41 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-41",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-41 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-41 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-41 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "AUTH-BEFORE-QUERY-43",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later?x=%ZZ",
+      "httpStatus": 401,
+      "tests": [
+        {
+          "name": "AUTH-BEFORE-QUERY-43 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "AUTH-BEFORE-QUERY-43 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "AUTH-BEFORE-QUERY-43 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-44",
+      "status": "pass",
+      "method": "PATCH",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285?unexpected=1",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-44 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-44 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-44 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-44",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-44 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-44 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-44 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-46",
+      "status": "pass",
+      "method": "PATCH",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285?limit=1",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-46 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-46 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-46 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-46",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-46 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-46 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-46 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-48",
+      "status": "pass",
+      "method": "PATCH",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285?x=%ZZ",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-48 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-48 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-48 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-48",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-48 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-48 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-48 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-50",
+      "status": "pass",
+      "method": "PATCH",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285?x=%",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-50 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-50 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-50 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-50",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-50 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-50 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-50 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-52",
+      "status": "pass",
+      "method": "PATCH",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285?&",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-52 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-52 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-52 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-52",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-52 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-52 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-52 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "AUTH-BEFORE-QUERY-54",
+      "status": "pass",
+      "method": "PATCH",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285?x=%ZZ",
+      "httpStatus": 401,
+      "tests": [
+        {
+          "name": "AUTH-BEFORE-QUERY-54 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "AUTH-BEFORE-QUERY-54 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "AUTH-BEFORE-QUERY-54 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-55",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285/done?unexpected=1",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-55 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-55 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-55 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-55",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-55 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-55 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-55 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-57",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285/done?limit=1",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-57 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-57 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-57 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-57",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-57 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-57 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-57 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-59",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285/done?x=%ZZ",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-59 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-59 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-59 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-59",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-59 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-59 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-59 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-61",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285/done?x=%",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-61 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-61 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-61 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-61",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-61 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-61 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-61 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "QUERY-REJECT-63",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285/done?&",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "QUERY-REJECT-63 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-63 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "QUERY-REJECT-63 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-UNCHANGED-63",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-UNCHANGED-63 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-63 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-UNCHANGED-63 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "AUTH-BEFORE-QUERY-65",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285/done?x=%ZZ",
+      "httpStatus": 401,
+      "tests": [
+        {
+          "name": "AUTH-BEFORE-QUERY-65 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "AUTH-BEFORE-QUERY-65 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "AUTH-BEFORE-QUERY-65 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "DUE-INVALID-66",
+      "status": "pass",
+      "method": "PATCH",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "DUE-INVALID-66 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "DUE-INVALID-66 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "DUE-INVALID-66 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "DUE-INVALID-67",
+      "status": "pass",
+      "method": "PATCH",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "DUE-INVALID-67 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "DUE-INVALID-67 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "DUE-INVALID-67 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "DUE-INVALID-68",
+      "status": "pass",
+      "method": "PATCH",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285",
+      "httpStatus": 422,
+      "tests": [
+        {
+          "name": "DUE-INVALID-68 HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "DUE-INVALID-68 OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "DUE-INVALID-68 semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-AFTER-INVALID-DUE",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-AFTER-INVALID-DUE HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-AFTER-INVALID-DUE OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-AFTER-INVALID-DUE semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "B-PATCH-FOREIGN",
+      "status": "pass",
+      "method": "PATCH",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285",
+      "httpStatus": 404,
+      "tests": [
+        {
+          "name": "B-PATCH-FOREIGN HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "B-PATCH-FOREIGN OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "B-PATCH-FOREIGN semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "B-DONE-FOREIGN",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285/done",
+      "httpStatus": 404,
+      "tests": [
+        {
+          "name": "B-DONE-FOREIGN HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "B-DONE-FOREIGN OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "B-DONE-FOREIGN semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "C-SAVE-FOREIGN-CHAT",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 404,
+      "tests": [
+        {
+          "name": "C-SAVE-FOREIGN-CHAT HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "C-SAVE-FOREIGN-CHAT OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "C-SAVE-FOREIGN-CHAT semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "STATE-AFTER-FOREIGN-WRITES",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "STATE-AFTER-FOREIGN-WRITES HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-AFTER-FOREIGN-WRITES OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "STATE-AFTER-FOREIGN-WRITES semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "B-SAVE-OWN-RECORD",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 201,
+      "tests": [
+        {
+          "name": "B-SAVE-OWN-RECORD HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "B-SAVE-OWN-RECORD OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "B-SAVE-OWN-RECORD semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "A-DONE",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285/done",
+      "httpStatus": 204,
+      "tests": [
+        {
+          "name": "A-DONE HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "A-DONE OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "A-DONE semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "A-DONE-REPEAT",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285/done",
+      "httpStatus": 204,
+      "tests": [
+        {
+          "name": "A-DONE-REPEAT HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "A-DONE-REPEAT OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "A-DONE-REPEAT semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "A-ACTIVE-LIST-EMPTY",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "A-ACTIVE-LIST-EMPTY HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "A-ACTIVE-LIST-EMPTY OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "A-ACTIVE-LIST-EMPTY semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "B-OWN-RECORD-UNCHANGED",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "B-OWN-RECORD-UNCHANGED HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "B-OWN-RECORD-UNCHANGED OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "B-OWN-RECORD-UNCHANGED semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "B-UNREAD-AFTER-DONE",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "B-UNREAD-AFTER-DONE HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "B-UNREAD-AFTER-DONE OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "B-UNREAD-AFTER-DONE semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "A-RESAVE-NEW-ID",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 201,
+      "tests": [
+        {
+          "name": "A-RESAVE-NEW-ID HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "A-RESAVE-NEW-ID OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "A-RESAVE-NEW-ID semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "A-OLD-DONE-AGAIN",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later/5021f1c6-8745-4216-97e6-a578324eb285/done",
+      "httpStatus": 204,
+      "tests": [
+        {
+          "name": "A-OLD-DONE-AGAIN HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "A-OLD-DONE-AGAIN OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "A-OLD-DONE-AGAIN semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "A-NEW-RECORD-STILL-ACTIVE",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "A-NEW-RECORD-STILL-ACTIVE HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "A-NEW-RECORD-STILL-ACTIVE OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "A-NEW-RECORD-STILL-ACTIVE semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "CONTEXT-LIMIT-ONE",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats/de119a3c-f74f-4a3c-840a-68f29f9bd172/messages/653582d7-9838-4ed8-a110-fa1b35ce2ace/context?limit=1",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "CONTEXT-LIMIT-ONE HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "CONTEXT-LIMIT-ONE OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "CONTEXT-LIMIT-ONE semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "B-UNREAD-AFTER-CONTEXT",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/chats",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "B-UNREAD-AFTER-CONTEXT HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "B-UNREAD-AFTER-CONTEXT OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "B-UNREAD-AFTER-CONTEXT semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "A-FINISH-NEW",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later/d80a07d3-f677-4d67-97e3-bbed834881af/done",
+      "httpStatus": 204,
+      "tests": [
+        {
+          "name": "A-FINISH-NEW HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "A-FINISH-NEW OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "A-FINISH-NEW semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "B-FINISH-OWN",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/later/a0e134a4-5464-4da6-81c5-6c6b094368e7/done",
+      "httpStatus": 204,
+      "tests": [
+        {
+          "name": "B-FINISH-OWN HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "B-FINISH-OWN OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "B-FINISH-OWN semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LATER-FINAL-EMPTY-a",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "LATER-FINAL-EMPTY-a HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LATER-FINAL-EMPTY-a OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LATER-FINAL-EMPTY-a semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LATER-FINAL-EMPTY-b",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "LATER-FINAL-EMPTY-b HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LATER-FINAL-EMPTY-b OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LATER-FINAL-EMPTY-b semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LATER-FINAL-EMPTY-c",
+      "status": "pass",
+      "method": "GET",
+      "url": "https://staging.tidingm.ru/later",
+      "httpStatus": 200,
+      "tests": [
+        {
+          "name": "LATER-FINAL-EMPTY-c HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LATER-FINAL-EMPTY-c OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LATER-FINAL-EMPTY-c semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LOGOUT-a",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/auth/logout",
+      "httpStatus": 204,
+      "tests": [
+        {
+          "name": "LOGOUT-a HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LOGOUT-a OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LOGOUT-a semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LOGOUT-b",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/auth/logout",
+      "httpStatus": 204,
+      "tests": [
+        {
+          "name": "LOGOUT-b HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LOGOUT-b OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LOGOUT-b semantics",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LOGOUT-c",
+      "status": "pass",
+      "method": "POST",
+      "url": "https://staging.tidingm.ru/auth/logout",
+      "httpStatus": 204,
+      "tests": [
+        {
+          "name": "LOGOUT-c HTTP",
+          "status": "pass"
+        },
+        {
+          "name": "LOGOUT-c OpenAPI",
+          "status": "pass"
+        },
+        {
+          "name": "LOGOUT-c semantics",
+          "status": "pass"
+        }
+      ]
+    }
+  ]
+}

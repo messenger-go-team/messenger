@@ -1,0 +1,30 @@
+{
+  "account": "qa38_mwqa7f6q_b",
+  "chatID": "845dae1a-862f-4bb9-9cc6-030b64280a70",
+  "scope": "Preliminary UI T50; not full MVP acceptance or timed T51",
+  "reminderDueLocal": "2026-11-25T20:42:00+03:00",
+  "scheduleCommandAt": "2026-11-25T20:40:56.092+03:00",
+  "appTabClosedAt": "2026-11-25T20:41:13.965+03:00",
+  "reminderObservedAt": "2026-11-25T20:42:27.013+03:00",
+  "observedReminderText": "T50 UI 2026-11-25: проверка Later ✅",
+  "finalState": "Later entry completed; list empty after reload; logged out; protected Later redirects to login",
+  "evidenceSource": "Accessibility observations in Codex chat; tool clock for timestamps; no Network trace",
+  "publicFingerprints": {
+    "at": "2026-11-25T17:41:38.466Z",
+    "status": 200,
+    "htmlSHA256": "17ec9e0ed99429ce2537579bdea335cb35372bdf287662a2f0d443b6c5f4b402",
+    "assets": [
+      {
+        "path": "/app/assets/index-95q295uW.js",
+        "status": 200,
+        "sha256": "2be18824aa2147c86bbefbf9347649693f469aae07ba08bd250b2ac7112a84dc"
+      },
+      {
+        "path": "/app/assets/index-DF-66hO3.css",
+        "status": 200,
+        "sha256": "e714043d172858217c0479ad7cdb28d88773dffd7c8c13f9f063335ce8cbdd47"
+      }
+    ],
+    "note": "Public file fingerprints only; not proof of frontend/backend commit SHA."
+  }
+}
