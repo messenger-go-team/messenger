@@ -38,17 +38,22 @@ Nginx отдаёт обычные API и WSS напрямую. Тестовый 
 
 3. Соберите и запустите Compose под `messenger-qa` из доверенного checkout.
    Имя проекта сохраняет существующую сеть и том с тестовыми данными.
+   Для сборки используйте пустой отдельный каталог Docker CLI. SSH-команды
+   используют постоянный каталог Docker CLI под управлением root.
 
    ```bash
    controller=/opt/messenger-qa-controller
    cd "$controller"
    qa_uid=$(id -u messenger-qa)
+   build_config=$(mktemp -d /run/messenger-qa-build.XXXXXX)
+   chown messenger-qa:messenger-qa "$build_config"
    runuser -u messenger-qa -- env -i \
      PATH=/opt/messenger-qa-rootless/bin:/usr/sbin:/usr/bin:/bin \
-     HOME="$controller" DOCKER_CONFIG=/etc/messenger-qa/docker-client \
+     HOME="$controller" DOCKER_CONFIG="$build_config" \
      QA_ENV_FILE=/etc/messenger-qa/staging.env QA_LOCK_DIR="/run/user/$qa_uid" \
      GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$controller" \
      COMPOSE_PARALLEL_LIMIT=1 bash "$controller/deploy/qa-staging/qa.sh" up
+   rm -rf -- "$build_config"
    ```
 
 4. Установите [SSH-обработчик](qa-ssh.sh) как
