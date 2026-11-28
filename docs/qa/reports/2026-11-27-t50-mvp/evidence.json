@@ -479,7 +479,7 @@
       ]
     },
     "MSG-03": {
-      "fact": "Изменённое тело отклонено, ключи другого отправителя и другого чата независимы.",
+      "fact": "Изменённое тело отклонено, ключи другого отправителя и другого чата независимы. После отказа History вернул исходную запись с тем же ID, seq, временем создания и текстом.",
       "from": "2026-11-27T15:41:12.536Z",
       "to": "2026-11-27T15:41:12.960Z",
       "requests": [
@@ -573,7 +573,26 @@
           "messageId": "bd70e67f-0c58-4c5e-b552-c1f8d839c37e",
           "seq": 1
         }
-      ]
+      ],
+      "historyAfterConflict": {
+        "sourceCase": "MSG-01",
+        "method": "GET",
+        "path": "/chats/050026dd-ae0d-4353-9ce9-7b7f781a5750/messages",
+        "role": "a",
+        "status": 200,
+        "requestId": "EIT3OEMSFTQ4HCAOYHROQNX3E3",
+        "startedAt": "2026-11-27T15:41:13.101Z",
+        "completedAt": "2026-11-27T15:41:13.170Z",
+        "conflictAt": "2026-11-27T15:41:12.647Z",
+        "matchingMessageCount": 1,
+        "originalBodySha256": "98bdbd6bd12f56486820f8ecfdb12d7c8ae4214700c7e91aee0642b5431368a3",
+        "message": {
+          "id": "b4e39606-4dd2-4065-9980-84c1cc4fd43e",
+          "seq": 4,
+          "created_at": "2026-11-27T15:41:12.552722Z",
+          "bodySha256": "98bdbd6bd12f56486820f8ecfdb12d7c8ae4214700c7e91aee0642b5431368a3"
+        }
+      }
     },
     "CONTACT-02": {
       "fact": "Повторы и конкурентные PUT оставили одну запись, списки других пользователей прежние, DELETE идемпотентен.",
@@ -657,79 +676,6 @@
           "path": "/contacts/08b710c1-c14e-4356-ae4d-fa62ff8dfc73",
           "status": 204,
           "requestId": "PB7WTYDQK4CAJPTWAT4P3NBM7T"
-        }
-      ]
-    },
-    "LATER-06": {
-      "fact": "Save 201/200/200 с одним ID. Два параллельных Save новой цели дали 201 и 200, активна одна запись со сроком обновления.",
-      "from": "2026-11-27T20:44:58.287Z",
-      "to": "2026-11-27T20:44:58.552Z",
-      "requests": [
-        {
-          "method": "GET",
-          "path": "/chats/f1bcafb9-f11a-4859-9fb2-e21dbb6d716b/messages",
-          "status": 200,
-          "requestId": "VFTYLQRWNOXX5GANVMG6UGPPPR"
-        },
-        {
-          "method": "GET",
-          "path": "/later",
-          "status": 200,
-          "requestId": "DRJGVYMUC65772QOC4BLCWONAM"
-        },
-        {
-          "method": "POST",
-          "path": "/later",
-          "status": 201,
-          "requestId": "PPAY5LI7O7NIZN546QVGMJCCDY"
-        },
-        {
-          "method": "POST",
-          "path": "/later",
-          "status": 200,
-          "requestId": "5ER2LMITXH3HYD64GA6Q5IMFVY"
-        },
-        {
-          "method": "POST",
-          "path": "/later",
-          "status": 200,
-          "requestId": "KSTXO5POVGCVF2226HY3UODF3W"
-        },
-        {
-          "method": "GET",
-          "path": "/later",
-          "status": 200,
-          "requestId": "LJHJMAZWEGDAZN73OO5ZGSMSLE"
-        },
-        {
-          "method": "POST",
-          "path": "/later",
-          "status": 201,
-          "requestId": "FGCJYENSOACUFOKO5KFZKF64TD"
-        },
-        {
-          "method": "POST",
-          "path": "/later",
-          "status": 200,
-          "requestId": "FZAQFRVD2BXAMNXEZGL44TFY7F"
-        },
-        {
-          "method": "GET",
-          "path": "/later",
-          "status": 200,
-          "requestId": "EQLKZSSKHR3TN3TGWN5N2QUEFX"
-        },
-        {
-          "method": "POST",
-          "path": "/later/1366574e-2c54-48e7-aeea-9d2538c174be/done",
-          "status": 204,
-          "requestId": "LAEVQUBSLQJPQVJBC5B4CMF25H"
-        },
-        {
-          "method": "POST",
-          "path": "/later/600de428-2e65-4c7b-9c58-10bec1d13afd/done",
-          "status": 204,
-          "requestId": "TOSW7JWTM476AMEQNE73FQZ3GB"
         }
       ]
     },
@@ -823,7 +769,99 @@
     "LATER-14": "Проверены крайние окна API с курсорами и флагами. Остались одиночная история, UI и отрицательные параметры.",
     "LATER-15": "Save/PATCH/Done не раскрыли запись в проверенных списках и сокете второго аккаунта. Остались непосредственная сверка курсора и полная матрица обеих сторон.",
     "WEB-01": "Проверена раскладка экрана поиска контактов на трёх ширинах. Остались другие экраны и варианты.",
-    "WEB-02": "Зафиксирован Tab из поиска к кнопке контакта. Остался полный маршрут форм и чата с ошибками и повтором."
+    "WEB-02": "Зафиксирован Tab из поиска к кнопке контакта. Остался полный маршрут форм и чата с ошибками и повтором.",
+    "LATER-06": "Успешные шаги Save сохранены. Для статуса Passed нужен повтор с точными полями ответов."
+  },
+  "partialCaseDetails": {
+    "LATER-06": {
+      "status": "Not run",
+      "fact": "Save 201/200/200 с одним ID. Два параллельных Save новой цели дали 201 и 200, активна одна запись со сроком обновления.",
+      "from": "2026-11-27T20:44:58.287Z",
+      "to": "2026-11-27T20:44:58.552Z",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/chats/f1bcafb9-f11a-4859-9fb2-e21dbb6d716b/messages",
+          "status": 200,
+          "requestId": "VFTYLQRWNOXX5GANVMG6UGPPPR"
+        },
+        {
+          "method": "GET",
+          "path": "/later",
+          "status": 200,
+          "requestId": "DRJGVYMUC65772QOC4BLCWONAM"
+        },
+        {
+          "method": "POST",
+          "path": "/later",
+          "status": 201,
+          "requestId": "PPAY5LI7O7NIZN546QVGMJCCDY"
+        },
+        {
+          "method": "POST",
+          "path": "/later",
+          "status": 200,
+          "requestId": "5ER2LMITXH3HYD64GA6Q5IMFVY"
+        },
+        {
+          "method": "POST",
+          "path": "/later",
+          "status": 200,
+          "requestId": "KSTXO5POVGCVF2226HY3UODF3W"
+        },
+        {
+          "method": "GET",
+          "path": "/later",
+          "status": 200,
+          "requestId": "LJHJMAZWEGDAZN73OO5ZGSMSLE"
+        },
+        {
+          "method": "POST",
+          "path": "/later",
+          "status": 201,
+          "requestId": "FGCJYENSOACUFOKO5KFZKF64TD"
+        },
+        {
+          "method": "POST",
+          "path": "/later",
+          "status": 200,
+          "requestId": "FZAQFRVD2BXAMNXEZGL44TFY7F"
+        },
+        {
+          "method": "GET",
+          "path": "/later",
+          "status": 200,
+          "requestId": "EQLKZSSKHR3TN3TGWN5N2QUEFX"
+        },
+        {
+          "method": "POST",
+          "path": "/later/1366574e-2c54-48e7-aeea-9d2538c174be/done",
+          "status": 204,
+          "requestId": "LAEVQUBSLQJPQVJBC5B4CMF25H"
+        },
+        {
+          "method": "POST",
+          "path": "/later/600de428-2e65-4c7b-9c58-10bec1d13afd/done",
+          "status": 204,
+          "requestId": "TOSW7JWTM476AMEQNE73FQZ3GB"
+        }
+      ],
+      "observed": {
+        "sequential": [
+          201,
+          200,
+          200
+        ],
+        "concurrent": [
+          201,
+          200
+        ],
+        "oneActive": true,
+        "finalMatchesUpdate": true
+      },
+      "comparison": "При последовательных повторах сверялись стабильный created_at и заданный due_at, включая null. При параллельных запросах due_at и updated_at из итогового GET совпали с ответом обновления 200.",
+      "missingEvidence": "Точные created_at и due_at каждого последовательного ответа и значения due_at и updated_at из ответа 200 и контрольного GET не сохранены."
+    }
   },
   "laterReopen": {
     "dueAt": "2026-11-27T16:04:00Z",
@@ -1023,9 +1061,9 @@
     }
   ],
   "totals": {
-    "Passed": 8,
+    "Passed": 7,
     "Failed": 0,
     "Blocked": 30,
-    "Not run": 53
+    "Not run": 54
   }
 }
