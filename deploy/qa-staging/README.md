@@ -41,6 +41,7 @@ Nginx отдаёт обычные API и WSS напрямую. Тестовый 
 
    ```bash
    controller=/opt/messenger-qa-controller
+   cd "$controller"
    qa_uid=$(id -u messenger-qa)
    runuser -u messenger-qa -- env -i \
      PATH=/opt/messenger-qa-rootless/bin:/usr/sbin:/usr/bin:/bin \

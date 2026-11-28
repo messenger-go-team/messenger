@@ -17,6 +17,7 @@ esac
 
 [[ $(/usr/bin/id -un) == messenger-qa ]] || usage
 controller=/opt/messenger-qa-controller
+cd -- "$controller"
 runtime_dir="/run/user/$(/usr/bin/id -u)"
 if [[ ${args[0]} != burst && ${args[0]} != auth-log-check ]]; then
     exec </dev/null
