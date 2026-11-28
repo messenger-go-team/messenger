@@ -6,6 +6,7 @@ import (
 	"math"
 	"net"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -24,7 +25,11 @@ type config struct {
 	HistoryRPCTimeout time.Duration
 	SendInterval      time.Duration
 	SendBurst         int
+	RedisURL          string
+	RedisPrefix       string
 }
+
+var redisPrefixPattern = regexp.MustCompile(`^[A-Za-z0-9:_-]{1,64}$`)
 
 func loadConfig(lookup func(string) (string, bool)) (config, error) {
 	value := func(name, fallback string) string {
@@ -88,7 +93,34 @@ func loadConfig(lookup func(string) (string, bool)) (config, error) {
 	if err != nil || cfg.SendBurst <= 0 || time.Duration(cfg.SendBurst) > math.MaxInt64/cfg.SendInterval {
 		return config{}, fmt.Errorf("WS_SEND_BURST must be a positive integer with a representable refill duration")
 	}
+	switch value("CHAT_BROKER", "memory") {
+	case "memory":
+	case "redis":
+		cfg.RedisURL = value("REDIS_URL", "")
+		if !validRedisURL(cfg.RedisURL) {
+			return config{}, fmt.Errorf("REDIS_URL must be a redis or rediss URL with a host and no query or fragment")
+		}
+		cfg.RedisPrefix = value("REDIS_CHANNEL_PREFIX", "messenger:chat")
+		if !redisPrefixPattern.MatchString(cfg.RedisPrefix) {
+			return config{}, fmt.Errorf("REDIS_CHANNEL_PREFIX must contain 1..64 letters, digits, colons, underscores or hyphens")
+		}
+	default:
+		return config{}, fmt.Errorf("CHAT_BROKER must be memory or redis")
+	}
 	return cfg, nil
+}
+
+func validRedisURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "redis" && u.Scheme != "rediss") ||
+		u.Hostname() == "" || u.ForceQuery || u.RawQuery != "" || strings.Contains(raw, "#") {
+		return false
+	}
+	if port := u.Port(); port != "" {
+		number, err := strconv.Atoi(port)
+		return err == nil && number >= 1 && number <= 65535
+	}
+	return !strings.HasSuffix(u.Host, ":")
 }
 
 func parseAllowedOrigins(value string) (map[string]struct{}, error) {

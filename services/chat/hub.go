@@ -28,6 +28,9 @@ type connectionHub struct {
 	active int
 	closed bool
 
+	// The broker hook records subscription intent without network I/O.
+	localUserChanged func(userID string, present bool)
+
 	// All presence state and per-socket outboxes share the hub lock.
 	presenceVersion uint64
 	watchers        map[string]map[*hubUser]struct{}
@@ -88,6 +91,9 @@ func (h *connectionHub) register(ctx context.Context, socket *socketSession) (*h
 	h.active++
 	user.wakePresence()
 	if first {
+		if h.localUserChanged != nil {
+			h.localUserChanged(socket.userID, true)
+		}
 		return user, true
 	}
 	return nil, true
@@ -108,6 +114,9 @@ func (h *connectionHub) unregister(socket *socketSession) {
 	h.active--
 	if len(user.sockets) == 0 {
 		delete(h.users, socket.userID)
+		if h.localUserChanged != nil {
+			h.localUserChanged(socket.userID, false)
+		}
 		user.cancel()
 		h.setPresencePeersLocked(user, nil)
 
